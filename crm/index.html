@@ -20,6 +20,7 @@
       <i class="ri-contacts-book-2-fill" style="color:var(--acc)"></i> Mini CRM
     </h1>
     <div class="f1"></div>
+    <span id="serverStatusDot" class="email-dot" title="Проверка сервера..."></span>
     <button class="btn-icon" onclick="toggleTheme()" title="Тема">
       <i class="ri-moon-clear-fill" id="themeBtn"></i>
     </button>
@@ -52,6 +53,10 @@
       <div class="expdd-item" onclick="ImportExport.doExport('all')">Все контакты</div>
       <div class="expdd-item" onclick="ImportExport.doExport('active')">Без архива</div>
     </div>
+    <button class="btn btn-s" onclick="EmailSender.triggerSend()" title="Email рассылка" id="emailSendHeaderBtn">
+      <i class="ri-mail-send-line"></i> Email
+      <span id="emailServerDot" class="email-dot" title="Проверка сервера..."></span>
+    </button>
   </header>
   <div id="fieldToggles" class="px4 py1 fl ac gap2" style="background:var(--bg2);border-bottom:1px solid var(--bdr)"></div>
   <div id="channelTabs" class="ch-tabs"></div>
@@ -64,6 +69,9 @@
 <!-- UPLOAD MODAL -->
 <div id="uploadModal" class="ov" style="display:none"></div>
 
+<!-- EMAIL MODAL -->
+<div id="emailModal" class="ov" style="display:none"></div>
+
 <!-- SCRIPTS -->
 <script src="js/utils.js"></script>
 <script src="js/state.js"></script>
@@ -71,6 +79,7 @@
 <script src="js/render.js"></script>
 <script src="js/batch.js"></script>
 <script src="js/import-export.js"></script>
+<script src="js/email-sender.js"></script>
 
 <script>
 function toggleTheme() {
@@ -106,6 +115,10 @@ document.addEventListener('DOMContentLoaded', async function () {
   try {
     syncThemeIcons();
     await initDB();
+
+    // Load data from server (JSON files on disk)
+    await loadFromServer();
+
     console.log('DB ready:', await db.contacts.count());
     Render.renderAreas();
 
@@ -115,6 +128,21 @@ document.addEventListener('DOMContentLoaded', async function () {
       Render.renderChecklist();
     }, SEARCH_DEBOUNCE_MS);
     searchInp.addEventListener('input', debouncedSearch);
+
+    // Lazy server check — runs in background, updates dot indicator
+    EmailSender.checkServer().then(ok => {
+      const dot = document.getElementById('emailServerDot');
+      if (dot) {
+        dot.className = 'email-dot' + (ok ? ' email-dot-ok' : ' email-dot-err');
+        dot.title = ok ? 'Сервер запущен' : 'Сервер не запущен';
+      }
+      // Also update main page dot
+      const mainDot = document.getElementById('serverStatusDot');
+      if (mainDot) {
+        mainDot.className = 'email-dot' + (ok ? ' email-dot-ok' : ' email-dot-err');
+        mainDot.title = ok ? 'Сервер запущен' : 'Сервер не запущен';
+      }
+    });
   } catch (err) {
     console.error(err);
     document.getElementById('areasList').innerHTML = '<div class="empty-state"><i class="ri-error-warning-line"></i><div class="empty-state-title">Ошибка БД</div><div class="empty-state-desc">' + esc(err.message) + '</div></div>';

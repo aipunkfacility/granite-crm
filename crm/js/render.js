@@ -8,12 +8,15 @@ Render.renderAreas = async function () {
 
     all.forEach(c => {
       const a = c.area || 'Без области';
-      if (!groups[a]) groups[a] = { t: 0, arch: 0, tg: 0, wa: 0, em: 0 };
+      if (!groups[a]) groups[a] = { t: 0, arch: 0, tg: 0, wa: 0, em: 0, sTG: 0, sWA: 0, sEM: 0 };
       groups[a].t++;
       if (c.archived) groups[a].arch++;
       if (hasChannel(c, 'telegram')) groups[a].tg++;
       if (hasChannel(c, 'whatsapp')) groups[a].wa++;
       if (hasChannel(c, 'email')) groups[a].em++;
+      if (c.last_tg) groups[a].sTG++;
+      if (c.last_wa) groups[a].sWA++;
+      if (c.last_email) groups[a].sEM++;
     });
 
     const el = document.getElementById('areasList');
@@ -24,25 +27,58 @@ Render.renderAreas = async function () {
       return;
     }
 
-    let h = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;padding:16px">';
+    let h = '<div style="display:flex;flex-direction:column;gap:12px;padding:16px">';
     keys.forEach(a => {
       const d = groups[a];
       const act = d.t - d.arch;
+      const areaEncoded = btoa(encodeURIComponent(a));
       h += '<div class="area-card" style="position:relative">';
-      h += '<div class="area-actions">' +
-        '<button class="area-btn" onclick="Render.editArea(\'' + escAttr(a) + '\',event)" title="Переименовать"><i class="ri-pencil-line"></i></button>' +
-        '<button class="area-btn area-btn-del" onclick="Render.deleteArea(\'' + escAttr(a) + '\',event)" title="Удалить"><i class="ri-delete-bin-line"></i></button></div>';
-      h += '<div onclick="State.goArea(\'' + escAttr(a) + '\')" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">';
+      h += '<div class="area-actions">';
+      h += '<button class="area-btn" data-area-edit="' + escAttr(a) + '" title="Переименовать"><i class="ri-pencil-line"></i></button>';
+      h += '<button class="area-btn area-btn-del" data-area-delete="' + escAttr(a) + '" title="Удалить"><i class="ri-delete-bin-line"></i></button></div>';
+      h += '<div class="area-clickable" data-area="' + areaEncoded + '" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">';
       h += '<h3 style="font-size:14px;font-weight:700;color:var(--hd)">' + esc(a) + '</h3>';
       h += '<i class="ri-arrow-right-s-line" style="color:var(--mut)"></i></div>';
+      // Contacts row
       h += '<div style="display:flex;gap:12px;font-size:11px;color:var(--mut);margin-top:8px">';
       h += '<span><b style="color:var(--txt)">' + act + '</b> акт.</span>';
       h += '<span><i class="ri-telegram-fill" style="color:#60a5fa"></i> ' + d.tg + '</span>';
-      h += '<span><i class="ri-whatsapp-fill" style="color:#4ade80"></i> ' + d.wa + '</span></div>';
+      h += '<span><i class="ri-whatsapp-fill" style="color:#4ade80"></i> ' + d.wa + '</span>';
+      h += '<span><i class="ri-mail-fill" style="color:#fbbf24"></i> ' + d.em + '</span></div>';
+      // Sent stats row
+      h += '<div style="display:flex;gap:12px;font-size:10px;color:var(--mut);margin-top:4px">';
+      h += '<span style="color:#38bdf8">ТГ✓ ' + d.sTG + '</span>';
+      h += '<span style="color:#22c55e">WA✓ ' + d.sWA + '</span>';
+      h += '<span style="color:#f59e0b">Email✓ ' + d.sEM + '</span></div>';
       h += '</div>';
     });
     h += '</div>';
     el.innerHTML = h;
+
+    // Attach click handlers after rendering
+    el.querySelectorAll('.area-clickable').forEach(el => {
+      el.onclick = function() {
+        const areaEncoded = this.dataset.area;
+        const areaName = decodeURIComponent(atob(areaEncoded));
+        State.goArea(areaName);
+      };
+    });
+
+    // Area action buttons - event delegation
+    el.querySelectorAll('.area-btn[data-area-edit]').forEach(btn => {
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        const areaName = this.dataset.areaEdit;
+        Render.editArea(areaName, e);
+      };
+    });
+    el.querySelectorAll('.area-btn[data-area-delete]').forEach(btn => {
+      btn.onclick = function(e) {
+        e.stopPropagation();
+        const areaName = this.dataset.areaDelete;
+        Render.deleteArea(areaName, e);
+      };
+    });
   } catch (err) {
     console.error('renderAreas:', err);
     toast('Ошибка', 'err');
@@ -63,7 +99,7 @@ Render.editArea = async function (oldName, event) {
     toast('Переименовано');
     if (State.currentArea === oldName) State.currentArea = trimmed;
     Render.renderAreas();
-    saveToDbDir();
+    saveToServer();
   } catch (err) {
     console.error('editArea:', err);
     toast('Ошибка', 'err');
@@ -83,7 +119,7 @@ Render.deleteArea = async function (areaName, event) {
     toast('Удалено');
     if (State.currentArea === areaName) State.goAreas();
     else Render.renderAreas();
-    saveToDbDir();
+    saveToServer();
   } catch (err) {
     console.error('deleteArea:', err);
     toast('Ошибка', 'err');
@@ -97,14 +133,24 @@ Render.renderFieldToggles = function () {
   }).join('');
 };
 
-Render.renderChannelTabs = function (unsentCount, sentCount) {
+Render.renderChannelTabs = function (list, chKey) {
   const el = document.getElementById('channelTabs');
+  
+  // Get channel counts for all channels in this area
+  const counts = {};
+  CHANNELS.forEach(ch => {
+    const withChannel = list.filter(c => hasChannel(c, ch.field));
+    const unsent = withChannel.filter(c => !c[ch.lastField]).length;
+    const sent = withChannel.filter(c => !!c[ch.lastField]).length;
+    counts[ch.k] = { unsent, sent, total: withChannel.length };
+  });
+
   el.innerHTML = CHANNELS.map(ch => {
     const act = State.currentChannel === ch.k ? ' act' : '';
-    const count = ch.k === 'tg' ? unsentCount : (ch.k === 'wa' ? unsentCount : sentCount);
+    const c = counts[ch.k];
     return '<button class="ch-tab' + act + '" onclick="State.setChannel(\'' + ch.k + '\');Render.renderChecklist()">' +
       '<i class="' + ch.icon + '" style="color:' + ch.color + '"></i> ' + esc(ch.l) +
-      '<span class="ch-tab-badge">' + count + '</span></button>';
+      '<span class="ch-tab-badge">' + (c ? c.unsent : 0) + '</span></button>';
   }).join('');
 };
 
@@ -114,11 +160,14 @@ Render.renderChecklist = async function () {
     const ch = getChannel(State.currentChannel);
     if (!ch) return;
 
+    // Filter: only contacts that HAVE this channel
+    const withChannel = list.filter(c => hasChannel(c, ch.field));
+
     const filtered = State.searchQuery
-      ? list.filter(c =>
+      ? withChannel.filter(c =>
           c.name.toLowerCase().includes(State.searchQuery) ||
           (c.phone || '').toLowerCase().includes(State.searchQuery))
-      : list;
+      : withChannel;
 
     const unsent = filtered.filter(c => !c[ch.lastField]);
     const sent = filtered.filter(c => !!c[ch.lastField]);
@@ -126,7 +175,7 @@ Render.renderChecklist = async function () {
     const sentCount = sent.length;
     const pct = total ? Math.round(sentCount / total * 100) : 0;
 
-    Render.renderChannelTabs(unsent.length, sentCount);
+    Render.renderChannelTabs(list, State.currentChannel);
 
     const board = document.getElementById('checklistContainer');
     let h = '';
@@ -143,6 +192,7 @@ Render.renderChecklist = async function () {
     h += '<button class="btn btn-s" onclick="Batch.selectSent(window._chkList)">Отправл.</button>';
     h += '<button class="btn btn-s btn-p" onclick="Batch.markSelected()">Отметить</button>';
     h += '<button class="btn btn-s" onclick="Batch.undoSelected()">Снять</button>';
+    h += '<button class="btn btn-s btn-p" onclick="Batch.sendEmails()"><i class="ri-mail-send-line"></i> Рассылка</button>';
     h += '<button class="btn btn-s" onclick="State.clearSelection();Render.renderChecklist()">Сброс</button>';
     h += '</div>';
 
@@ -307,14 +357,12 @@ Render.quickTouch = async function (id, channel) {
   await recordTouch(id, channel, (note || '').trim());
   toast('Отмечено');
   await Render.renderChecklist();
-  saveToDbDir();
 };
 
 Render.undoQuickTouch = async function (id, channel) {
   await undoTouch(id, channel);
   toast('Отменено');
   await Render.renderChecklist();
-  saveToDbDir();
 };
 
 Render.renderStats = function (list) {
@@ -332,7 +380,9 @@ Render.renderStats = function (list) {
     stb(list.length, 'var(--hd)', 'Всего') +
     stb(wTG, '#60a5fa', 'TG') +
     stb(wWA, '#4ade80', 'WA') +
+    stb(wEM, '#fbbf24', 'Email') +
     stb(sTG, '#38bdf8', 'ТГ✓') +
     stb(sWA, '#22c55e', 'WA✓') +
+    stb(sEM, '#f59e0b', 'Email✓') +
     stb(arch, 'var(--mut)', 'Архив');
 };

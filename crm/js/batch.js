@@ -15,7 +15,7 @@ const Batch = {
     State.clearSelection();
     toast('Отмечено: ' + count);
     await Render.renderChecklist();
-    saveToDbDir();
+    saveToServer();
   },
 
   /* Undo touch for all selected contacts */
@@ -33,7 +33,7 @@ const Batch = {
     State.clearSelection();
     toast('Снято: ' + count);
     await Render.renderChecklist();
-    saveToDbDir();
+    saveToServer();
   },
 
   /* Select all contacts in the "not sent" group */
@@ -69,7 +69,7 @@ const Batch = {
 
     toast('Отмечено все: ' + unsent.length);
     await Render.renderChecklist();
-    saveToDbDir();
+    saveToServer();
   },
 
   /* Undo ALL sent contacts */
@@ -87,6 +87,38 @@ const Batch = {
 
     toast('Снято все: ' + sent.length);
     await Render.renderChecklist();
-    saveToDbDir();
+    saveToServer();
+  },
+
+  /* Open email sending modal for selected contacts */
+  async sendEmails() {
+    const ids = Array.from(State.selectedIds);
+    if (!ids.length) {
+      toast('Выберите контакты для рассылки', 'err');
+      return;
+    }
+
+    const contacts = await Promise.all(ids.map(id => db.contacts.get(id)));
+    const allWithEmail = contacts
+      .filter(c => c && c.email && c.email.includes('@') && c.email !== '@')
+      .map(c => ({ id: c.id, name: c.name || '—', email: c.email }));
+
+    if (!allWithEmail.length) {
+      toast('Нет контактов с email в выборке', 'err');
+      return;
+    }
+
+    // Deduplicate by email
+    const seen = new Map();
+    const deduped = [];
+    allWithEmail.forEach(c => {
+      const e = c.email.toLowerCase();
+      if (!seen.has(e)) {
+        seen.set(e, true);
+        deduped.push(c);
+      }
+    });
+
+    EmailSender.openModal(deduped);
   },
 };

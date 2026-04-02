@@ -5,16 +5,17 @@ const ImportExport = {};
 ImportExport.openUpload = function () {
   const m = document.getElementById('uploadModal');
   m.innerHTML =
-    '<div class="modal">' +
+    '<div class="modal" onclick="event.stopPropagation()">' +
     '<h3 style="font-size:13px;font-weight:700;color:var(--hd);margin-bottom:12px">' +
-    '<i class="ri-folder-upload-line" style="color:var(--acc)"></i> Загрузить CSV</h3>' +
+    '<i class="ri-folder-upload-line" style="color:var(--acc)"></i> Загрузить CSV/JSON</h3>' +
     '<div id="dropZone" class="dropzone">' +
     '<i class="ri-upload-cloud-2-line" style="font-size:30px;color:var(--mut);display:block;margin-bottom:6px"></i>' +
-    '<div>Перетащите CSV сюда</div>' +
+    '<div>Перетащите файл сюда</div>' +
     '<div style="font-size:11px;margin-top:4px;color:var(--mut)">или нажмите</div>' +
-    '<input type="file" id="fileIn" accept=".csv,.txt" style="display:none"></div>' +
+    '<input type="file" id="fileIn" accept=".csv,.txt,.json" style="display:none"></div>' +
     '<div id="uploadResult" style="display:none;margin-top:14px"></div></div>';
   m.style.display = 'flex';
+  m.onclick = ImportExport.closeUpload; // Close on overlay click
 
   const dz = document.getElementById('dropZone');
   const fi = document.getElementById('fileIn');
@@ -43,6 +44,17 @@ ImportExport.processFile = function (file) {
 
   reader.onload = function (ev) {
     let text = ev.target.result;
+    
+    // Check if JSON
+    if (file.name.endsWith('.json')) {
+      try {
+        const data = JSON.parse(text);
+        ImportExport.doParse(data, file.name, true);
+      } catch (e) {
+        toast('Ошибка JSON: ' + e.message, 'err');
+      }
+      return;
+    }
 
     // Try windows-1251 if UTF-8 doesn't look right
     if (!text.includes('Название') && !text.includes('ID')) {
@@ -66,11 +78,17 @@ ImportExport.processFile = function (file) {
 };
 
 /* ---------- CSV PARSING ---------- */
-ImportExport.doParse = function (text, fileName) {
+ImportExport.doParse = function (data, fileName, isJson = false) {
   try {
-    const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+    let rows = [];
+    if (isJson) {
+      rows = Array.isArray(data) ? data : [data];
+    } else {
+      const result = Papa.parse(data, { header: true, skipEmptyLines: true });
+      rows = result.data;
+    }
 
-    State.pendingImportRows = result.data.map(r => ({
+    State.pendingImportRows = rows.map(r => ({
       id: (r['ID'] || r['id'] || '').toString().trim(),
       name: (r['Название'] || r['name'] || r['Name'] || '').trim(),
       city: (r['Город'] || r['city'] || '').trim(),
@@ -164,7 +182,7 @@ ImportExport.doImport = async function () {
     State.pendingImportRows = null;
     ImportExport.closeUpload();
     toast('+' + imp + ' новых, ~' + upd + ' обновлено');
-    saveToDbDir();
+    saveToServer();
     Render.renderAreas();
 
     if (State.currentArea === area) await Render.renderChecklist();

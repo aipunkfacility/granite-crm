@@ -102,8 +102,10 @@ const State = {
   /* Close popover */
   closePopover() {
     this.popoverContactId = null;
-    document.getElementById('popOv').style.display = 'none';
-    document.getElementById('popPanel').style.display = 'none';
+    const popOv = document.getElementById('popOv');
+    const popPanel = document.getElementById('popPanel');
+    if (popOv) popOv.style.display = 'none';
+    if (popPanel) popPanel.style.display = 'none';
   },
 
   /* Re-open popover by ID (after update) */

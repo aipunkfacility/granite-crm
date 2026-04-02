@@ -9,12 +9,10 @@ let db;
 function initDB() {
   db = new Dexie(DB_NAME);
 
-  // Version 1: initial schema
   db.version(1).stores({
     contacts: 'id,area,name,city,phone,email,status,website,address,vk,telegram,whatsapp,color_label,note,archived',
   });
 
-  // Version 2: add touch tracking fields
   db.version(2).stores({
     contacts: 'id,area,name,city,phone,email,status,website,address,vk,telegram,whatsapp,color_label,note,archived,last_tg,last_wa,last_email,touch_history',
   }).upgrade(tx => {
@@ -24,7 +22,6 @@ function initDB() {
       c.last_email = c.last_email || '';
       c.touch_history = c.touch_history || [];
 
-      // Best-effort: if status tag exists, set last date to today
       const sa = parseSt(c.status);
       const today = nowISO();
       if (sa.includes('тг') && !c.last_tg) c.last_tg = today;
@@ -36,11 +33,102 @@ function initDB() {
   return db.open();
 }
 
-/* ===== DB DIRECTORY (File System Access API) ===== */
+/* ===== SERVER-BASED PERSISTENCE ===== */
+
+const SERVER_URL = 'http://localhost:8000';
 
 /**
- * Let user pick a directory for JSON backup files.
+ * Check if server is reachable.
  */
+async function isServerUp() {
+  try {
+    const resp = await fetch(SERVER_URL + '/health', { signal: AbortSignal.timeout(3000) });
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Load all JSON files from server into IndexedDB.
+ */
+async function loadFromServer() {
+  try {
+    const resp = await fetch(SERVER_URL + '/db/list', { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return 0;
+
+    const data = await resp.json();
+    const files = data.files || [];
+    if (!files.length) return 0;
+
+    let loaded = 0;
+    for (const file of files) {
+      try {
+        const fileResp = await fetch(SERVER_URL + '/db/' + encodeURIComponent(file.name));
+        if (!fileResp.ok) continue;
+        const contacts = await fileResp.json();
+        if (!Array.isArray(contacts)) continue;
+
+        await db.transaction('rw', db.contacts, async () => {
+          for (const c of contacts) {
+            if (!c.id) continue;
+            await db.contacts.put(c);
+            loaded++;
+          }
+        });
+      } catch (e) {
+        console.warn('loadFromServer: failed to load', file.name, e);
+      }
+    }
+
+    return loaded;
+  } catch (e) {
+    console.warn('loadFromServer:', e);
+    return -1; // -1 = server unreachable
+  }
+}
+
+/**
+ * Save all contacts to server as JSON files (one per area).
+ */
+async function saveToServer() {
+  try {
+    const all = await db.contacts.toArray();
+    const areas = {};
+    all.forEach(c => {
+      const a = c.area || 'Без области';
+      if (!areas[a]) areas[a] = [];
+      areas[a].push(c);
+    });
+
+    for (const area in areas) {
+      const safeName = transliterate(area).replace(/[^a-zA-Z0-9_-]/g, '-') + '.json';
+      const resp = await fetch(SERVER_URL + '/db/' + encodeURIComponent(safeName), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(areas[area]),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!resp.ok) {
+        console.warn('saveToServer: failed to save', safeName);
+      }
+    }
+  } catch (e) {
+    console.warn('saveToServer:', e);
+  }
+}
+
+/**
+ * Debounced save — prevents excessive server writes.
+ */
+let _saveTimer = null;
+function saveToServerDebounced() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => saveToServer(), 1000);
+}
+
+/* ===== LEGACY: File System Access API ===== */
+
 async function pickDbDir() {
   if (!window.showDirectoryPicker) {
     toast('Нужен Chrome/Edge', 'err');
@@ -59,9 +147,6 @@ async function pickDbDir() {
   }
 }
 
-/**
- * Save all contacts as JSON files (one per area) to the selected directory.
- */
 async function saveToDbDir() {
   if (!State.dbDirHandle) return;
   try {
@@ -89,10 +174,6 @@ async function saveToDbDir() {
   }
 }
 
-/**
- * Load JSON files from the selected directory into IndexedDB.
- * Only inserts records that don't already exist (by ID).
- */
 async function loadFromDbDir() {
   if (!State.dbDirHandle) return;
   try {
@@ -126,9 +207,6 @@ async function loadFromDbDir() {
 
 /* ===== TOUCH TRACKING HELPERS ===== */
 
-/**
- * Record a touch event for a contact.
- */
 async function recordTouch(id, channel, note) {
   const c = await db.contacts.get(id);
   if (!c) return;
@@ -146,11 +224,9 @@ async function recordTouch(id, channel, note) {
   }
 
   await db.contacts.update(id, updates);
+  saveToServerDebounced();
 }
 
-/**
- * Remove the last touch of a given channel for a contact.
- */
 async function undoTouch(id, channel) {
   const c = await db.contacts.get(id);
   if (!c) return;
@@ -164,10 +240,10 @@ async function undoTouch(id, channel) {
   const chDef = getChannel(channel);
   const updates = { touch_history: history };
   if (chDef) {
-    // Set last date to the previous touch of same channel, or empty
     const prev = history.filter(t => t.ch === channel).pop();
     updates[chDef.lastField] = prev ? prev.at : '';
   }
 
   await db.contacts.update(id, updates);
+  saveToServerDebounced();
 }
