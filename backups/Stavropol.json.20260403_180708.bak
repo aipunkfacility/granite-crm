@@ -1,0 +1,583 @@
+[
+  {
+    "id": "CMP0002",
+    "name": "Монумент",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "aftoalex@mail.ru, monument26@yandex.ru",
+    "website": "monument-26.ru",
+    "address": "ул. Коломийцева, 35",
+    "vk": "https://vk.com/monument.stav",
+    "telegram": "https://t.me/+79624544051",
+    "whatsapp": "https://wa.me/79624544051",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T11:05:45.484Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T11:05:45.484Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0004",
+    "name": "Вечность",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "manager@vechnost26.com",
+    "website": "vechnost26.com",
+    "address": "ул. Индустриальная, 31",
+    "vk": "https://vk.com/pamyatniki_stavropol",
+    "telegram": "http://t.me/pamyatniki26",
+    "whatsapp": "https://wa.me/78652599696",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T10:41:41.642Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T10:41:41.642Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0005",
+    "name": "СтавРитуал",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "stawritual@mail.ru",
+    "website": "stawritual.ru",
+    "address": "Игнатьевское кладбище, здание №2",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79188883333",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T11:05:45.493Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T11:05:45.493Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0007",
+    "name": "Мир Гранита26",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "mir-granita26@mail.ru",
+    "website": "mir-granita26.ru",
+    "address": "ул. Калина красная 8, д.157",
+    "vk": "",
+    "telegram": "https://t.me/Pamyatniki_mirgranita26",
+    "whatsapp": "https://wa.me/79624420888",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T11:05:45.503Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T11:05:45.503Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0008",
+    "name": "Память в Камне",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "",
+    "website": "2gis.ru/stavropol/firm/70000001077194229",
+    "address": "ул. Серова, 6А",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "",
+    "touch_history": []
+  },
+  {
+    "id": "CMP0009",
+    "name": "Мастерская Люлин В. В.",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "lyulin.vlad26@yandex.ru",
+    "website": "masterskaya-granita.ru",
+    "address": "ул. Космонавтов, 24",
+    "vk": "",
+    "telegram": "https://t.me/borchik26",
+    "whatsapp": "https://wa.me/79064792070, https://wa.me/79886790954",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T10:41:41.676Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T10:41:41.676Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0010",
+    "name": "Ритуал",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "",
+    "website": "",
+    "address": "ул. Калина Красная-6, 118А",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79283219906",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "",
+    "touch_history": []
+  },
+  {
+    "id": "CMP0013",
+    "name": "Салон памятники",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "terekhoff26@yandex.ru",
+    "website": "terep.ru",
+    "address": "Октябрьская ул., 202",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T09:26:08.514Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T09:26:08.514Z",
+        "note": "рассылка"
+      }
+    ]
+  },
+  {
+    "id": "CMP0017",
+    "name": "Мавзолей",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "info@mavzoley.com",
+    "website": "mavzoley.com",
+    "address": "пер. Буйнакского, 2/3",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79880996688",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T11:05:45.511Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T11:05:45.510Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0018",
+    "name": "Ритуальные услуги",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "",
+    "website": "zoon.ru/stavropol/ritual/salon_ritualnyh_uslug_na_ulitse_telmana",
+    "address": "ул. Тельмана, 230а",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79624035932",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-02T13:25:51.148Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-02T13:25:51.147Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0019",
+    "name": "Ритуальная Служба",
+    "city": "Ставрополь",
+    "phone": "",
+    "email": "info@rf200.ru",
+    "website": "stavropol.rf200.ru",
+    "address": "ул. Доваторцев, 44Б",
+    "vk": "",
+    "telegram": "https://t.me/StavKost, https://t.me/RF200_bot",
+    "whatsapp": "https://wa.me/78652944777",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T10:41:41.704Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T10:41:41.704Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0022",
+    "name": "Данила-Мастер",
+    "city": "Пятигорск",
+    "phone": "",
+    "email": "info@danila-master.ru, mail@danila-master.ru",
+    "website": "https://pyatigorsk.danila-master.ru/",
+    "address": "",
+    "vk": "https://vk.com/danila_pamyatniki",
+    "telegram": "https://t.me/+79022202052",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T09:26:08.556Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T09:26:08.556Z",
+        "note": "рассылка"
+      }
+    ]
+  },
+  {
+    "id": "CMP0027",
+    "name": "ПроМонумент",
+    "city": "Пятигорск",
+    "phone": "",
+    "email": "",
+    "website": "pro-monument.ru",
+    "address": "Ессентукская ул., 29",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-02T13:32:10.711Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-02T13:32:10.711Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0028",
+    "name": "РСБ",
+    "city": "Пятигорск",
+    "phone": "",
+    "email": "",
+    "website": "gravescare.com",
+    "address": "Суворовский пр., 1",
+    "vk": "",
+    "telegram": "https://t.me/managergravescare",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "2026-04-03T10:39:33.809Z",
+    "last_email": "",
+    "touch_history": [
+      {
+        "ch": "wa",
+        "at": "2026-04-03T10:39:33.808Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0029",
+    "name": "ЮгГранит",
+    "city": "Пятигорск",
+    "phone": "",
+    "email": "granit.kmv@mail.ru",
+    "website": "",
+    "address": "Ставропольская ул., 70",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "2026-04-03T10:39:33.829Z",
+    "last_email": "2026-04-03T11:05:45.521Z",
+    "touch_history": [
+      {
+        "ch": "wa",
+        "at": "2026-04-03T10:39:33.829Z",
+        "note": ""
+      },
+      {
+        "ch": "email",
+        "at": "2026-04-03T11:05:45.521Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0030",
+    "name": "ЮгМрамор",
+    "city": "Пятигорск",
+    "phone": "",
+    "email": "imperiakamnia3333@mail.ru",
+    "website": "2gis.ru/pyatigorsk/firm/70000001027689643",
+    "address": "Ессентукская ул., 29а",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/7928955159",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T10:44:48.598Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T10:44:48.598Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0032",
+    "name": "Стелла",
+    "city": "Пятигорск",
+    "phone": "",
+    "email": "",
+    "website": "zoon.ru/stavropol/ritual/kompaniya_po_prodazhe_pamyatnikov_stella",
+    "address": "ул. Ермолова, 22",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79633884422",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-02T13:32:10.717Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-02T13:32:10.717Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0037",
+    "name": "Последний путь",
+    "city": "Кисловодск",
+    "phone": "",
+    "email": "",
+    "website": "ritualnie-uslugi26.ru",
+    "address": "Азербайджанская ул., 68А",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79187676712",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-02T13:31:29.944Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-02T13:31:29.944Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0042",
+    "name": "Империя камней",
+    "city": "Кисловодск",
+    "phone": "",
+    "email": "",
+    "website": "imperiya-kamney-torgovaya.orgs.biz",
+    "address": "Седлогорская ул., 144, стр. 2",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T10:44:48.612Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T10:44:48.612Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0046",
+    "name": "Акрополь",
+    "city": "Архангельск",
+    "phone": "",
+    "email": "menager@akropol29.ru",
+    "website": "akropol29.ru",
+    "address": "",
+    "vk": "",
+    "telegram": "https://t.me/+79212430441",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-02T13:31:29.933Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-02T13:31:29.933Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0054",
+    "name": "Две свечи",
+    "city": "Ессентуки",
+    "phone": "",
+    "email": "dvesvechi126@yandex.ru",
+    "website": "dvesvechi-kmv.ru",
+    "address": "ул. Мичурина, 84, ст-ца Ессентукская",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "2026-04-03T11:05:45.528Z",
+    "touch_history": [
+      {
+        "ch": "email",
+        "at": "2026-04-03T11:05:45.528Z",
+        "note": ""
+      }
+    ]
+  },
+  {
+    "id": "CMP0056",
+    "name": "Ритуал",
+    "city": "Минеральные Воды",
+    "phone": "",
+    "email": "",
+    "website": "mv-ritual.ru",
+    "address": "Кисловодская ул., 59",
+    "vk": "",
+    "telegram": "",
+    "whatsapp": "https://wa.me/79283489330",
+    "area": "Ставрополь",
+    "color_label": "",
+    "note": "",
+    "archived": 0,
+    "status": "",
+    "last_tg": "",
+    "last_wa": "",
+    "last_email": "",
+    "touch_history": []
+  }
+]

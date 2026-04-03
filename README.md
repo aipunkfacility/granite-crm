@@ -1,202 +1,166 @@
-# Granite Workshops Database
+# Email Sender + CRM Data Server
 
 ## Обзор
 
-Сбор базы **гранитных мастерских** и **производителей памятников** по городам России.
-
-**Целевая аудитория:** Компании, которым предлагаются услуги **ретушера фото** для обработки портретов на памятники.
-
-> Ранее проект собирал ритуальные агентства. Переориентирован на производителей памятников (B2B).
-
-## Workflow (3 этапа)
-
-### Этап 1: Сбор базы → `companies.md`
-
-Собрать ВСЕ организации из источников:
-- **Карты:** 2GIS, Яндекс.Карты, Google Maps
-- **Каталоги:** Yell, JSprav, Firmsru
-- **Доски объявлений:** Авито, Юла
-
-**Цель — сотни компаний!** Без фильтрации.
-
-### Этап 2: Обогащение Telegram
-
-Для каждого номера телефона:
-```
-"{номер}" Telegram
-```
-
-Добавить username в профиль компании.
-
-### Этап 3: Приоритизация
-
-- **С Telegram** → `data.md`, `summary.md`, `report.md` (приоритет для работы)
-- **Без Telegram** → остаются в `companies.md` (в работе)
-
-## Структура данных
+FastAPI сервер для двух задач:
+1. **Email рассылка** — через Gmail SMTP
+2. **CRM данные** — JSON файлы на диске
 
 ```
-funeral-agency-db/
-├── config.yaml              # 44 города России
-├── sources/
-│   └── directories.md       # Источники для поиска
-├── agents/
-│   └── funeral-scraper.md  # Агент сбора
-├── scripts/
-│   ├── scrape_city.py      # Python скрипт сбора (ритуальные)
-│   ├── firecrawl_granite.py # Firecrawl сбор гранитных мастерских
-│   └── pyproject.toml     # Зависимости
-├── cities/
-│   └── {city-name}/
-│       ├── companies.md     # ВСЕ компании (ритуальные)
-│       ├── companies.json   # JSON с данными
-│       ├── data.md         # Только с Telegram (приоритет)
-│       ├── summary.md      # Саммари с Telegram
-│       ├── report.md       # Отчёт с рекомендациями
-│       ├── granite_companies.csv   # CSV для рассылки (NEW)
-│       └── granite_companies.md     # Markdown отчёт (NEW)
-└── reports/
-    └── progress.md         # Прогресс обработки
+CRM (браузер) ──fetch()──▶ Сервер (localhost:8000) ──SMTP──▶ Gmail
+                                      │
+                                      └── crm/db/*.json
 ```
 
-## Приоритет контактов
+**Архитектура хранения:**
+- `crm/db/*.json` — главный источник
+- IndexedDB в браузере — быстрый кэш
+- `crm/backups/` — автоматические бэкапы
 
-**Telegram > WhatsApp > Email > Телефон**
-
-Для каждой компании записывать полные ссылки:
-- Telegram: `https://t.me/username`
-- WhatsApp: `https://wa.me/79xxxxxxxxx`
-
-## Что собирать
-
-### Обязательно
-- Название организации
-- Телефон (формат +7XXX...)
-- Адрес
-- Сайт
-- Email (искать на сайте!)
-
-### Соцсети и мессенджеры
-- **Telegram** — полная ссылка t.me/username
-- **WhatsApp** — полная ссылка wa.me/79xxxxxxxxx
-- **VK** — группа
-- **OK** — группа
-
-### Дополнительно
-- Упоминание ретуши/обработки фото
-- Собственное производство
-- Станки (лазерные, ударные)
-
-## Поиск Telegram по номеру (ОБЯЗАТЕЛЬНО!)
-
-Для каждого номера:
-```
-"{номер}" Telegram
-```
-
-Примеры:
-- `+7 903 955 81 17 Telegram` → t.me/evlitos
-- `8 937 821 77 77 Telegram` → t.me/username (если найден)
-
----
-
-## Сбор гранитных мастерских (Firecrawl)
-
-### Использование
+## Быстрый старт
 
 ```bash
-# Поиск мастерских в городе
-npx -y firecrawl-cli@latest search "гранитная мастерская Москва" --limit 10
-
-# Детальный сбор
-npx -y firecrawl-cli@latest scrape "https://igranit.ru/" --format markdown
-
-# Скрипт
-python scripts/firecrawl_granite.py Москва
+cd crm
+pip install -r requirements.txt
+cp config.example.json config.json
+# Отредактируйте config.json и .env
+start.bat
 ```
 
-### Целевая аудитория
+Проверка: http://localhost:8000/health
 
-Гранитные мастерские заказывают:
-- Портреты на памятники (фото усопших)
-- Цветная печать на граните
-- Гравировка макетов
-- Каталоги продукции
+## Установка Gmail
 
-## Формат файлов
-
-### companies.md
-
-```markdown
-# Компании — Астрахань
-
-**Дата сбора:** 2026-03-14
-**Источники:** 2GIS, JSprav, Yell
-**Всего:** 50 компаний
-
----
-
-## 1. Название компании
-
-**Телефон:** +7XXX...
-**Адрес:** г. Город, ул. Улица, 1
-**Сайт:** https://site.ru
-**Email:** email@domain.ru
-
-**Telegram:** t.me/username (если найден)
-**WhatsApp:** wa.me/79xxxxxxxxx
-
-**Особенности:**
-- Собственное производство
-- Делают ретушь
+1. Включите двухфакторную аутентификацию
+2. Создайте App Password: myaccount.google.com → Пароли приложений
+3. Добавьте в `.env`:
+```
+GMAIL_APP_PASSWORD=your_16_char_password
 ```
 
-### data.md (только с Telegram)
+## curl примеры
 
-```markdown
-# Компании с Telegram — Астрахань
-
-**Всего с Telegram:** 10 компаний
-
----
-
-## 1. Название
-
-**Telegram:** https://t.me/username
-**WhatsApp:** https://wa.me/79xxxxxxxxx
-...
-```
-
-## Скрипты
-
-### scrape_city.py
+### Проверка сервера
 
 ```bash
-cd scripts/
-python -m uv venv
-python -m uv pip install -r pyproject.toml
-python scrape_city.py astrakhan
+curl http://localhost:8000/health
+# {"status":"ok","server":"email-sender","db_files":2}
 ```
 
-### Зависимости
-- requests
-- beautifulsoup4
-- lxml
-- playwright (для динамических страниц)
+### Отправка одного письма
 
-## Процесс работы
+```bash
+curl -X POST http://localhost:8000/send/single \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","name":"Test","html":"<h1>Hello</h1>"}'
+```
 
-1. Назвать город для обработки
-2. Этап 1: Сбор всех компаний → `companies.md`
-3. Этап 2: Поиск Telegram для каждого номера
-4. Этап 3: Приоритизация (с TG → data.md, без → companies.md)
-5. Показать результат
-6. Ждать подтверждения для следующего города
+### Рассылка (async)
 
-## Важно
+```bash
+# Запуск
+curl -X POST http://localhost:8000/send/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contacts":[
+      {"email":"user1@example.com","name":"User 1"},
+      {"email":"user2@example.com","name":"User 2"}
+    ],
+    "html":"<p>Batch email</p>"
+  }'
+# {"job_id":"bb0b18f4-...","total":2,"status":"started"}
 
-- **Собрать сотни компаний** — чем больше, тем лучше
-- **Для каждого номера искать Telegram** — ключевая задача
-- **Полные ссылки t.me** — записывать username
-- **Не придумывать данные** — только факты из источников
-- **Объединение (merge)** — дубликаты соединяются, не удаляются
+# Проверка статуса
+curl http://localhost:8000/send/status/bb0b18f4-...
+
+# Отмена
+curl -X POST http://localhost:8000/send/cancel/bb0b18f4-...
+```
+
+### Работа с базой
+
+```bash
+# Список файлов
+curl http://localhost:8000/db/list
+
+# Чтение
+curl http://localhost:8000/db/Rostov.json
+
+# Сохранение (с автобэкапом)
+curl -X PUT http://localhost:8000/db/data.json \
+  -H "Content-Type: application/json" \
+  -d '{"contacts":[{"name":"Test","phone":"+123"}]}'
+
+# Удаление (с бэкапом)
+curl -X DELETE http://localhost:8000/db/data.json
+```
+
+### Бэкапы и восстановление
+
+```bash
+# Все бэкапы
+curl http://localhost:8000/backups
+
+# Бэкапы конкретного файла
+curl http://localhost:8000/db/Rostov.json/backups
+
+# Восстановление
+curl -X POST http://localhost:8000/restore/Rostov.json.20260403_000048.bak
+```
+
+### Шаблон письма
+
+```bash
+# Получить
+curl http://localhost:8000/template
+
+# Обновить
+curl -X POST http://localhost:8000/template \
+  -H "Content-Type: application/json" \
+  -d '{"html":"<html>...</html>"}'
+```
+
+## Типы ошибок email
+
+| Тип | Причина | Решение |
+|-----|---------|---------|
+| `smtp_error` | SMTP/авторизация | Проверьте App Password |
+| `connection_error` | Сеть/таймаут | Проверьте интернет |
+| `invalid_email` | Неверный email | Проверьте формат |
+| `unknown_error` | Другое | Смотрите логи |
+
+## Структура файлов
+
+```
+crm/
+├── server.py              # FastAPI сервер
+├── config.json            # SMTP настройки
+├── .env                   # Пароли (gitignore)
+├── db/                    # Данные CRM
+│   └── *.json
+├── backups/               # Автобэкапы
+│   └── *.bak
+└── logs/
+    └── crm_server.log     # Логи (ротация 5MB × 5)
+```
+
+## Частые ошибки
+
+**«Username and Password not accepted»**
+- Пароль с пробелами → уберите пробелы
+- App Password истёк → создайте новый
+
+**«Сервер не отвечает»**
+- `start.bat` закрыт → перезапустите
+- Порт 8000 занят → закройте другое приложение
+
+**JSON повреждён**
+- API вернёт ошибку с путём к бэкапу
+- Восстановите: `POST /restore/{backup_name}`
+
+## Безопасность
+
+- `config.json` и `.env` в `.gitignore`
+- Только localhost (127.0.0.1)
+- Path traversal защита
+- Атомарная запись файлов
