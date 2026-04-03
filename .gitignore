@@ -9,14 +9,15 @@ __pycache__/
 *.so
 .Python
 venv/
+.venv/
 ENV/
 
 # Logs
 logs/
 *.log
 
-# Backups (optional - uncomment if you don't want to track backups)
-# backups/
+# Backups
+backups/
 
 # IDE
 .vscode/
