@@ -1,0 +1,75 @@
+.ov {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeInUp .15s ease;
+}
+
+.modal {
+  background: var(--bg2);
+  border: 1px solid var(--bdr);
+  border-radius: var(--r-xl);
+  padding: 24px;
+  box-shadow: var(--sh-xl);
+  max-width: 440px;
+  width: 90%;
+  animation: fadeInUp .2s ease;
+}
+
+.dropzone {
+  border: 2px dashed var(--bdr2);
+  border-radius: var(--r-lg);
+  padding: 32px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--tr);
+}
+
+.dropzone:hover, .dropzone.dragover {
+  border-color: var(--acc);
+  background: rgba(99,102,241,.05);
+}
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 200;
+  background: var(--bg2);
+  border: 1px solid var(--bdr);
+  color: var(--txt);
+  padding: 12px 18px;
+  border-radius: var(--r-lg);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--sh-lg);
+  animation: fadeInUp .2s ease;
+}
+
+.toast.err { border-color: var(--cr); color: var(--cr); }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--mut);
+  text-align: center;
+}
+
+.empty-state i {
+  font-size: 48px;
+  margin-bottom: 14px;
+  animation: emptyPulse 3s ease-in-out infinite;
+}
+
+.empty-state-title { font-size: 16px; font-weight: 600; color: var(--txt); }
+.empty-state-desc  { font-size: 13px; margin-top: 6px; opacity: .7; }

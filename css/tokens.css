@@ -1,0 +1,56 @@
+:root {
+  --bg:   #0c0e1a;
+  --bg2:  #151825;
+  --bg3:  #1c2033;
+  --hov:  #242840;
+
+  --bdr:  #2a2e45;
+  --bdr2: #363b55;
+
+  --hd:   #f0f2f8;
+  --txt:  #c4c8d8;
+  --mut:  #6b7094;
+
+  --acc:  #6366f1;
+  --acc2: #818cf8;
+
+  --cr: #ef4444;
+  --cy: #eab308;
+  --cg: #22c55e;
+  --cb: #3b82f6;
+  --cv: #6b7280;
+
+  --inp: #0a0c15;
+
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  --sh-sm: 0 2px 8px rgba(0,0,0,.25);
+  --sh-md: 0 8px 24px rgba(0,0,0,.3);
+  --sh-lg: 0 12px 32px rgba(0,0,0,.35);
+  --sh-xl: 0 25px 60px rgba(0,0,0,.5);
+
+  --tr: .2s ease;
+  --tr-fast: .15s ease;
+}
+
+html.light {
+  --bg:   #f5f6fa;
+  --bg2:  #ffffff;
+  --bg3:  #eef0f6;
+  --hov:  #e4e6ee;
+  --bdr:  #d8dbe6;
+  --bdr2: #c0c4d2;
+  --hd:   #0f1225;
+  --txt:  #374151;
+  --mut:  #6b7280;
+  --acc:  #4f46e5;
+  --acc2: #4338ca;
+  --inp:  #fafbfd;
+  --sh-sm: 0 2px 8px rgba(0,0,0,.08);
+  --sh-md: 0 8px 24px rgba(0,0,0,.1);
+  --sh-lg: 0 12px 32px rgba(0,0,0,.12);
+  --sh-xl: 0 25px 60px rgba(0,0,0,.15);
+}

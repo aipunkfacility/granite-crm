@@ -1,0 +1,76 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--bdr);
+  background: var(--bg3);
+  color: var(--txt);
+  transition: all var(--tr);
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--hov);
+  border-color: var(--bdr2);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}
+
+.btn-p {
+  background: var(--acc);
+  border-color: var(--acc);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, .25);
+}
+
+.btn-p:hover {
+  background: var(--acc2);
+  border-color: var(--acc2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(99, 102, 241, .35);
+}
+
+.btn-p:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, .2);
+}
+
+.btn-s {
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: var(--r-sm);
+}
+
+.btn-icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--mut);
+  transition: all var(--tr);
+  font-size: 18px;
+}
+
+.btn-icon:hover {
+  color: var(--acc);
+  background: var(--hov);
+}
+
+.btn-icon:focus-visible {
+  outline: 2px solid var(--acc);
+  outline-offset: 2px;
+}

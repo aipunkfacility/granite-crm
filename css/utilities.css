@@ -1,0 +1,25 @@
+.fl     { display: flex; }
+.fl-col { flex-direction: column; }
+.f1     { flex: 1; }
+.ac     { align-items: center; }
+.jc     { justify-content: center; }
+.gap1   { gap: 4px; }
+.gap2   { gap: 8px; }
+.gap3   { gap: 12px; }
+.gap4   { gap: 16px; }
+.px2    { padding-left: 8px; padding-right: 8px; }
+.px3    { padding-left: 12px; padding-right: 12px; }
+.px4    { padding-left: 16px; padding-right: 16px; }
+.py1    { padding-top: 4px; padding-bottom: 4px; }
+.py2    { padding-top: 8px; padding-bottom: 8px; }
+.py3    { padding-top: 12px; padding-bottom: 12px; }
+.mt2    { margin-top: 8px; }
+.mt3    { margin-top: 12px; }
+.rel    { position: relative; }
+.abs    { position: absolute; }
+.fix    { position: fixed; }
+.oa     { overflow: auto; }
+.oh     { overflow: hidden; }
+.cp     { cursor: pointer; }
+.un     { user-select: none; }
+.trunc  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -1,0 +1,12 @@
+header {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--bdr);
+  flex-shrink: 0;
+  transition: background var(--tr);
+}
+
+footer {
+  flex-shrink: 0;
+}
+
+main { flex: 1; overflow: auto; }

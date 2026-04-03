@@ -1,0 +1,26 @@
+input[type="text"], .inp {
+  background: var(--inp);
+  border: 1px solid var(--bdr);
+  color: var(--txt);
+  border-radius: var(--r-md);
+  padding: 7px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  width: 100%;
+  transition: border-color var(--tr), box-shadow var(--tr);
+}
+
+input[type="text"]:focus, .inp:focus {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, .15);
+}
+
+input[type="text"]::placeholder, .inp::placeholder { color: var(--mut); }
+
+input[type="checkbox"] {
+  accent-color: var(--acc);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}

@@ -1,0 +1,24 @@
+/* ================================================================
+   GRANITE WORKSHOPS CRM — Design System v3
+   Card Grid Layout для контактов
+   ================================================================ */
+
+@import url('./tokens.css');
+@import url('./reset.css');
+@import url('./utilities.css');
+@import url('./header.css');
+
+@import url('./components/buttons.css');
+@import url('./components/inputs.css');
+@import url('./components/dropdown.css');
+@import url('./components/badges.css');
+@import url('./components/modal.css');
+
+@import url('./views/channel.css');
+@import url('./views/cards.css');
+@import url('./views/dashboard.css');
+@import url('./views/email.css');
+@import url('./views/backup.css');
+
+@import url('./responsive.css');
+@import url('./light.css');
