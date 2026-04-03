@@ -1,6 +1,13 @@
 ﻿/* ===== EMAIL SENDER MODULE ===== */
 const EmailSender = {
-  SERVER_URL: 'http://localhost:8000',
+  get SERVER_URL() {
+    return (typeof window !== 'undefined' && window.location && window.location.origin) 
+      ? window.location.origin 
+      : 'http://localhost:8000';
+  },
+  get AUTH_HEADER() {
+    return API_TOKEN ? { 'Authorization': 'Bearer ' + API_TOKEN } : {};
+  },
   currentJobId: null,
   pollInterval: null,
   pendingContacts: [],
@@ -43,6 +50,39 @@ const EmailSender = {
     } catch {
       return false;
     }
+  },
+
+  async getTemplate() {
+    const tr = await fetch(this.SERVER_URL + '/template', { headers: this.AUTH_HEADER });
+    if (tr.ok) {
+      const td = await tr.json();
+      return td.html || '';
+    }
+    return '';
+  },
+
+  async startBatch(contacts, html) {
+    const r = await fetch(this.SERVER_URL + '/send/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...this.AUTH_HEADER },
+      body: JSON.stringify({ contacts, html }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  },
+
+  async getStatus(jobId) {
+    const r = await fetch(this.SERVER_URL + '/send/status/' + jobId, { headers: this.AUTH_HEADER });
+    if (!r.ok) return null;
+    return r.json();
+  },
+
+  async cancelBatch(jobId) {
+    await fetch(this.SERVER_URL + '/send/cancel/' + jobId, { 
+      method: 'POST',
+      headers: this.AUTH_HEADER
+    });
   },
 
   triggerSend() {
@@ -90,13 +130,7 @@ const EmailSender = {
     const serverUp = await this.checkServer();
     let templateHtml = '';
     if (serverUp) {
-      try {
-        const tr = await fetch(this.SERVER_URL + '/template');
-        if (tr.ok) {
-          const td = await tr.json();
-          templateHtml = td.html || '';
-        }
-      } catch {}
+      templateHtml = await this.getTemplate();
     }
 
     const statusDot = serverUp ? '🟢' : '🔴';
@@ -116,7 +150,7 @@ const EmailSender = {
           '<i class="ri-eye-line"></i> Показать шаблон' +
         '</div>' +
         '<div id="emailPreview" class="email-preview" style="display:none">' +
-          '<div class="email-preview-inner">' + templateHtml + '</div>' +
+          '<div class="email-preview-inner">' + DOMPurify.sanitize(templateHtml) + '</div>' +
         '</div>'
       : '';
 
@@ -192,14 +226,7 @@ const EmailSender = {
     const contactsToSend = this.pendingContacts.map(c => ({ id: c.id, email: c.email, name: c.name }));
 
     try {
-      const r = await fetch(this.SERVER_URL + '/send/batch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contacts: contactsToSend }),
-        signal: AbortSignal.timeout(10000),
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const data = await r.json();
+      const data = await this.startBatch(contactsToSend, null);
 
       this.currentJobId = data.job_id;
       this.log('Задача: ' + data.job_id.slice(0, 8) + '... всего ' + data.total, 'ok');
@@ -217,9 +244,8 @@ const EmailSender = {
   async pollStatus() {
     if (!this.currentJobId) return;
     try {
-      const r = await fetch(this.SERVER_URL + '/send/status/' + this.currentJobId);
-      if (!r.ok) return;
-      const data = await r.json();
+      const data = await this.getStatus(this.currentJobId);
+      if (!data) return;
 
       const total = data.total;
       const sent = data.sent;

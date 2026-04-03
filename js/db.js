@@ -35,10 +35,11 @@ function initDB() {
 
 /* ===== SERVER-BASED PERSISTENCE ===== */
 
-// Use window.location.origin when served by server, fallback to localhost for development
 const SERVER_URL = (typeof window !== 'undefined' && window.location && window.location.origin) 
   ? window.location.origin 
   : 'http://localhost:8000';
+
+const AUTH_HEADER = API_TOKEN ? { 'Authorization': 'Bearer ' + API_TOKEN } : {};
 
 /**
  * Check if server is reachable.
@@ -57,7 +58,10 @@ async function isServerUp() {
  */
 async function loadFromServer() {
   try {
-    const resp = await fetch(SERVER_URL + '/db/list', { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(SERVER_URL + '/db/list', { 
+      signal: AbortSignal.timeout(5000),
+      headers: AUTH_HEADER
+    });
     if (!resp.ok) return 0;
 
     const data = await resp.json();
@@ -67,7 +71,9 @@ async function loadFromServer() {
     let loaded = 0;
     for (const file of files) {
       try {
-        const fileResp = await fetch(SERVER_URL + '/db/' + encodeURIComponent(file.name));
+        const fileResp = await fetch(SERVER_URL + '/db/' + encodeURIComponent(file.name), {
+          headers: AUTH_HEADER
+        });
         if (!fileResp.ok) continue;
         const contacts = await fileResp.json();
         if (!Array.isArray(contacts)) continue;
@@ -108,7 +114,10 @@ async function saveToServer() {
       const safeName = transliterate(area).replace(/[^a-zA-Z0-9_-]/g, '-') + '.json';
       const resp = await fetch(SERVER_URL + '/db/' + encodeURIComponent(safeName), {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...AUTH_HEADER
+        },
         body: JSON.stringify(areas[area]),
         signal: AbortSignal.timeout(10000),
       });

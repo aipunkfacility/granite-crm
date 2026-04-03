@@ -100,8 +100,8 @@ async def write_db_file(filename: str, request: Request):
                     existing = json.load(f)
                 if existing == body:
                     return {"success": True, "file": safe_name, "unchanged": True}
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Could not read existing file {safe_name}: {e}")
 
         backup_path = create_backup(filepath)
         if backup_path:

@@ -1,16 +1,16 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class SingleEmail(BaseModel):
-    email: str
+    email: EmailStr
     name: str
     html: Optional[str] = None
 
 
 class BatchContact(BaseModel):
     id: Optional[str] = None
-    email: str
+    email: EmailStr
     name: str
 
 

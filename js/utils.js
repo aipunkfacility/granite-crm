@@ -8,6 +8,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
 const MAX_VISIBLE_FIELDS = 3;
 const DB_NAME = 'MiniCRM_v8';
+const API_TOKEN = '';
 
 /* ===== FIELD & COLUMN DEFINITIONS ===== */
 const FIELDS = [

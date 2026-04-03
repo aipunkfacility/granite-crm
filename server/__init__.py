@@ -11,8 +11,9 @@ try:
 except ImportError:
     pass
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from server import config, models
@@ -45,6 +46,10 @@ logger.addHandler(file_handler)
 logger.info("Server starting up...")
 
 
+def get_api_token() -> str:
+    return os.environ.get("CRM_API_TOKEN", "")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from server.services.batch import start_cleanup_task
@@ -55,12 +60,29 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Email Sender Server", lifespan=lifespan)
 
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    public_paths = ["/health", "/template"]
+    if request.url.path in public_paths:
+        return await call_next(request)
+
+    token = get_api_token()
+    if token:
+        auth_header = request.headers.get("Authorization", "")
+        provided_token = auth_header.replace("Bearer ", "")
+        if provided_token != token:
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 app.include_router(send.router)

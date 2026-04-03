@@ -2,6 +2,9 @@
 config.json
 .env
 
+# Database (contains personal data)
+db/
+
 # Python
 __pycache__/
 *.py[cod]

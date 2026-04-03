@@ -50,8 +50,8 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
             logger.info(f"Job {job_id} cancelled after {job['sent']}/{total}")
             try:
                 server.quit()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"Error quitting SMTP server: {e}")
             return
 
         try:
@@ -100,8 +100,8 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
 
     try:
         server.quit()
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Error quitting SMTP server: {e}")
 
     job["status"] = "completed"
     job["completed_at"] = datetime.now().isoformat()
@@ -124,8 +124,8 @@ async def cleanup_old_jobs():
                         completed_time = datetime.fromisoformat(completed_at)
                         if completed_time.timestamp() < cutoff:
                             to_remove.append(job_id)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Error parsing completed_at timestamp: {e}")
 
         for job_id in to_remove:
             del jobs[job_id]
