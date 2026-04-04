@@ -63,7 +63,7 @@ app = FastAPI(title="Email Sender Server", lifespan=lifespan)
 
 @app.middleware("http")
 async def auth_middleware(request: Request, call_next):
-    public_paths = ["/health", "/template"]
+    public_paths = ["/health", "/template", "/"]
     if request.url.path in public_paths:
         return await call_next(request)
 
