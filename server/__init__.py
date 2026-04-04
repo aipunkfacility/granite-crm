@@ -2,6 +2,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from logging.handlers import RotatingFileHandler
 
 try:
@@ -13,7 +14,7 @@ except ImportError:
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from server import config, models
@@ -94,6 +95,20 @@ app.include_router(db.router)
 app.include_router(backup.router)
 
 
+@app.get("/")
+async def root():
+    index_path = Path(config.BASE_DIR) / "index.html"
+    if index_path.exists():
+        content = index_path.read_text(encoding="utf-8")
+        token = get_api_token()
+        if token:
+            content = content.replace(
+                'const API_TOKEN = ""', f'const API_TOKEN = "{token}"'
+            )
+        return HTMLResponse(content=content, media_type="text/html")
+    return {"message": "index.html not found"}
+
+
 @app.get("/health")
 async def health():
     db_files = len([f for f in os.listdir(config.DB_DIR) if f.endswith(".json")])
@@ -106,4 +121,7 @@ async def health():
 
 
 BASE_DIR = config.BASE_DIR
+
+app.mount("/static", StaticFiles(directory=BASE_DIR, html=True), name="static")
+
 app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="root")
