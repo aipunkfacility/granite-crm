@@ -16,153 +16,61 @@ _sentinel = object()
 
 
 async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
+    from server.services.email import send_single_email
+    
     async with _jobs_lock:
+        if job_id not in jobs:
+            return
         job = jobs[job_id]
         job["started_at"] = datetime.now().isoformat()
 
-    smtp_timeout = config.get("smtp_timeout", 30)
     total = len(contacts)
-
-    try:
-        logger.info(
-            "Connecting to SMTP %s:%s", config["smtp_server"], config["smtp_port"]
-        )
-        server = smtplib.SMTP(
-            config["smtp_server"], config["smtp_port"], timeout=smtp_timeout
-        )
-        server.starttls()
-        server.login(config["sender_email"], config["sender_password"])
-    except Exception as e:
-        logger.error("SMTP connection failed: %s", e)
-        async with _jobs_lock:
-            for contact in contacts:
-                job["results"].append(
-                    {
-                        "email": contact.email,
-                        "success": False,
-                        "error": str(e),
-                        "error_type": classify_error(e),
-                    }
-                )
-                job["failed"] += 1
-            job["status"] = "completed"
-            job["completed_at"] = datetime.now().isoformat()
-            final_failed = job["failed"]
-            final_total = job["total"]
-        try:
-            job["queue"].put_nowait(
-                {
-                    "event": "done",
-                    "status": "completed",
-                    "sent": 0,
-                    "failed": final_failed,
-                    "total": final_total,
-                }
-            )
-        except Exception:
-            pass
-        return
-
     for i, contact in enumerate(contacts):
         async with _jobs_lock:
-            is_cancelled = job.get("cancelled")
-            if is_cancelled:
+            if job.get("cancelled"):
                 job["status"] = "cancelled"
                 job["completed_at"] = datetime.now().isoformat()
+                try:
+                    job["queue"].put_nowait({"event": "done", "status": "cancelled", "sent": job["sent"], "failed": job["failed"], "total": total})
+                except Exception: pass
+                return
 
-        if is_cancelled:
-            logger.info("Job %s cancelled after %d/%d", job_id, job["sent"], total)
-            try:
-                server.quit()
-            except Exception as e:
-                logger.warning("Error quitting SMTP server: %s", e)
-            try:
-                job["queue"].put_nowait({"event": "done", "status": "cancelled"})
-            except Exception:
-                pass
-            return
-
-        try:
-            from email.mime.multipart import MIMEMultipart
-            from email.mime.text import MIMEText
-
-            msg = MIMEMultipart("alternative")
-            msg["From"] = config["sender_email"]
-            msg["To"] = contact.email
-            msg["Subject"] = config["email_subject"]
-            msg.attach(MIMEText(html, "html"))
-
-            server.sendmail(config["sender_email"], contact.email, msg.as_string())
-            logger.info("Email sent to %s", contact.email)
-
-            async with _jobs_lock:
-                job["results"].append(
-                    {
-                        "email": contact.email,
-                        "success": True,
-                        "error": "",
-                        "error_type": "",
-                    }
-                )
+        # Отправка письма через неблокирующий сервис
+        success, error, error_type = await send_single_email(contact.email, html)
+        
+        async with _jobs_lock:
+            # Обновление состояния джоба
+            job["results"].append({
+                "email": contact.email,
+                "success": success,
+                "error": error,
+                "error_type": error_type,
+            })
+            if success:
                 job["sent"] += 1
-                sent = job["sent"]
-                failed = job["failed"]
-                total_count = job["total"]
-
-            try:
-                job["queue"].put_nowait(
-                    {
-                        "event": "result",
-                        "email": contact.email,
-                        "success": True,
-                        "error": "",
-                        "sent": sent,
-                        "failed": failed,
-                        "total": total_count,
-                    }
-                )
-            except Exception:
-                pass
-
-        except Exception as e:
-            logger.error("Failed to send email to %s: %s", contact.email, e)
-
-            async with _jobs_lock:
-                job["results"].append(
-                    {
-                        "email": contact.email,
-                        "success": False,
-                        "error": str(e),
-                        "error_type": classify_error(e),
-                    }
-                )
+            else:
                 job["failed"] += 1
-                sent = job["sent"]
-                failed = job["failed"]
-                total_count = job["total"]
+                
+            sent = job["sent"]
+            failed = job["failed"]
 
-            try:
-                job["queue"].put_nowait(
-                    {
-                        "event": "result",
-                        "email": contact.email,
-                        "success": False,
-                        "error": str(e),
-                        "error_type": classify_error(e),
-                        "sent": sent,
-                        "failed": failed,
-                        "total": total_count,
-                    }
-                )
-            except Exception:
-                pass
+        # Отправка события в SSE
+        try:
+            job["queue"].put_nowait({
+                "event": "result",
+                "email": contact.email,
+                "success": success,
+                "error": error,
+                "error_type": error_type,
+                "sent": sent,
+                "failed": failed,
+                "total": total,
+            })
+        except Exception: pass
 
-        await asyncio.sleep(0)
-
-        if i < total - 1 and not job.get("cancelled"):
-            delay = random.randint(
-                config.get("delay_min", 20), config.get("delay_max", 30)
-            )
+        # Задержка между письмами (не блокирует цикл сервера)
+        if i < total - 1:
+            delay = random.randint(config.get("delay_min", 20), config.get("delay_max", 30))
             await asyncio.sleep(delay)
 
     try:

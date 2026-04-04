@@ -1,4 +1,4 @@
-﻿/* ===== EMAIL SENDER MODULE ===== */
+/* ===== EMAIL SENDER MODULE ===== */
 const EmailSender = {
   get SERVER_URL() {
     return (typeof window !== 'undefined' && window.location && window.location.origin) 
@@ -245,9 +245,11 @@ const EmailSender = {
       this._sseSource.addEventListener('init', (e) => {
         const init = JSON.parse(e.data);
         if (init.results && init.results.length) {
-          this._sseResults.push(...init.results);
           for (const res of init.results) {
-            this.log((res.success ? '✓ ' : '✗ ') + res.email, res.success ? 'ok' : 'err');
+            if (!this._sseResults.find(r => r.email.toLowerCase() === res.email.toLowerCase())) {
+              this._sseResults.push(res);
+              this.log((res.success ? '✓ ' : '✗ ') + res.email, res.success ? 'ok' : 'err');
+            }
           }
         }
         this._updateProgress(init.sent, init.failed, init.total);
@@ -255,8 +257,10 @@ const EmailSender = {
 
       this._sseSource.addEventListener('result', (e) => {
         const res = JSON.parse(e.data);
-        this._sseResults.push(res);
-        this.log((res.success ? '✓ ' : '✗ ') + res.email + (res.error ? ' — ' + res.error : ''), res.success ? 'ok' : 'err');
+        if (!this._sseResults.find(r => r.email.toLowerCase() === res.email.toLowerCase())) {
+          this._sseResults.push(res);
+          this.log((res.success ? '✓ ' : '✗ ') + res.email + (res.error ? ' — ' + res.error : ''), res.success ? 'ok' : 'err');
+        }
         this._updateProgress(res.sent, res.failed, res.total);
       });
 
