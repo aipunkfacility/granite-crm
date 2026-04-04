@@ -1,35 +1,34 @@
-# Email Sender + CRM Data Server
+# Granite CRM
+
+**Локальная CRM для личного использования. Прода не будет.**
 
 ## Обзор
 
-FastAPI сервер для двух задач:
-1. **Email рассылка** — через Gmail SMTP
-2. **CRM данные** — JSON файлы на диске
+FastAPI сервер для управления контактами и email-рассылок.
 
 ```
-CRM (браузер) ──fetch()──▶ Сервер (localhost:8000) ──SMTP──▶ Gmail
-                                      │
-                                      └── crm/db/*.json
+Браузер (SPA) ──fetch()──▶ localhost:8000 ──SMTP──▶ Gmail
+                                       │
+                                       └── db/*.json
 ```
 
-**Архитектура хранения:**
-- `crm/db/*.json` — главный источник
+**Архитектура:**
+- JSON-файлы в `db/` — источник данных
 - IndexedDB в браузере — быстрый кэш
-- `crm/backups/` — автоматические бэкапы
+- `backups/` — автоматические бэкапы
 
 ## Быстрый старт
 
 ```bash
-cd crm
 pip install -r requirements.txt
 cp config.example.json config.json
-# Отредактируйте config.json и .env
+# Отредактируйте config.json и создайте .env
 start.bat
 ```
 
 Проверка: http://localhost:8000/health
 
-## Установка Gmail
+## Настройка Gmail
 
 1. Включите двухфакторную аутентификацию
 2. Создайте App Password: myaccount.google.com → Пароли приложений
@@ -38,111 +37,88 @@ start.bat
 GMAIL_APP_PASSWORD=your_16_char_password
 ```
 
-## curl примеры
+## Аутентификация
+
+При наличии переменной `CRM_API_TOKEN` в `.env`:
+- GET: `/health`, `/template`, `/` — без токена
+- POST/PUT/DELETE: требуется заголовок `Authorization: Bearer <token>`
+
+## Примеры API
 
 ### Проверка сервера
-
 ```bash
 curl http://localhost:8000/health
 # {"status":"ok","server":"email-sender","db_files":2}
 ```
 
-### Отправка одного письма
-
-```bash
-curl -X POST http://localhost:8000/send/single \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","name":"Test","html":"<h1>Hello</h1>"}'
-```
-
-### Рассылка (async)
-
+### Email рассылка
 ```bash
 # Запуск
 curl -X POST http://localhost:8000/send/batch \
   -H "Content-Type: application/json" \
-  -d '{
-    "contacts":[
-      {"email":"user1@example.com","name":"User 1"},
-      {"email":"user2@example.com","name":"User 2"}
-    ],
-    "html":"<p>Batch email</p>"
-  }'
-# {"job_id":"bb0b18f4-...","total":2,"status":"started"}
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"contacts":[{"email":"test@example.com","name":"Test"}],"html":"<p>Hello</p>"}'
 
-# Проверка статуса
-curl http://localhost:8000/send/status/bb0b18f4-...
+# Статус ( polling )
+curl http://localhost:8000/send/status/JOB_ID
 
-# Отмена
-curl -X POST http://localhost:8000/send/cancel/bb0b18f4-...
+# SSE (реалтайм)
+curl -N http://localhost:8000/send/stream/JOB_ID
 ```
 
-### Работа с базой
-
+### Работа с данными
 ```bash
 # Список файлов
 curl http://localhost:8000/db/list
 
-# Чтение
-curl http://localhost:8000/db/Rostov.json
-
-# Сохранение (с автобэкапом)
-curl -X PUT http://localhost:8000/db/data.json \
+# Сохранение
+curl -X PUT http://localhost:8000/db/myfile.json \
   -H "Content-Type: application/json" \
-  -d '{"contacts":[{"name":"Test","phone":"+123"}]}'
-
-# Удаление (с бэкапом)
-curl -X DELETE http://localhost:8000/db/data.json
+  -d '[{"name":"Company","phone":"+1234567890"}]'
 ```
 
-### Бэкапы и восстановление
-
+### Бэкапы
 ```bash
-# Все бэкапы
 curl http://localhost:8000/backups
-
-# Бэкапы конкретного файла
-curl http://localhost:8000/db/Rostov.json/backups
-
-# Восстановление
-curl -X POST http://localhost:8000/restore/Rostov.json.20260403_000048.bak
+curl -X POST http://localhost:8000/db/myfile.json/restore
 ```
 
-### Шаблон письма
-
-```bash
-# Получить
-curl http://localhost:8000/template
-
-# Обновить
-curl -X POST http://localhost:8000/template \
-  -H "Content-Type: application/json" \
-  -d '{"html":"<html>...</html>"}'
-```
-
-## Типы ошибок email
-
-| Тип | Причина | Решение |
-|-----|---------|---------|
-| `smtp_error` | SMTP/авторизация | Проверьте App Password |
-| `connection_error` | Сеть/таймаут | Проверьте интернет |
-| `invalid_email` | Неверный email | Проверьте формат |
-| `unknown_error` | Другое | Смотрите логи |
-
-## Структура файлов
+## Структура проекта
 
 ```
-crm/
-├── server.py              # FastAPI сервер
-├── config.json            # SMTP настройки
-├── .env                   # Пароли (gitignore)
-├── db/                    # Данные CRM
-│   └── *.json
-├── backups/               # Автобэкапы
-│   └── *.bak
-└── logs/
-    └── crm_server.log     # Логи (ротация 5MB × 5)
+GRANITE CRM/
+├── index.html              # SPA интерфейс
+├── server/                 # FastAPI сервер
+│   ├── __init__.py         # app, middleware, CORS
+│   ├── config.py           # конфигурация, пути
+│   ├── models.py           # Pydantic модели
+│   ├── middleware.py       # auth middleware
+│   ├── routers/            # API endpoints
+│   │   ├── send.py         # email рассылка
+│   │   ├── db.py           # CRUD файлов
+│   │   ├── template.py     # шаблон писем
+│   │   └── backup.py       # бэкапы
+│   └── services/          # бизнес-логика
+│       ├── email.py        # SMTP отправка
+│       ├── batch.py        # async батч рассылка
+│       └── backup.py      # создание бэкапов
+├── js/                     # клиентские скрипты
+├── css/                    # стили
+├── db/                     # JSON файлы данных
+├── backups/               # автоматические бэкапы
+├── logs/                   # логи сервера
+├── config.example.json    # пример конфига
+├── .env                   # secrets (в gitignore)
+└── requirements.txt       # Python зависимости
 ```
+
+## Безопасность
+
+- `config.json` и `.env` в `.gitignore`
+- CORS только для `localhost` / `127.0.0.1`
+- Path traversal защита
+- Атомарная запись файлов
+- Опциональный API токен
 
 ## Частые ошибки
 
@@ -154,13 +130,9 @@ crm/
 - `start.bat` закрыт → перезапустите
 - Порт 8000 занят → закройте другое приложение
 
-**JSON повреждён**
-- API вернёт ошибку с путём к бэкапу
-- Восстановите: `POST /restore/{backup_name}`
+## Документация
 
-## Безопасность
-
-- `config.json` и `.env` в `.gitignore`
-- Только localhost (127.0.0.1)
-- Path traversal защита
-- Атомарная запись файлов
+Подробнее в `docs/`:
+- `API_REFERENCE.md` — все API эндпоинты
+- `BACKUP_RESTORE.md` — система бэкапов
+- `Гайд по настройке рассылки.md` — настройка Gmail

@@ -6,6 +6,31 @@
 http://localhost:8000
 ```
 
+**Примечание:** Это локальная CRM для личного использования. Сервер работает только на localhost.
+
+---
+
+## Аутентификация
+
+При наличии переменной `CRM_API_TOKEN` в `.env`:
+
+| Метод | Эндпоинты | Требует токен |
+|-------|-----------|---------------|
+| GET | `/health`, `/template`, `/` | Нет |
+| POST/PUT/DELETE | Все остальные | Да |
+
+**Заголовок:**
+```
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Ответ при ошибке 401:**
+```json
+{"detail": "Unauthorized"}
+```
+
+---
+
 ## Эндпоинты
 
 ### Health Check
@@ -25,7 +50,7 @@ curl http://localhost:8000/health
 {
   "status": "ok",
   "server": "email-sender",
-  "timestamp": "2026-04-03T04:48:20.395120",
+  "timestamp": "2026-04-04T12:00:00",
   "db_files": 2
 }
 ```
@@ -52,6 +77,7 @@ curl http://localhost:8000/health
 ```bash
 curl -X POST http://localhost:8000/send/single \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"email":"test@example.com","name":"Test","html":"<h1>Hello</h1>"}'
 ```
 
@@ -82,7 +108,7 @@ curl -X POST http://localhost:8000/send/single \
 |---|---|
 | **POST** | `/send/batch` |
 
-Асинхронная рассылка. Проверяйте статус через `/send/status/{job_id}`.
+Асинхронная рассылка. Проверяйте статус через `/send/status/{job_id}` или `/send/stream/{job_id}` (SSE).
 
 **Request Body:**
 ```json
@@ -98,6 +124,7 @@ curl -X POST http://localhost:8000/send/single \
 ```bash
 curl -X POST http://localhost:8000/send/batch \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{
     "contacts":[
       {"email":"user1@example.com","name":"User 1"},
@@ -118,7 +145,7 @@ curl -X POST http://localhost:8000/send/batch \
 
 ---
 
-### Статус рассылки
+### Статус рассылки (polling)
 
 | | |
 |---|---|
@@ -147,6 +174,80 @@ curl http://localhost:8000/send/status/bb0b18f4-4fcb-46f0-adc9-1f8ed21d1b26
 
 ---
 
+### SSE статус рассылки (реалтайм)
+
+| | |
+|---|---|
+| **GET** | `/send/stream/{job_id}` |
+
+Server-Sent Events для мгновенного обновления прогресса без polling.
+
+```bash
+curl -N http://localhost:8000/send/stream/JOB_ID
+```
+
+**Events:**
+
+1. **init** — начальное состояние job:
+```json
+{
+  "event": "init",
+  "job_id": "...",
+  "total": 10,
+  "sent": 0,
+  "failed": 0,
+  "status": "started",
+  "results": []
+}
+```
+
+2. **result** — результат каждого письма:
+```json
+{
+  "event": "result",
+  "email": "user@example.com",
+  "success": true,
+  "error": "",
+  "sent": 1,
+  "failed": 0,
+  "total": 10
+}
+```
+
+3. **done** — завершение:
+```json
+{
+  "event": "done",
+  "status": "completed",
+  "sent": 8,
+  "failed": 2,
+  "total": 10
+}
+```
+
+**Пример на JavaScript:**
+```javascript
+const source = new EventSource('/send/stream/' + jobId);
+
+source.addEventListener('init', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Started:', data.total, 'emails');
+});
+
+source.addEventListener('result', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Sent:', data.sent, '/', data.total);
+});
+
+source.addEventListener('done', (e) => {
+  const data = JSON.parse(e.data);
+  console.log('Completed:', data.sent, 'sent,', data.failed, 'failed');
+  source.close();
+});
+```
+
+---
+
 ### Отменить рассылку
 
 | | |
@@ -154,7 +255,8 @@ curl http://localhost:8000/send/status/bb0b18f4-4fcb-46f0-adc9-1f8ed21d1b26
 | **POST** | `/send/cancel/{job_id}` |
 
 ```bash
-curl -X POST http://localhost:8000/send/cancel/bb0b18f4-...
+curl -X POST http://localhost:8000/send/cancel/bb0b18f4-... \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 **Response:**
@@ -180,6 +282,7 @@ curl http://localhost:8000/template
 ```bash
 curl -X POST http://localhost:8000/template \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"html":"<html>...</html>"}'
 ```
 
@@ -234,6 +337,7 @@ curl http://localhost:8000/db/Rostov.json
 ```bash
 curl -X PUT http://localhost:8000/db/data.json \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
   -d '{"contacts":[{"name":"Test","phone":"+123"}]}'
 ```
 
@@ -258,7 +362,8 @@ curl -X PUT http://localhost:8000/db/data.json \
 Создаёт бэкап перед удалением.
 
 ```bash
-curl -X DELETE http://localhost:8000/db/data.json
+curl -X DELETE http://localhost:8000/db/data.json \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 **Response:**
@@ -378,5 +483,6 @@ curl -X POST http://localhost:8000/db/Rostov.json/restore
 |------|----------|
 | 200 | Успех |
 | 400 | Неверный запрос (валидация) |
+| 401 | Не авторизован |
 | 404 | Файл или job не найден |
 | 500 | Ошибка сервера |
