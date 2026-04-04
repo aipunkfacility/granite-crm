@@ -1,6 +1,8 @@
 import uuid
 import asyncio
+import json
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 from server.models import BatchEmail, SingleEmail
 from server.services.batch import jobs, process_batch, _jobs_lock
@@ -42,6 +44,7 @@ async def send_batch(body: BatchEmail):
             "status": "started",
             "results": [],
             "cancelled": False,
+            "queue": asyncio.Queue(),
         }
 
     asyncio.create_task(process_batch(job_id, body.contacts, html))
@@ -80,3 +83,64 @@ async def cancel_job(job_id: str):
         jobs[job_id]["cancelled"] = True
 
     return {"status": "cancelled"}
+
+
+async def _sse_generator(job_id: str):
+    async with _jobs_lock:
+        if job_id not in jobs:
+            return
+        queue = jobs[job_id]["queue"]
+
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+
+            event_type = item.get("event", "message")
+            data = json.dumps(item, ensure_ascii=False)
+
+            if event_type == "done":
+                yield f"event: {event_type}\ndata: {data}\n\n"
+                break
+
+            yield f"event: {event_type}\ndata: {data}\n\n"
+    except asyncio.CancelledError:
+        pass
+
+
+@router.get("/stream/{job_id}")
+async def job_stream(job_id: str):
+    async with _jobs_lock:
+        if job_id not in jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        job = dict(jobs[job_id])
+
+    initial = json.dumps(
+        {
+            "event": "init",
+            "job_id": job_id,
+            "total": job["total"],
+            "sent": job["sent"],
+            "failed": job["failed"],
+            "status": job["status"],
+            "results": job["results"],
+        },
+        ensure_ascii=False,
+    )
+
+    async def event_stream():
+        yield f"event: init\ndata: {initial}\n\n"
+        async for chunk in _sse_generator(job_id):
+            yield chunk
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

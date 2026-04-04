@@ -238,58 +238,44 @@ const EmailSender = {
       this.currentJobId = data.job_id;
       this.log('Задача: ' + data.job_id.slice(0, 8) + '... всего ' + data.total, 'ok');
 
-      this.pollInterval = setInterval(() => this.pollStatus(), 10000);
-    } catch (e) {
-      this.log('Ошибка: ' + e.message, 'err');
-      toast('Сервер не отвечает. Запустите сервер.', 'err');
-      sendBtn.disabled = false;
-      sendBtn.style.display = 'inline-flex';
-      cancelBtn.style.display = 'none';
-    }
-  },
+      this._sseResults = [];
+      this._sseDone = false;
+      this._sseSource = new EventSource(this.SERVER_URL + '/send/stream/' + data.job_id);
 
-  async pollStatus() {
-    if (!this.currentJobId) return;
-    try {
-      const data = await this.getStatus(this.currentJobId);
-      if (!data) return;
-
-      const total = data.total;
-      const sent = data.sent;
-      const failed = data.failed;
-      const pct = total ? Math.round((sent + failed) / total * 100) : 0;
-
-      const bar = document.getElementById('emailProgressBar');
-      const txt = document.getElementById('emailProgressText');
-      if (bar) bar.style.width = pct + '%';
-      if (txt) txt.textContent = (sent + failed) + ' / ' + total;
-
-      const newResults = data.results.slice(this._lastResultCount || 0);
-      this._lastResultCount = data.results.length;
-
-      for (const res of newResults) {
-        if (res.success) {
-          this.log('✓ ' + res.email, 'ok');
-        } else {
-          const errType = this.classifyError(res.error || '');
-          this.log('✗ ' + res.email + ' — ' + (res.error || ''), errType);
+      this._sseSource.addEventListener('init', (e) => {
+        const init = JSON.parse(e.data);
+        if (init.results && init.results.length) {
+          this._sseResults.push(...init.results);
+          for (const res of init.results) {
+            this.log((res.success ? '✓ ' : '✗ ') + res.email, res.success ? 'ok' : 'err');
+          }
         }
-      }
+        this._updateProgress(init.sent, init.failed, init.total);
+      });
 
-      if (data.status === 'completed' || data.status === 'cancelled') {
-        clearInterval(this.pollInterval);
-        this.pollInterval = null;
+      this._sseSource.addEventListener('result', (e) => {
+        const res = JSON.parse(e.data);
+        this._sseResults.push(res);
+        this.log((res.success ? '✓ ' : '✗ ') + res.email + (res.error ? ' — ' + res.error : ''), res.success ? 'ok' : 'err');
+        this._updateProgress(res.sent, res.failed, res.total);
+      });
+
+      this._sseSource.addEventListener('done', (e) => {
+        const done = JSON.parse(e.data);
+        this._sseSource.close();
+        this._sseSource = null;
+        this._sseDone = true;
 
         const cancelBtn = document.getElementById('emailCancelBtn');
         if (cancelBtn) cancelBtn.style.display = 'none';
 
-        if (data.status === 'cancelled') {
-          this.log('Рассылка отменена. Отправлено: ' + sent, 'err');
+        if (done.status === 'cancelled') {
+          this.log('Рассылка отменена. Отправлено: ' + done.sent, 'err');
         } else {
-          this.log('Завершено! Отправлено: ' + sent + ', ошибок: ' + failed, 'ok');
+          this.log('Завершено! Отправлено: ' + done.sent + ', ошибок: ' + done.failed, 'ok');
         }
 
-        const resultsWithIds = (data.results || []).map(res => {
+        const resultsWithIds = this._sseResults.map(res => {
           const contact = this.pendingContacts.find(c => c.email.toLowerCase() === res.email.toLowerCase());
           return {
             email: res.email,
@@ -301,10 +287,75 @@ const EmailSender = {
         });
 
         this.showReport(resultsWithIds);
-        await this.onComplete(data);
+        this.onComplete({ sent: done.sent, failed: done.failed, results: this._sseResults });
+      });
+
+      this._sseSource.onerror = () => {
+        if (!this._sseDone) {
+          this.log('Соединение потеряно, проверяю статус...', 'warn');
+          this._sseSource.close();
+          this._sseSource = null;
+          this._fallbackPoll();
+        }
+      };
+    } catch (e) {
+      this.log('Ошибка: ' + e.message, 'err');
+      toast('Сервер не отвечает. Запустите сервер.', 'err');
+      sendBtn.disabled = false;
+      sendBtn.style.display = 'inline-flex';
+      cancelBtn.style.display = 'none';
+    }
+  },
+
+  _updateProgress(sent, failed, total) {
+    const pct = total ? Math.round((sent + failed) / total * 100) : 0;
+    const bar = document.getElementById('emailProgressBar');
+    const txt = document.getElementById('emailProgressText');
+    if (bar) bar.style.width = pct + '%';
+    if (txt) txt.textContent = (sent + failed) + ' / ' + total;
+  },
+
+  async _fallbackPoll() {
+    if (!this.currentJobId) return;
+    try {
+      const data = await this.getStatus(this.currentJobId);
+      if (!data) return;
+
+      const newResults = data.results.slice((this._sseResults || []).length);
+      for (const res of newResults) {
+        this._sseResults.push(res);
+        this.log((res.success ? '✓ ' : '✗ ') + res.email + (res.error ? ' — ' + res.error : ''), res.success ? 'ok' : 'err');
+      }
+      this._updateProgress(data.sent, data.failed, data.total);
+
+      if (data.status === 'completed' || data.status === 'cancelled') {
+        const cancelBtn = document.getElementById('emailCancelBtn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+
+        if (data.status === 'cancelled') {
+          this.log('Рассылка отменена. Отправлено: ' + data.sent, 'err');
+        } else {
+          this.log('Завершено! Отправлено: ' + data.sent + ', ошибок: ' + data.failed, 'ok');
+        }
+
+        const resultsWithIds = this._sseResults.map(res => {
+          const contact = this.pendingContacts.find(c => c.email.toLowerCase() === res.email.toLowerCase());
+          return {
+            email: res.email,
+            name: contact ? contact.name : (contact && contact._allNames ? contact._allNames.join(', ') : '—'),
+            success: res.success,
+            error: res.error || '',
+            ids: contact ? (contact._allIds || [contact.id]) : [],
+          };
+        });
+
+        this.showReport(resultsWithIds);
+        await this.onComplete({ sent: data.sent, failed: data.failed, results: this._sseResults });
+      } else {
+        this.pollInterval = setInterval(() => this._fallbackPoll(), 5000);
       }
     } catch (e) {
-      console.warn('poll error:', e);
+      console.warn('fallback poll error:', e);
     }
   },
 
@@ -453,9 +504,12 @@ const EmailSender = {
 
   closeModal() {
     if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null; }
+    if (this._sseSource) { this._sseSource.close(); this._sseSource = null; }
     this.currentJobId = null;
     this.pendingContacts = [];
     this._lastResultCount = 0;
+    this._sseResults = [];
+    this._sseDone = false;
     const modal = document.getElementById('emailModal');
     if (modal) modal.style.display = 'none';
   },

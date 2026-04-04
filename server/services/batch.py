@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 jobs: dict[str, dict] = {}
 _jobs_lock = asyncio.Lock()
+_sentinel = object()
 
 
 async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
@@ -44,6 +45,20 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
                 job["failed"] += 1
             job["status"] = "completed"
             job["completed_at"] = datetime.now().isoformat()
+            final_failed = job["failed"]
+            final_total = job["total"]
+        try:
+            job["queue"].put_nowait(
+                {
+                    "event": "done",
+                    "status": "completed",
+                    "sent": 0,
+                    "failed": final_failed,
+                    "total": final_total,
+                }
+            )
+        except Exception:
+            pass
         return
 
     for i, contact in enumerate(contacts):
@@ -59,6 +74,10 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
                 server.quit()
             except Exception as e:
                 logger.warning(f"Error quitting SMTP server: {e}")
+            try:
+                job["queue"].put_nowait({"event": "done", "status": "cancelled"})
+            except Exception:
+                pass
             return
 
         try:
@@ -84,6 +103,24 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
                     }
                 )
                 job["sent"] += 1
+                sent = job["sent"]
+                failed = job["failed"]
+                total_count = job["total"]
+
+            try:
+                job["queue"].put_nowait(
+                    {
+                        "event": "result",
+                        "email": contact.email,
+                        "success": True,
+                        "error": "",
+                        "sent": sent,
+                        "failed": failed,
+                        "total": total_count,
+                    }
+                )
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f"Failed to send email to {contact.email}: {e}")
@@ -98,6 +135,25 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
                     }
                 )
                 job["failed"] += 1
+                sent = job["sent"]
+                failed = job["failed"]
+                total_count = job["total"]
+
+            try:
+                job["queue"].put_nowait(
+                    {
+                        "event": "result",
+                        "email": contact.email,
+                        "success": False,
+                        "error": str(e),
+                        "error_type": classify_error(e),
+                        "sent": sent,
+                        "failed": failed,
+                        "total": total_count,
+                    }
+                )
+            except Exception:
+                pass
 
         await asyncio.sleep(0)
 
@@ -115,7 +171,23 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
     async with _jobs_lock:
         job["status"] = "completed"
         job["completed_at"] = datetime.now().isoformat()
-    logger.info(f"Job {job_id} completed: {job['sent']} sent, {job['failed']} failed")
+        final_sent = job["sent"]
+        final_failed = job["failed"]
+        final_total = job["total"]
+    logger.info(f"Job {job_id} completed: {final_sent} sent, {final_failed} failed")
+
+    try:
+        job["queue"].put_nowait(
+            {
+                "event": "done",
+                "status": "completed",
+                "sent": final_sent,
+                "failed": final_failed,
+                "total": final_total,
+            }
+        )
+    except Exception:
+        pass
 
 
 async def cleanup_old_jobs():
