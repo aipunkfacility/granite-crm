@@ -24,14 +24,16 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
     total = len(contacts)
 
     try:
-        logger.info(f"Connecting to SMTP {config['smtp_server']}:{config['smtp_port']}")
+        logger.info(
+            "Connecting to SMTP %s:%s", config["smtp_server"], config["smtp_port"]
+        )
         server = smtplib.SMTP(
             config["smtp_server"], config["smtp_port"], timeout=smtp_timeout
         )
         server.starttls()
         server.login(config["sender_email"], config["sender_password"])
     except Exception as e:
-        logger.error(f"SMTP connection failed: {e}")
+        logger.error("SMTP connection failed: %s", e)
         async with _jobs_lock:
             for contact in contacts:
                 job["results"].append(
@@ -69,11 +71,11 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
                 job["completed_at"] = datetime.now().isoformat()
 
         if is_cancelled:
-            logger.info(f"Job {job_id} cancelled after {job['sent']}/{total}")
+            logger.info("Job %s cancelled after %d/%d", job_id, job["sent"], total)
             try:
                 server.quit()
             except Exception as e:
-                logger.warning(f"Error quitting SMTP server: {e}")
+                logger.warning("Error quitting SMTP server: %s", e)
             try:
                 job["queue"].put_nowait({"event": "done", "status": "cancelled"})
             except Exception:
@@ -91,7 +93,7 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
             msg.attach(MIMEText(html, "html"))
 
             server.sendmail(config["sender_email"], contact.email, msg.as_string())
-            logger.info(f"Email sent to {contact.email}")
+            logger.info("Email sent to %s", contact.email)
 
             async with _jobs_lock:
                 job["results"].append(
@@ -123,7 +125,7 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
                 pass
 
         except Exception as e:
-            logger.error(f"Failed to send email to {contact.email}: {e}")
+            logger.error("Failed to send email to %s: %s", contact.email, e)
 
             async with _jobs_lock:
                 job["results"].append(
@@ -174,7 +176,9 @@ async def process_batch(job_id: str, contacts: list[BatchContact], html: str):
         final_sent = job["sent"]
         final_failed = job["failed"]
         final_total = job["total"]
-    logger.info(f"Job {job_id} completed: {final_sent} sent, {final_failed} failed")
+    logger.info(
+        "Job %s completed: %d sent, %d failed", job_id, final_sent, final_failed
+    )
 
     try:
         job["queue"].put_nowait(
@@ -208,14 +212,16 @@ async def cleanup_old_jobs():
                             if completed_time.timestamp() < cutoff:
                                 to_remove.append(job_id)
                         except Exception as e:
-                            logger.warning(f"Error parsing completed_at timestamp: {e}")
+                            logger.warning(
+                                "Error parsing completed_at timestamp: %s", e
+                            )
 
             for job_id in to_remove:
                 del jobs[job_id]
-                logger.debug(f"Cleaned up old job: {job_id}")
+                logger.debug("Cleaned up old job: %s", job_id)
 
         if to_remove:
-            logger.info(f"Cleaned up {len(to_remove)} old jobs")
+            logger.info("Cleaned up %d old jobs", len(to_remove))
 
 
 def start_cleanup_task():

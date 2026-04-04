@@ -19,7 +19,7 @@ def create_backup(filepath: str) -> Optional[str]:
     backup_path = os.path.join(BACKUP_DIR, backup_name)
 
     shutil.copy2(filepath, backup_path)
-    logger.info(f"Created backup: {backup_path}")
+    logger.info("Created backup: %s", backup_path)
 
     cleanup_old_backups(filename)
 
@@ -40,9 +40,9 @@ def cleanup_old_backups(filename: str, keep: int = BACKUP_KEEP_COUNT):
     for path, _ in backups[keep:]:
         try:
             os.remove(path)
-            logger.debug(f"Removed old backup: {path}")
+            logger.debug("Removed old backup: %s", path)
         except Exception as e:
-            logger.warning(f"Failed to remove old backup {path}: {e}")
+            logger.warning("Failed to remove old backup %s: %s", path, e)
 
 
 def find_backup(filename: str) -> Optional[str]:

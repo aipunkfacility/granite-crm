@@ -174,7 +174,10 @@ document.addEventListener('DOMContentLoaded', async function () {
     await initDB();
 
     // Load data from server (JSON files on disk)
-    await loadFromServer();
+    const loaded = await loadFromServer();
+    if (loaded < 0) {
+      toast('Сервер недоступен — работа в локальном режиме', 'err');
+    }
 
     console.log('DB ready:', await db.contacts.count());
     Render.renderAreas();

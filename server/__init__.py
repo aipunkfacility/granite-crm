@@ -72,7 +72,7 @@ async def root():
     if index_path.exists():
         content = index_path.read_text(encoding="utf-8")
         token = get_api_token()
-        logger.info(f"API token from env: {'SET' if token else 'EMPTY'}")
+        logger.info("API token from env: %s", "SET" if token else "EMPTY")
         if token:
             old = 'const API_TOKEN = "";'
             new = f'const API_TOKEN = "{token}";'

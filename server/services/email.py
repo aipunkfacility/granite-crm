@@ -41,7 +41,9 @@ async def send_emails_batch(
     smtp_timeout = config.get("smtp_timeout", 30)
 
     try:
-        logger.info(f"Connecting to SMTP {config['smtp_server']}:{config['smtp_port']}")
+        logger.info(
+            "Connecting to SMTP %s:%s", config["smtp_server"], config["smtp_port"]
+        )
 
         server = smtplib.SMTP(
             config["smtp_server"], config["smtp_port"], timeout=smtp_timeout
@@ -60,11 +62,11 @@ async def send_emails_batch(
                 server.sendmail(
                     config["sender_email"], recipient_email, msg.as_string()
                 )
-                logger.info(f"Email sent to {recipient_email}")
+                logger.info("Email sent to %s", recipient_email)
                 results.append((True, "", ""))
 
             except Exception as e:
-                logger.error(f"Failed to send email to {recipient_email}: {e}")
+                logger.error("Failed to send email to %s: %s", recipient_email, e)
                 results.append((False, str(e), classify_error(e)))
 
             if i < len(recipient_emails) - 1:
@@ -74,10 +76,10 @@ async def send_emails_batch(
                 await asyncio.sleep(delay)
 
         server.quit()
-        logger.info(f"SMTP connection closed after {len(recipient_emails)} emails")
+        logger.info("SMTP connection closed after %d emails", len(recipient_emails))
 
     except Exception as e:
-        logger.error(f"SMTP connection failed: {e}")
+        logger.error("SMTP connection failed: %s", e)
         results = [(False, str(e), classify_error(e)) for _ in recipient_emails]
 
     return results

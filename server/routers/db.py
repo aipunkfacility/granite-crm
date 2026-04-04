@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/db", tags=["db"])
 
 
+def _validate_filename(filename: str) -> str:
+    if "\x00" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    return os.path.basename(filename)
+
+
 def validate_json_data(data) -> tuple[bool, str]:
     if not isinstance(data, (dict, list)):
         return False, "Root must be an object or array"
@@ -42,7 +48,7 @@ async def list_db_files():
         return {"files": files}
 
     except Exception as e:
-        logger.error(f"Failed to list DB files: {e}")
+        logger.error("Failed to list DB files: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -51,7 +57,7 @@ async def read_db_file(filename: str):
     if not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Only .json files allowed")
 
-    safe_name = os.path.basename(filename)
+    safe_name = _validate_filename(filename)
     filepath = os.path.join(DB_DIR, safe_name)
 
     if not os.path.exists(filepath):
@@ -72,7 +78,7 @@ async def read_db_file(filename: str):
         raise HTTPException(status_code=500, detail="Invalid JSON")
 
     except Exception as e:
-        logger.error(f"Failed to read {safe_name}: {e}")
+        logger.error("Failed to read %s: %s", safe_name, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -81,7 +87,7 @@ async def write_db_file(filename: str, request: Request):
     if not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Only .json files allowed")
 
-    safe_name = os.path.basename(filename)
+    safe_name = _validate_filename(filename)
     filepath = os.path.join(DB_DIR, safe_name)
 
     try:
@@ -100,11 +106,11 @@ async def write_db_file(filename: str, request: Request):
                 if existing == body:
                     return {"success": True, "file": safe_name, "unchanged": True}
             except Exception as e:
-                logger.warning(f"Could not read existing file {safe_name}: {e}")
+                logger.warning("Could not read existing file %s: %s", safe_name, e)
 
         backup_path = create_backup(filepath)
         if backup_path:
-            logger.info(f"Backup created: {os.path.basename(backup_path)}")
+            logger.info("Backup created: %s", os.path.basename(backup_path))
 
         temp_path = filepath + ".tmp"
         with open(temp_path, "w", encoding="utf-8") as f:
@@ -112,7 +118,7 @@ async def write_db_file(filename: str, request: Request):
 
         os.replace(temp_path, filepath)
 
-        logger.info(f"Saved {safe_name} ({os.path.getsize(filepath)} bytes)")
+        logger.info("Saved %s (%d bytes)", safe_name, os.path.getsize(filepath))
         return {
             "success": True,
             "file": safe_name,
@@ -123,7 +129,7 @@ async def write_db_file(filename: str, request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to write {safe_name}: {e}")
+        logger.error("Failed to write %s: %s", safe_name, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -132,7 +138,7 @@ async def delete_db_file(filename: str):
     if not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Only .json files allowed")
 
-    safe_name = os.path.basename(filename)
+    safe_name = _validate_filename(filename)
     filepath = os.path.join(DB_DIR, safe_name)
 
     if not os.path.exists(filepath):
@@ -142,7 +148,7 @@ async def delete_db_file(filename: str):
         backup_path = create_backup(filepath)
         os.remove(filepath)
 
-        logger.info(f"Deleted {safe_name}, backup at {backup_path}")
+        logger.info("Deleted %s, backup at %s", safe_name, backup_path)
         return {
             "success": True,
             "file": safe_name,
@@ -150,7 +156,7 @@ async def delete_db_file(filename: str):
         }
 
     except Exception as e:
-        logger.error(f"Failed to delete {safe_name}: {e}")
+        logger.error("Failed to delete %s: %s", safe_name, e)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -159,7 +165,7 @@ async def list_backups(filename: str):
     if not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Only .json files allowed")
 
-    safe_name = os.path.basename(filename)
+    safe_name = _validate_filename(filename)
     from server.config import BACKUP_DIR
 
     pattern = f"{safe_name}."
@@ -186,7 +192,7 @@ async def restore_backup(filename: str):
     if not filename.endswith(".json"):
         raise HTTPException(status_code=400, detail="Only .json files allowed")
 
-    safe_name = os.path.basename(filename)
+    safe_name = _validate_filename(filename)
     from server.services.backup import find_backup
     from server.config import BACKUP_DIR
 
@@ -204,7 +210,7 @@ async def restore_backup(filename: str):
         temp_path = filepath + ".tmp"
         shutil.copy2(backup_path, temp_path)
         os.replace(temp_path, filepath)
-        logger.info(f"Restored {safe_name} from {backup_path}")
+        logger.info("Restored %s from %s", safe_name, backup_path)
 
         return {
             "success": True,
@@ -213,5 +219,5 @@ async def restore_backup(filename: str):
         }
 
     except Exception as e:
-        logger.error(f"Failed to restore {safe_name}: {e}")
+        logger.error("Failed to restore %s: %s", safe_name, e)
         raise HTTPException(status_code=500, detail=str(e))
