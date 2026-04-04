@@ -14,7 +14,7 @@ except ImportError:
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server import config, models
@@ -101,11 +101,18 @@ async def root():
     if index_path.exists():
         content = index_path.read_text(encoding="utf-8")
         token = get_api_token()
+        logger.info(f"API token from env: {'SET' if token else 'EMPTY'}")
         if token:
-            content = content.replace(
-                'const API_TOKEN = ""', f'const API_TOKEN = "{token}"'
-            )
-        return HTMLResponse(content=content, media_type="text/html")
+            old = 'const API_TOKEN = "";'
+            new = f'const API_TOKEN = "{token}";'
+            if old in content:
+                content = content.replace(old, new)
+                logger.info("API token injected into index.html")
+            else:
+                logger.warning("Could not find API_TOKEN placeholder in index.html")
+        response = HTMLResponse(content=content, media_type="text/html")
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return response
     return {"message": "index.html not found"}
 
 
@@ -124,4 +131,10 @@ BASE_DIR = config.BASE_DIR
 
 app.mount("/static", StaticFiles(directory=BASE_DIR, html=True), name="static")
 
-app.mount("/", StaticFiles(directory=BASE_DIR, html=True), name="root")
+
+@app.get("/{full_path:path}")
+async def serve_static(full_path: str):
+    file_path = Path(BASE_DIR) / full_path
+    if file_path.is_file():
+        return FileResponse(file_path)
+    return JSONResponse(status_code=404, content={"detail": "Not found"})

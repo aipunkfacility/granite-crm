@@ -311,7 +311,7 @@ const EmailSender = {
   async cancelBatch() {
     if (!this.currentJobId) return;
     try {
-      await fetch(this.SERVER_URL + '/send/cancel/' + this.currentJobId, { method: 'POST' });
+      await fetch(this.SERVER_URL + '/send/cancel/' + this.currentJobId, { method: 'POST', headers: this.AUTH_HEADER });
       this.log('Запрос на отмену отправлен...', 'err');
     } catch (e) {
       this.log('Ошибка отмены: ' + e.message, 'err');

@@ -137,10 +137,11 @@ BackupManager.confirmRestore = async function (backupName) {
   toast('Восстановление...');
 
   try {
-    const url = SERVER_URL + '/restore/' + encodeURIComponent(backupName);
+    const url = SERVER_URL + '/backups/restore/' + encodeURIComponent(backupName);
     console.log('[BackupManager] Fetching:', url);
     const resp = await fetch(url, {
       method: 'POST',
+      headers: AUTH_HEADER,
       signal: AbortSignal.timeout(30000)
     });
 
