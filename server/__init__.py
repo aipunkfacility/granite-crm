@@ -67,6 +67,9 @@ async def auth_middleware(request: Request, call_next):
     if request.url.path in public_paths:
         return await call_next(request)
 
+    if request.method == "GET":
+        return await call_next(request)
+
     token = get_api_token()
     if token:
         auth_header = request.headers.get("Authorization", "")
