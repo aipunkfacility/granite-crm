@@ -97,15 +97,22 @@ const EmailSender = {
   async openModalByIds(ids) {
     const contacts = await Promise.all(ids.map(id => db.contacts.get(id)));
     const allWithEmail = contacts
-      .filter(c => c && c.email && c.email.includes('@') && c.email !== '@')
+      .filter(c => c && c.email && isValidEmail(c.email))
       .map(c => ({ id: c.id, name: c.name || '—', email: c.email }));
 
     const totalChecked = ids.length;
     const withEmailCount = allWithEmail.length;
+    const invalidEmails = contacts
+      .filter(c => c && c.email && c.email !== '@' && !isValidEmail(c.email))
+      .map(c => c.name + ' (' + esc(c.email) + ')');
 
     if (!allWithEmail.length) {
       toast('Нет контактов с email в выборке', 'err');
       return;
+    }
+
+    if (invalidEmails.length) {
+      toast(invalidEmails.length + ' невалидных email: ' + invalidEmails.join(', '), 'err');
     }
 
     if (withEmailCount < totalChecked) {

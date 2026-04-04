@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from typing import Optional
 
-from server.config import BACKUP_DIR
+from server.config import BACKUP_DIR, BACKUP_KEEP_COUNT
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def create_backup(filepath: str) -> Optional[str]:
     return backup_path
 
 
-def cleanup_old_backups(filename: str, keep: int = 10):
+def cleanup_old_backups(filename: str, keep: int = BACKUP_KEEP_COUNT):
     pattern = f"{filename}."
     backups = []
 

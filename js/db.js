@@ -127,6 +127,7 @@ async function saveToServer() {
     }
   } catch (e) {
     console.warn('saveToServer:', e);
+    toast('Сервер недоступен — данные сохранены только локально', 'err');
   }
 }
 
@@ -136,7 +137,7 @@ async function saveToServer() {
 let _saveTimer = null;
 function saveToServerDebounced() {
   if (_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => saveToServer(), 1000);
+  _saveTimer = setTimeout(() => saveToServer(), SAVE_DEBOUNCE_MS);
 }
 
 /* ===== LEGACY: File System Access API ===== */
@@ -185,7 +186,6 @@ async function saveToDbDir() {
     toast('Ошибка сохранения на диск', 'err');
   }
 }
-
 async function loadFromDbDir() {
   if (!State.dbDirHandle) return;
   try {

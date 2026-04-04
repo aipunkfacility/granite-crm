@@ -8,6 +8,7 @@ const SEARCH_DEBOUNCE_MS = 200;
 const TOAST_DURATION_MS = 3000;
 const MAX_VISIBLE_FIELDS = 3;
 const DB_NAME = 'MiniCRM_v8';
+const SAVE_DEBOUNCE_MS = 1000;
 
 /* ===== FIELD & COLUMN DEFINITIONS ===== */
 const FIELDS = [
@@ -177,6 +178,16 @@ function fmtDate(isoStr) {
  */
 function nowISO() {
   return new Date().toISOString();
+}
+
+/**
+ * Validate email format with a simple regex.
+ * Returns true for valid emails, false otherwise.
+ */
+function isValidEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return re.test(email.trim());
 }
 
 /**

@@ -1,11 +1,8 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
+
+from server.models import TemplateUpdate
 
 router = APIRouter(prefix="/template", tags=["template"])
-
-
-class TemplateUpdate(BaseModel):
-    html: str
 
 
 @router.get("")

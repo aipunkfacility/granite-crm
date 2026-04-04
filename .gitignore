@@ -22,6 +22,9 @@ logs/
 # Backups
 backups/
 
+# Temp files
+*.tmp
+
 # IDE
 .vscode/
 .idea/

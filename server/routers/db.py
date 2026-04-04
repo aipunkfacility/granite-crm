@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Request
 
-from server.config import DB_DIR
+from server.config import DB_DIR, MAX_JSON_SIZE
 from server.services.backup import create_backup, find_backup
 
 logger = logging.getLogger(__name__)
@@ -16,9 +16,8 @@ def validate_json_data(data) -> tuple[bool, str]:
         return False, "Root must be an object or array"
 
     data_str = json.dumps(data)
-    max_size = 10 * 1024 * 1024
-    if len(data_str) > max_size:
-        return False, f"Data too large: {len(data_str)} bytes (max: {max_size})"
+    if len(data_str) > MAX_JSON_SIZE:
+        return False, f"Data too large: {len(data_str)} bytes (max: {MAX_JSON_SIZE})"
 
     return True, ""
 
@@ -202,9 +201,9 @@ async def restore_backup(filename: str):
         if os.path.exists(filepath):
             create_backup(filepath)
 
-        import shutil
-
-        shutil.copy2(backup_path, filepath)
+        temp_path = filepath + ".tmp"
+        shutil.copy2(backup_path, temp_path)
+        os.replace(temp_path, filepath)
         logger.info(f"Restored {safe_name} from {backup_path}")
 
         return {

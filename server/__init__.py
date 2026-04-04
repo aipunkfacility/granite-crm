@@ -12,12 +12,13 @@ try:
 except ImportError:
     pass
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from server import config, models
+from server.config import LOG_MAX_BYTES, LOG_BACKUP_COUNT
+from server.middleware import setup_middleware, get_api_token
 from server.routers import send, template, db, backup
 
 logger = logging.getLogger(__name__)
@@ -33,8 +34,8 @@ LOGS_DIR = os.path.join(
 )
 file_handler = RotatingFileHandler(
     os.path.join(LOGS_DIR, "crm_server.log"),
-    maxBytes=5 * 1024 * 1024,
-    backupCount=5,
+    maxBytes=LOG_MAX_BYTES,
+    backupCount=LOG_BACKUP_COUNT,
     encoding="utf-8",
 )
 file_handler.setLevel(logging.INFO)
@@ -47,10 +48,6 @@ logger.addHandler(file_handler)
 logger.info("Server starting up...")
 
 
-def get_api_token() -> str:
-    return os.environ.get("CRM_API_TOKEN", "")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from server.services.batch import start_cleanup_task
@@ -61,33 +58,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Email Sender Server", lifespan=lifespan)
 
-
-@app.middleware("http")
-async def auth_middleware(request: Request, call_next):
-    public_paths = ["/health", "/template", "/"]
-    if request.url.path in public_paths:
-        return await call_next(request)
-
-    if request.method == "GET":
-        return await call_next(request)
-
-    token = get_api_token()
-    if token:
-        auth_header = request.headers.get("Authorization", "")
-        provided_token = auth_header.replace("Bearer ", "")
-        if provided_token != token:
-            return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
-
-    return await call_next(request)
-
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:8000", "http://127.0.0.1:8000"],
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type", "Authorization"],
-)
+setup_middleware(app)
 
 app.include_router(send.router)
 app.include_router(template.router)
