@@ -333,6 +333,11 @@ const EmailSender = {
       this._updateProgress(data.sent, data.failed, data.total);
 
       if (data.status === 'completed' || data.status === 'cancelled') {
+        // Сначала останавливаем опрос, чтобы не допустить повторного вызова onComplete
+        if (this.pollInterval) { clearInterval(this.pollInterval); this.pollInterval = null; }
+        const completedJobId = this.currentJobId;
+        this.currentJobId = null;
+
         const cancelBtn = document.getElementById('emailCancelBtn');
         if (cancelBtn) cancelBtn.style.display = 'none';
 
@@ -356,7 +361,10 @@ const EmailSender = {
         this.showReport(resultsWithIds);
         await this.onComplete({ sent: data.sent, failed: data.failed, results: this._sseResults });
       } else {
-        this.pollInterval = setInterval(() => this._fallbackPoll(), 5000);
+        // Не стакаем интервалы
+        if (!this.pollInterval) {
+          this.pollInterval = setInterval(() => this._fallbackPoll(), 5000);
+        }
       }
     } catch (e) {
       console.warn('fallback poll error:', e);
