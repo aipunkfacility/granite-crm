@@ -4,12 +4,12 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from granite.utils import adaptive_delay, get_random_ua
 from granite.enrichers.tg_finder import tg_request
-from granite.enrichers._tg_common import TG_MAX_RETRIES
+# from granite.enrichers._tg_common import TG_MAX_RETRIES  # unused
 
 
 def check_tg_trust(url: str) -> dict:
     """Анализирует Telegram-профиль: живой ли это контакт."""
-    if not url:
+    if not url or "t.me/" not in url:
         return {"trust_score": 0}
 
     headers = {"User-Agent": get_random_ua()}
@@ -24,6 +24,8 @@ def check_tg_trust(url: str) -> dict:
 
     r = tg_request(url, headers)
     if not r:
+        return result
+    if r.status_code != 200:
         return result
 
     soup = BeautifulSoup(r.text, "html.parser")

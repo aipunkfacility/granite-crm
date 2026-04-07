@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from granite.database import Database, RawCompanyRow
 from granite.pipeline.status import print_status
+from granite.pipeline.region_resolver import STANDARD_SOURCES
 from granite.category_finder import discover_categories, get_categories, get_subdomain
 
 # Import Scrapers
@@ -19,8 +20,7 @@ from granite.scrapers.yell import YellScraper
 from granite.scrapers.firmsru import FirmsruScraper
 from granite.scrapers.firecrawl import FirecrawlScraper
 
-# Стандартные источники для отображения
-STANDARD_SOURCES = ["jsprav", "firecrawl", "dgis", "yell", "firmsru"]
+__all__ = ["ScrapingPhase"]
 
 
 class ScrapingPhase:

@@ -3,7 +3,7 @@ import re
 import ipaddress
 from urllib.parse import urlparse
 import requests
-from granite.utils import normalize_phone, check_site_alive
+from granite.utils import normalize_phone, check_site_alive, is_safe_url as _is_safe_url
 from loguru import logger
 
 # Private/loopback IP ranges to block (SSRF protection)
@@ -84,11 +84,13 @@ def validate_website(url: str) -> tuple[str | None, int | None]:
     Если сайт мёртв — возвращает (url, None).
     Нормализует URL: добавляет https:// если нет схемы.
     """
-    if not url or url.strip() in ("", "-", "N/A"):
+    if not url or url.strip().lower() in ("", "-", "n/a"):
         return None, None
 
     url = url.strip()
-    if not url.startswith("http"):
+    # Clean whitespace/null bytes before scheme check
+    url = re.sub(r'[\s\x00]+', '', url).split()[0]
+    if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
 
     # SSRF protection: block internal/private URLs
@@ -96,9 +98,9 @@ def validate_website(url: str) -> tuple[str | None, int | None]:
         logger.debug(f"  SSRF blocked: {url}")
         return None, None
 
-    # Убираем мусор который иногда прилетает из скреперов
-    if " " in url or "\n" in url:
-        url = url.split()[0]
+    if _is_safe_url(url) is False:
+        logger.debug(f"  SSRF blocked (is_safe_url): {url}")
+        return None, None
 
     status = check_site_alive(url)
     if status is None:

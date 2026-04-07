@@ -1,7 +1,7 @@
 # enrichers/network_detector.py
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
-from granite.utils import extract_domain, normalize_phone as _normalize_phone
+from granite.utils import extract_domain, normalize_phone
 
 
 class NetworkDetector:
@@ -62,7 +62,7 @@ class NetworkDetector:
                 # Phone counting with normalization cache
                 norms: list[str] = []
                 for p in phones or []:
-                    norm = _normalize_phone(p)
+                    norm = normalize_phone(p)
                     if norm:
                         norms.append(norm)
                         phone_count[norm] = phone_count.get(norm, 0) + 1

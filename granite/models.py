@@ -3,6 +3,14 @@ from pydantic import BaseModel, Field
 from datetime import datetime, timezone
 from enum import Enum
 
+__all__ = [
+    "Source",
+    "CompanyStatus",
+    "CompanySegment",
+    "RawCompany",
+    "Company",
+]
+
 
 class Source(str, Enum):
     FIRECRAWL = "firecrawl"

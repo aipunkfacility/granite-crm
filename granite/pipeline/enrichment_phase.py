@@ -9,6 +9,8 @@ from loguru import logger
 from granite.database import Database, CompanyRow, EnrichedCompanyRow
 from granite.pipeline.status import print_status
 from granite.pipeline.firecrawl_client import FirecrawlClient
+from granite.pipeline.region_resolver import RegionResolver
+from granite.utils import normalize_phone
 
 # Import Enrichers
 from granite.enrichers.messenger_scanner import MessengerScanner
@@ -31,6 +33,7 @@ class EnrichmentPhase:
         self.config = config
         self.db = db
         self.firecrawl = firecrawl
+        self._resolver = RegionResolver(config)
 
     def run(self, city: str, only_new: bool = False) -> int:
         """Основной проход обогащения для города.
@@ -105,7 +108,7 @@ class EnrichmentPhase:
                 "info",
             )
 
-            if not self._is_enabled("firecrawl"):
+            if not self._resolver.is_source_enabled("firecrawl"):
                 print_status("Firecrawl отключён — точечный поиск пропущен", "warning")
                 return 0
 
@@ -249,7 +252,7 @@ class EnrichmentPhase:
         )
         print_status(total_msg, "info")
 
-        if not self._is_enabled("firecrawl"):
+        if not self._resolver.is_source_enabled("firecrawl"):
             print_status("Firecrawl отключён — точечный поиск пропущен", "warning")
             return 0
 
@@ -369,7 +372,8 @@ class EnrichmentPhase:
             for em in new_emails:
                 if em not in existing:
                     existing.add(em)
-                    updated.append("email")
+            if "email" not in updated:
+                updated.append("email")
             erow.emails = list(existing)
             if c:
                 c.emails = list(existing)
@@ -378,15 +382,11 @@ class EnrichmentPhase:
         if new_phones:
             existing_phones = set(erow.phones or [])
             for ph in new_phones:
-                ph_norm = (
-                    ph.replace("-", "")
-                    .replace(" ", "")
-                    .replace("(", "")
-                    .replace(")", "")
-                )
-                if ph_norm not in existing_phones:
+                ph_norm = normalize_phone(ph)
+                if ph_norm and ph_norm not in existing_phones:
                     existing_phones.add(ph_norm)
-                    updated.append("phone")
+            if "phone" not in updated:
+                updated.append("phone")
             erow.phones = list(existing_phones)
             if c:
                 c.phones = list(existing_phones)
@@ -411,9 +411,3 @@ class EnrichmentPhase:
 
         return updated
 
-    def _is_enabled(self, source: str) -> bool:
-        """Проверить включён ли источник в config.yaml.
-
-        NOTE: This duplicates RegionResolver.is_source_enabled() — keep in sync.
-        """
-        return self.config.get("sources", {}).get(source, {}).get("enabled", True)

@@ -88,6 +88,8 @@ class DedupPhase:
                     emails=merged["emails"],
                     city=merged["city"],
                     status="raw",
+                    merged_from=merged.get("merged_from", []),
+                    messengers=merged.get("messengers", {}),
                 )
                 session.add(row)
 

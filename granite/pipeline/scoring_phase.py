@@ -10,6 +10,8 @@ from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 from granite.pipeline.status import print_status
 
+__all__ = ["ScoringPhase"]
+
 
 class ScoringPhase:
     """Пересчёт crm_score и segment для enriched-записей города.
@@ -51,7 +53,7 @@ class ScoringPhase:
                     c.crm_score = score
                     c.segment = segment
                     segments[segment] += 1
-                except Exception as e:
+                except (KeyError, TypeError, ValueError) as e:
                     logger.warning(
                         f"Ошибка скоринга для компании {c.id} ({c.name}): {e}"
                     )

@@ -74,8 +74,8 @@ if PLAYWRIGHT_AVAILABLE:
                     if _has_stealth:
                         try:
                             stealth_sync(page)
-                        except TypeError:
-                            # Если stealth_sync это модуль, а не функция — пропускаем
+                        except Exception:
+                            # stealth_sync не применился — пропускаем
                             logger.warning("playwright_stealth: не удалось применить stealth, продолжаем без него")
                     yield browser, page
                 finally:

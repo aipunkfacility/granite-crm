@@ -2,7 +2,7 @@
 import re
 import time
 import random
-from granite.utils import adaptive_delay, TRANSLIT_MAP, get_random_ua, normalize_phone
+from granite.utils import adaptive_delay, TRANSLIT_MAP, get_random_ua, normalize_phone, is_safe_url
 import requests
 from loguru import logger
 from granite.enrichers._tg_common import TG_MAX_RETRIES, TG_INITIAL_BACKOFF
@@ -15,6 +15,8 @@ def tg_request(url: str, headers: dict, timeout: int = 10) -> requests.Response 
     с экспоненциальной выдержкой (5, 10, 20, 40, 80 сек). После исчерпания
     попыток — логируем warning и возвращаем None.
     """
+    if not is_safe_url(url):
+        return None
     backoff = TG_INITIAL_BACKOFF
     for attempt in range(TG_MAX_RETRIES):
         try:
@@ -46,7 +48,7 @@ def _translit(text: str) -> str:
 
 def find_tg_by_phone(phone: str, config: dict) -> str | None:
     """Метод 1: Прямая привязка телефона (t.me/+7XXX)."""
-    if not phone or len(phone) < 11:
+    if not phone or not isinstance(phone, str) or len(phone) < 11:
         return None
 
     # Нормализация телефона перед построением URL
@@ -111,6 +113,7 @@ def find_tg_by_name(name: str, phone: str, config: dict) -> str | None:
     headers = {"User-Agent": get_random_ua()}
 
     for v in variants:
+        adaptive_delay(tg_delay, tg_delay + 0.5)
         r = tg_request(f"https://t.me/{v}", headers)
         if r and "tgme_page_title" in r.text:
             m1 = re.search(r"tgme_page_description[^>]*>([^<]+)", r.text)
@@ -123,6 +126,5 @@ def find_tg_by_name(name: str, phone: str, config: dict) -> str | None:
 
             if any(k in desc for k in keywords) or any(k in title for k in keywords):
                 return f"https://t.me/{v}"
-        adaptive_delay(tg_delay, tg_delay + 0.5)
 
     return None

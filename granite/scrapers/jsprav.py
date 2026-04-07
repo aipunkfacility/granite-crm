@@ -148,9 +148,11 @@ class JspravScraper(BaseScraper):
                     geo = None
                     if c.get("geo"):
                         try:
-                            lat = float(c["geo"].get("latitude", 0))
-                            lon = float(c["geo"].get("longitude", 0))
-                            if lat is not None and lon is not None:
+                            lat_raw = c["geo"].get("latitude")
+                            lon_raw = c["geo"].get("longitude")
+                            if lat_raw is not None and lon_raw is not None:
+                                lat = float(lat_raw)
+                                lon = float(lon_raw)
                                 geo = [lat, lon]
                         except (ValueError, TypeError):
                             pass
@@ -176,6 +178,9 @@ class JspravScraper(BaseScraper):
     def scrape(self) -> list[RawCompany]:
         companies = []
         subdomain = self._get_subdomain()
+        if not re.match(r'^[a-z0-9][a-z0-9-]*$', subdomain):
+            logger.warning(f"Invalid subdomain '{subdomain}' for city '{self.city}'")
+            return []
         ua = {
             "User-Agent": get_random_ua()
         }

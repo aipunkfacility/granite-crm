@@ -2,7 +2,7 @@
 import re
 from urllib.parse import urljoin, urlparse
 from loguru import logger
-from granite.utils import fetch_page, adaptive_delay
+from granite.utils import fetch_page, adaptive_delay, is_safe_url
 
 
 class MessengerScanner:
@@ -19,6 +19,9 @@ class MessengerScanner:
             return found_messengers
 
         base_url_clean = base_url.rstrip("/")
+
+        if not is_safe_url(base_url_clean):
+            return found_messengers
 
         html = None
         contacts_url = None
@@ -40,7 +43,11 @@ class MessengerScanner:
             adaptive_delay()
             contacts_url = self._find_contacts_link(base_url_clean, html)
             if contacts_url:
-                chtml = fetch_page(contacts_url, timeout=10)
+                if not is_safe_url(contacts_url):
+                    contacts_url = None
+                    chtml = None
+                else:
+                    chtml = fetch_page(contacts_url, timeout=10)
                 if chtml:
                     self._extract_social_links(chtml, found_messengers)
                     # На странице контактов ищем ссылки на другие страницы
@@ -53,6 +60,8 @@ class MessengerScanner:
                             and "whatsapp" in found_messengers
                         ):
                             break
+                        if not is_safe_url(link):
+                            continue
                         try:
                             adaptive_delay()
                             ehtml = fetch_page(link, timeout=10)

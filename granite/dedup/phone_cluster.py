@@ -16,7 +16,7 @@ def cluster_by_phones(raw_companies: list[dict]) -> list[list[int]]:
     phone_to_ids: dict[str, set[int]] = defaultdict(set)
     for company in raw_companies:
         cid = company.get("id")
-        if not cid:
+        if cid is None:
             continue
         for phone in company.get("phones", []):
             norm = normalize_phone(phone)

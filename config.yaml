@@ -1,4 +1,5 @@
-# config.yaml — ЕДИНСТВЕННЫЙ источник настроек
+# Granite CRM configuration
+# No schema validation — malformed config will fail at runtime
 
 # ===== Города =====
 cities:
@@ -267,8 +268,8 @@ cities:
     geo_center: [46.3479, 48.0330]
 
 # ===== Общие настройки скрапинга =====
-# NOTE: timeout and request_delay are available but not yet wired to all HTTP utilities
 scraping:
+  # ⚠️ These values are NOT yet used by all scrapers. Some have hardcoded timeouts.
   request_delay: 1.5
   timeout: 15
   max_retries: 3

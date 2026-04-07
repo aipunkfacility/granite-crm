@@ -232,7 +232,7 @@ def check_site_alive(url: str) -> int | None:
         return None
     try:
         headers = {"User-Agent": get_random_ua()}
-        r = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
+        r = requests.head(url, headers=headers, timeout=10, allow_redirects=False)
         return r.status_code
     except Exception as e:
         logger.debug(f"check_site_alive failed for '{url}': {e}")
@@ -260,3 +260,56 @@ def pick_best_value(*values: str) -> str:
     if not candidates:
         return ""
     return max(candidates, key=len)
+
+
+# ===== URL Safety =====
+
+def is_safe_url(url: str) -> bool:
+    """Check that URL is not pointing to internal/private resources."""
+    if not url or not isinstance(url, str):
+        return False
+    cleaned = re.sub(r'[\s\x00]+', '', url).split()[0]
+    if not cleaned:
+        return False
+    try:
+        parsed = urlparse(cleaned)
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+    hostname_lower = hostname.lower()
+    # Block known internal hostnames
+    if hostname_lower in ("localhost", "metadata.google.internal", "metadata"):
+        return False
+    # Block private/loopback/link-local IPs (fast string check, no DNS)
+    if hostname_lower.startswith(("127.", "10.", "192.168.", "169.254.", "0.", "::1")):
+        return False
+    if hostname_lower.startswith("172."):
+        parts = hostname_lower.split(".")
+        if len(parts) >= 2:
+            try:
+                second = int(parts[1])
+                if 16 <= second <= 31:
+                    return False
+            except ValueError:
+                pass
+    # Block IPv6 private ranges
+    if hostname_lower.startswith("fc") or hostname_lower.startswith("fe80"):
+        return False
+    return True
+
+
+def is_safe_link_url(url: str) -> bool:
+    """Check URL is safe for embedding in markdown links / hrefs.
+    Rejects javascript:, data:, vbscript: and other dangerous schemes.
+    """
+    if not url or not isinstance(url, str):
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False
+    return parsed.scheme in ("http", "https") and bool(parsed.hostname)

@@ -33,8 +33,11 @@ class Classifier:
         if messengers.get("telegram"):
             score += self.weights.get("has_telegram", 0)
             
-            tg_trust = company.get("tg_trust", {})
-            score += int(tg_trust.get("trust_score", 0) * self.weights.get("tg_trust_multiplier", 0))
+            tg_trust = company.get("tg_trust") or {}
+            try:
+                score += int(tg_trust.get("trust_score", 0) * self.weights.get("tg_trust_multiplier", 0))
+            except (TypeError, ValueError):
+                pass
             
         if messengers.get("whatsapp"):
             score += self.weights.get("has_whatsapp", 0)

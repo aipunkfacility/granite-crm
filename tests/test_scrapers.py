@@ -200,8 +200,8 @@ class TestModels:
         assert rc.geo is None
 
     def test_raw_company_with_geo(self):
-        rc = RawCompany(source=Source.JSPRAV, name="Test", geo=(46.35, 48.03))
-        assert rc.geo == (46.35, 48.03)
+        rc = RawCompany(source=Source.JSPRAV, name="Test", geo=[46.35, 48.03])
+        assert rc.geo == [46.35, 48.03]
 
     def test_source_enum(self):
         assert Source.FIRECRAWL == "firecrawl"

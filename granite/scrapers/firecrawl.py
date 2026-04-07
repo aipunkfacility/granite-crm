@@ -2,13 +2,14 @@
 import subprocess
 import json
 import re
+import time
 import tempfile
 import shutil
 import atexit
 import os
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phones, extract_emails, extract_domain
+from granite.utils import normalize_phones, extract_emails, extract_domain, is_safe_url
 from loguru import logger
 
 
@@ -24,7 +25,7 @@ class FirecrawlScraper(BaseScraper):
 
     def _run(self, args: list) -> dict | None:
         """Запуск firecrawl CLI с JSON-выводом во временный файл."""
-        outfile = os.path.join(self._tmpdir, f"fc_{os.getpid()}_{id(args)}.json")
+        outfile = os.path.join(self._tmpdir, f"fc_{os.getpid()}_{int(time.time() * 1000)}.json")
         full_args = ["firecrawl"] + args + ["--json", "-o", outfile]
 
         try:
@@ -125,6 +126,8 @@ class FirecrawlScraper(BaseScraper):
 
     def _scrape_details(self, url: str) -> dict | None:
         """Детальный скрапинг сайта через firecrawl scrape."""
+        if not is_safe_url(url):
+            return {}
         result = self._run(["scrape", url, "--format", "markdown"])
         if not result:
             return None

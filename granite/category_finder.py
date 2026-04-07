@@ -7,7 +7,17 @@ import requests
 from pathlib import Path
 from loguru import logger
 
-CACHE_PATH = "data/category_cache.yaml"
+__all__ = [
+    "CACHE_PATH",
+    "DEFAULT_HEADERS",
+    "JSPRAV_CATEGORY",
+    "find_jsprav",
+    "discover_categories",
+    "get_categories",
+    "get_subdomain",
+]
+
+CACHE_PATH = str(Path(__file__).parent.parent / "data" / "category_cache.yaml")
 
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"

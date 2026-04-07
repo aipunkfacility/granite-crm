@@ -11,6 +11,8 @@ from granite.exporters.markdown import MarkdownExporter
 from granite.pipeline.status import print_status
 from granite.utils import sanitize_filename
 
+__all__ = ["ExportPhase"]
+
 
 class ExportPhase:
     """Автоэкспорт результатов пайплайна."""

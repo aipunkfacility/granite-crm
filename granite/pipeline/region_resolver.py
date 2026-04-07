@@ -5,7 +5,10 @@
 не зависящая от БД или пайплайна.
 """
 from granite.regions import get_region_cities
-from granite.pipeline.scraping_phase import STANDARD_SOURCES
+
+__all__ = ["STANDARD_SOURCES", "RegionResolver"]
+
+STANDARD_SOURCES = ["jsprav", "firecrawl", "dgis", "yell", "firmsru"]
 
 
 class RegionResolver:

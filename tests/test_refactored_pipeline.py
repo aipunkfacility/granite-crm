@@ -428,11 +428,11 @@ class TestEnrichmentPhase:
         """Источник по умолчанию включён."""
         mock_db = MagicMock()
         phase = EnrichmentPhase({}, mock_db, MagicMock())
-        assert phase._is_enabled("firecrawl") is True
+        assert phase._resolver.is_source_enabled("firecrawl") is True
 
     def test_is_enabled_explicit_false(self):
         """Источник явно отключён."""
         config = {"sources": {"firecrawl": {"enabled": False}}}
         mock_db = MagicMock()
         phase = EnrichmentPhase(config, mock_db, MagicMock())
-        assert phase._is_enabled("firecrawl") is False
+        assert phase._resolver.is_source_enabled("firecrawl") is False

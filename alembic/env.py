@@ -6,6 +6,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import create_engine, event, pool
 from alembic import context
+from loguru import logger
 
 # Добавляем корень проекта в sys.path, чтобы импортировать database.py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

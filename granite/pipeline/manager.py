@@ -25,6 +25,8 @@ from granite.pipeline.enrichment_phase import EnrichmentPhase
 from granite.pipeline.scoring_phase import ScoringPhase
 from granite.pipeline.export_phase import ExportPhase
 
+__all__ = ["PipelineManager"]
+
 
 class PipelineManager:
     """Оркестрация фаз пайплайна обогащения компаний."""
@@ -34,7 +36,7 @@ class PipelineManager:
         self.db = db
         self.checkpoints = CheckpointManager(db)
 
-        # Инициализация компонентов
+        # TODO: Consider lazy initialization for optional components (e.g. export-only mode)
         self.region = RegionResolver(config)
         self.firecrawl = FirecrawlClient(
             timeout=config.get("firecrawl", {}).get("timeout", 60),

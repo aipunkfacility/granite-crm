@@ -21,6 +21,8 @@ class FirmsruScraper(BaseScraper):
         city_slug = slugify(self.city)
         if self.categories:
             for cat in self.categories:
+                if not cat.startswith('/'):
+                    continue
                 url = f"https://firmsru.ru{cat}/".rstrip("/")
                 urls.append(url)
         elif self.base_path:

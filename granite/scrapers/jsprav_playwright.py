@@ -71,6 +71,10 @@ class JspravPlaywrightScraper(BaseScraper):
                     href = link.get_attribute("href")
                     if not href or href in seen_urls:
                         continue
+                    if not href.startswith(('http://', 'https://', '/')):
+                        continue
+                    if href.startswith('javascript:'):
+                        continue
                     # Пропускаем саму страницу категории
                     if href.rstrip("/").endswith(category):
                         continue

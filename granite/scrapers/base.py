@@ -19,6 +19,7 @@ class BaseScraper(ABC):
         for c in self.config.get("cities", []):
             if c.get("name") == self.city:
                 return c
+        logger.warning(f"City '{self.city}' not found in config, returning empty defaults")
         return {}
 
     @abstractmethod

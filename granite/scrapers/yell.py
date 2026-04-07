@@ -20,6 +20,8 @@ class YellScraper(BaseScraper):
         urls = []
         if self.categories:
             for cat in self.categories:
+                if not cat.startswith('/'):
+                    continue
                 url = f"https://www.yell.ru{cat}/".rstrip("/")
                 urls.append(url)
         elif self.base_path:

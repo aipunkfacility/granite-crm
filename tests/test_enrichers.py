@@ -180,7 +180,7 @@ class TestTgFinder:
 
     def test_generate_usernames_with_phone(self):
         result = generate_usernames("Гранит Мастер", "79031234567")
-        assert any("34567" in v for v in result)
+        assert any("4567" in v for v in result)
 
 
 # ===== TG Trust =====

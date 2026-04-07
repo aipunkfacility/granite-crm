@@ -4,6 +4,8 @@ import yaml
 from loguru import logger
 from pathlib import Path
 
+__all__ = ["get_region_cities"]
+
 
 # Thread-safe: written once at first call, then only reads
 _regions_lock = threading.Lock()
@@ -12,6 +14,7 @@ _REGIONS_CACHE: dict | None = None
 _DEFAULT_REGIONS_PATH = Path(__file__).parent.parent / "data" / "regions.yaml"
 
 
+# Cache loaded once; logging only on first load
 def _load_regions(path: str | None = None) -> dict:
     """Загрузка data/regions.yaml в кэш (один раз за запуск)."""
     global _REGIONS_CACHE

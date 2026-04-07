@@ -74,6 +74,7 @@ def run(
         
     for c in target_cities:
         manager.run_city(c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich)
+    db.engine.dispose()
 
 @app.command()
 def export(
@@ -97,8 +98,9 @@ def export(
         else:
             exporter = MarkdownExporter(db)
         exporter.export_city(c)
-        
+
     print_status("Экспорт завершен успешно!", "success")
+    db.engine.dispose()
 
 @app.command()
 def export_preset(
@@ -141,6 +143,7 @@ def export_preset(
             exporter.export_city_with_preset(c, preset, preset_config)
 
     print_status("Экспорт пресета завершен!", "success")
+    db.engine.dispose()
 
 # ===== Команды управления миграциями =====
 

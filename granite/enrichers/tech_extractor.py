@@ -1,6 +1,6 @@
 # enrichers/tech_extractor.py
 import re
-from granite.utils import fetch_page
+from granite.utils import fetch_page, is_safe_url
 from loguru import logger
 
 class TechExtractor:
@@ -17,6 +17,9 @@ class TechExtractor:
         
         if not url:
             return result
+
+        if not is_safe_url(url):
+            return None
             
         try:
             html = fetch_page(url, timeout=10)

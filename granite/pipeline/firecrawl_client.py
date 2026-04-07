@@ -25,19 +25,17 @@ class FirecrawlClient:
 
     # ── JSON-парсинг stdout (устраняет дублирование между search и scrape) ──
 
-    def _extract_json(self, text: str) -> str | None:
-        """Extract first balanced JSON object from text."""
-        start = text.find('{')
-        if start == -1:
-            return None
-        depth = 0
-        for i in range(start, len(text)):
-            if text[i] == '{':
-                depth += 1
-            elif text[i] == '}':
-                depth -= 1
-                if depth == 0:
-                    return text[start:i + 1]
+    @staticmethod
+    def _extract_json(text: str) -> dict | None:
+        """Extract first valid JSON object from text."""
+        decoder = json.JSONDecoder()
+        for i, ch in enumerate(text):
+            if ch == '{':
+                try:
+                    obj, end = decoder.raw_decode(text, i)
+                    return obj
+                except json.JSONDecodeError:
+                    continue
         return None
 
     def _parse_json_output(self, stdout: str) -> dict | None:
@@ -54,13 +52,7 @@ class FirecrawlClient:
         try:
             return json.loads(stdout)
         except json.JSONDecodeError:
-            json_str = self._extract_json(stdout)
-            if json_str:
-                try:
-                    return json.loads(json_str)
-                except json.JSONDecodeError:
-                    pass
-            return None
+            return self._extract_json(stdout)
 
     # ── Поиск ──
 

@@ -26,7 +26,7 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
     # sorted n-gram blocking for better recall.
     blocks: dict[str, list[dict]] = defaultdict(list)
     for company in companies:
-        name_lower = company.get("name", "").lower().strip()
+        name_lower = (company.get("name") or "").lower().strip()
         if not name_lower:
             continue
         key = name_lower[0] if name_lower[0].isalpha() else "#"
@@ -42,7 +42,7 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
         for i in range(n):
             for j in range(i + 1, n):
                 total_comparisons += 1
-                if compare_names(block_companies[i]["name"], block_companies[j]["name"], threshold):
+                if compare_names(block_companies[i].get("name") or "", block_companies[j].get("name") or "", threshold):
                     matches.append([block_companies[i]["id"], block_companies[j]["id"]])
 
     # Secondary pass: for small blocks, also compare against adjacent blocks
@@ -63,7 +63,7 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
             for a in block:
                 for b in adj_block:
                     total_comparisons += 1
-                    if compare_names(a["name"], b["name"], threshold):
+                    if compare_names(a.get("name") or "", b.get("name") or "", threshold):
                         matches.append([a["id"], b["id"]])
 
     logger.debug(f"Name matcher: {len(companies)} компаний, {total_comparisons} сравнений, {len(matches)} совпадений")

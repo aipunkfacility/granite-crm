@@ -3,14 +3,14 @@ import os
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 from granite.exporters.csv import _apply_preset_filter
-from granite.utils import sanitize_filename
+from granite.utils import sanitize_filename, is_safe_link_url
 
 
 def _capitalize_city(name: str) -> str:
     """Capitalize city name preserving hyphens (Санкт-Петербург, not Санкт-петербург)."""
     if not name:
         return name
-    return name[:1].upper() + name[1:]
+    return "-".join(part.capitalize() for part in name.split("-"))
 
 
 def _escape_md(text: str) -> str:
@@ -47,10 +47,12 @@ def _write_segment_table(f, seg_label: str, seg_records: list):
         phones = "<br>".join(d.get("phones", []))
 
         site = d.get("website") or ""
-        site_render = f"[Сайт]({site})" if site else "-"
+        site = site if is_safe_link_url(site) else None
+        site_render = f"[Сайт]({site})" if site else "—"
 
         tg = d.get("messengers", {}).get("telegram", "")
-        tg_render = f"[TG]({tg})" if tg else "-"
+        tg = tg if is_safe_link_url(tg) else None
+        tg_render = f"[TG]({tg})" if tg else "—"
 
         name = _escape_md(d.get("name", "Unknown"))
         f.write(

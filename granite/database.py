@@ -36,6 +36,7 @@ class RawCompanyRow(Base):
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
     scraped_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     city = Column(String, nullable=False, index=True)
+    merged_into = Column(Integer, ForeignKey("companies.id"), nullable=True)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name!r})>"
@@ -62,6 +63,24 @@ class CompanyRow(Base):
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
+
+
+class PipelineRunRow(Base):
+    __tablename__ = "pipeline_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    city = Column(String, nullable=False, index=True)
+    stage = Column(String, nullable=False)
+    source = Column(String, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    records_found = Column(Integer, nullable=True)
+    records_errors = Column(Integer, nullable=True)
+    status = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(id={self.id}, city={self.city!r}, stage={self.stage!r})>"
 
 
 class EnrichedCompanyRow(Base):

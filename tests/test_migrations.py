@@ -8,7 +8,6 @@
   5. db check не находит различий после upgrade
   6. Создание новой миграции (autogenerate) работает
 """
-import os
 import sys
 import tempfile
 import pytest
@@ -27,7 +26,7 @@ def db_url(tmp_path):
 
 
 @pytest.fixture
-def alembic_config(db_url, tmp_path):
+def alembic_config(db_url, tmp_path, monkeypatch):
     """Конфигурация Alembic для тестов с временной БД."""
     from alembic.config import Config
     from alembic.script import ScriptDirectory
@@ -42,11 +41,9 @@ def alembic_config(db_url, tmp_path):
     # Создаём config.yaml рядом с БД, чтобы env.py мог его прочитать
     test_config = tmp_path / "config.yaml"
     test_config.write_text("database:\n  path: data/granite.db\n")
-    os.environ["GRANITE_CONFIG"] = str(test_config)
+    monkeypatch.setenv("GRANITE_CONFIG", str(test_config))
 
     yield cfg
-
-    os.environ.pop("GRANITE_CONFIG", None)
 
 
 class TestInitialMigration:
@@ -146,7 +143,7 @@ class TestInitialMigration:
 class TestDatabaseAutoMigrate:
     """Проверка автоматической миграции при создании Database()."""
 
-    def test_database_auto_creates_tables(self, tmp_path):
+    def test_database_auto_creates_tables(self, tmp_path, monkeypatch):
         """Database() автоматически применяет Alembic-миграции."""
         from sqlalchemy import create_engine, inspect
         # Подменяем config.yaml
@@ -154,7 +151,7 @@ class TestDatabaseAutoMigrate:
         config_path = tmp_path / "config.yaml"
         config_path.write_text(config_content)
 
-        os.environ["GRANITE_CONFIG"] = str(config_path)
+        monkeypatch.setenv("GRANITE_CONFIG", str(config_path))
 
         from granite.database import Database
         db = Database(db_path=str(tmp_path / "test_auto.db"), config_path=str(config_path))
@@ -167,8 +164,6 @@ class TestDatabaseAutoMigrate:
         assert "enriched_companies" in tables
         assert "pipeline_runs" in tables
         assert "alembic_version" in tables
-
-        os.environ.pop("GRANITE_CONFIG", None)
 
     def test_database_fallback_without_alembic(self, tmp_path):
         """Database(auto_migrate=False) использует create_all как фоллбэк."""

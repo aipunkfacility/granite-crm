@@ -102,7 +102,7 @@ def _apply_preset_filter(query, preset_name: str, preset: dict):
         if not matched:
             for skip_pat in _SKIP_PATTERNS:
                 if re.match(skip_pat, cond, re.IGNORECASE):
-                    logger.debug(
+                    logger.warning(
                         f"Preset '{preset_name}': '{cond}' not in current schema, skipping"
                     )
                     matched = True

@@ -35,9 +35,11 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
     # Объединяем messengers из всех raw-записей
     merged_messengers: dict = {}
     for r in cluster_records:
-        for k, v in r.get("messengers", {}).items():
-            if v and k not in merged_messengers:
-                merged_messengers[k] = v
+        messengers = r.get("messengers")
+        if isinstance(messengers, dict):
+            for k, v in messengers.items():
+                if v and k not in merged_messengers:
+                    merged_messengers[k] = v
 
     # Объединяем все телефоны с нормализацией и дедупликацией
     all_phones: list[str] = []
@@ -89,7 +91,10 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
     cities = [r.get("city", "") for r in cluster_records if r.get("city")]
     if len(set(cities)) > 1:
         merged["needs_review"] = True
-        merged["review_reason"] = merged.get("review_reason", "") + " different_cities" if merged.get("review_reason") else "different_cities"
+        if merged.get("review_reason"):
+            merged["review_reason"] = merged["review_reason"] + " different_cities"
+        else:
+            merged["review_reason"] = "different_cities"
 
     return merged
 
@@ -121,8 +126,8 @@ def generate_conflicts_md(
         f.write("---\n\n")
 
         for i, conflict in enumerate(conflicts, 1):
-            f.write(f"## {i}. Конфликт #{conflict['cluster_id']}\n\n")
-            f.write(f"**Причина:** {conflict['reason']}\n\n")
+            f.write(f"## {i}. Конфликт #{conflict.get('cluster_id', '?')}\n\n")
+            f.write(f"**Причина:** {conflict.get('reason', '?')}\n\n")
 
             records = conflict["records"]
             for j, record in enumerate(records):
