@@ -38,12 +38,13 @@ class TestExporter:
         """CSVExporter создаёт файл с правильным заголовком."""
         mock_db = MagicMock()
         mock_session = MagicMock()
-        mock_db.get_session.return_value = mock_session
 
         row = self._make_enriched_row()
         mock_session.query.return_value.filter_by.return_value.all.return_value = [row]
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.session_scope.return_value.__exit__ = MagicMock(return_value=False)
 
         exporter = CsvExporter(mock_db, output_dir=str(tmp_path))
         exporter.export_city("Астрахань")
@@ -61,10 +62,11 @@ class TestExporter:
         """Нет данных — файл не создаётся."""
         mock_db = MagicMock()
         mock_session = MagicMock()
-        mock_db.get_session.return_value = mock_session
         mock_session.query.return_value.filter_by.return_value.all.return_value = []
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.session_scope.return_value.__exit__ = MagicMock(return_value=False)
 
         exporter = CsvExporter(mock_db, output_dir=str(tmp_path))
         exporter.export_city("ПустойГород")
@@ -76,7 +78,6 @@ class TestExporter:
         """Записи сортируются по crm_score (убывание)."""
         mock_db = MagicMock()
         mock_session = MagicMock()
-        mock_db.get_session.return_value = mock_session
 
         row_a = self._make_enriched_row(id=1, name="CompanyA", crm_score=30)
         row_b = self._make_enriched_row(id=2, name="CompanyB", crm_score=80)
@@ -85,6 +86,8 @@ class TestExporter:
         mock_session.query.return_value.filter_by.return_value.all.return_value = [row_a, row_b, row_c]
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.session_scope.return_value.__exit__ = MagicMock(return_value=False)
 
         exporter = CsvExporter(mock_db, output_dir=str(tmp_path))
         exporter.export_city("Тест")
@@ -101,12 +104,13 @@ class TestExporter:
         """MarkdownExporter создаёт файл с таблицей."""
         mock_db = MagicMock()
         mock_session = MagicMock()
-        mock_db.get_session.return_value = mock_session
 
         row = self._make_enriched_row()
         mock_session.query.return_value.filter_by.return_value.all.return_value = [row]
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
+        mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
+        mock_db.session_scope.return_value.__exit__ = MagicMock(return_value=False)
 
         exporter = MarkdownExporter(mock_db, output_dir=str(tmp_path))
         exporter.export_city("Астрахань")

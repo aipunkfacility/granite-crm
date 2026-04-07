@@ -119,7 +119,7 @@ class TestTgFinder:
         mock_response.text = '<html><title>Telegram: Contact</title></html>'
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_finder._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_finder.tg_request", return_value=mock_response):
             result = find_tg_by_phone("79031234567", tg_config)
         assert result == "https://t.me/+79031234567"
 
@@ -129,7 +129,7 @@ class TestTgFinder:
         mock_response.text = "<html><title>Telegram</title></html>"
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_finder._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_finder.tg_request", return_value=mock_response):
             result = find_tg_by_phone("79031234567", tg_config)
         assert result is None
 
@@ -151,7 +151,7 @@ class TestTgFinder:
         )
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_finder._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_finder.tg_request", return_value=mock_response):
             result = find_tg_by_name("Памятники Гранит", "79031234567", tg_config)
         assert result is not None
         assert "t.me/" in result
@@ -165,7 +165,7 @@ class TestTgFinder:
         )
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_finder._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_finder.tg_request", return_value=mock_response):
             result = find_tg_by_name("Random Name", None, tg_config)
         assert result is None
 
@@ -197,7 +197,7 @@ class TestTgTrust:
         )
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_trust._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_trust.tg_request", return_value=mock_response):
             result = check_tg_trust("https://t.me/granit_master")
         assert result["has_avatar"] is True
         assert result["has_description"] is True
@@ -206,10 +206,10 @@ class TestTgTrust:
     def test_check_tg_trust_bot(self):
         """Профиль бота: штраф к скору."""
         mock_response = MagicMock()
-        mock_response.text = '<div class="tgme_page_extra">bot</div>'
+        mock_response.text = '<div class="tgme_page_bot_button">Start</div>'
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_trust._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_trust.tg_request", return_value=mock_response):
             result = check_tg_trust("https://t.me/granit_bot")
         assert result["is_bot"] is True
         assert result["trust_score"] < 0
@@ -220,7 +220,7 @@ class TestTgTrust:
         mock_response.text = "<html><title>Telegram</title></html>"
         mock_response.status_code = 200
 
-        with patch("granite.enrichers.tg_trust._tg_request", return_value=mock_response):
+        with patch("granite.enrichers.tg_trust.tg_request", return_value=mock_response):
             result = check_tg_trust("https://t.me/empty")
         assert result["trust_score"] == 0
         assert result["has_avatar"] is False
@@ -231,7 +231,7 @@ class TestTgTrust:
 
     def test_check_tg_trust_request_failure(self):
         """HTTP-запрос не удался."""
-        with patch("granite.enrichers.tg_trust._tg_request", return_value=None):
+        with patch("granite.enrichers.tg_trust.tg_request", return_value=None):
             result = check_tg_trust("https://t.me/notfound")
         assert result["trust_score"] == 0
 
@@ -407,7 +407,7 @@ class TestMessengerScanner:
 class TestTgRateLimit:
 
     def test_429_triggers_retry(self):
-        """При HTTP 429 _tg_request повторяет запрос."""
+        """При HTTP 429 tg_request повторяет запрос."""
         resp_429 = MagicMock()
         resp_429.status_code = 429
         resp_429.text = ""
@@ -419,8 +419,8 @@ class TestTgRateLimit:
         with patch("granite.enrichers.tg_finder.requests.get", side_effect=[resp_429, resp_ok]):
             with patch("granite.enrichers.tg_finder.random.uniform", return_value=0):
                 with patch("granite.enrichers.tg_finder.time.sleep") as mock_sleep:
-                    from granite.enrichers.tg_finder import _tg_request
-                    result = _tg_request("https://t.me/test", {})
+                    from granite.enrichers.tg_finder import tg_request
+                    result = tg_request("https://t.me/test", {})
         assert result is not None
         assert mock_sleep.call_count >= 1
 
@@ -433,8 +433,8 @@ class TestTgRateLimit:
         with patch("granite.enrichers.tg_finder.requests.get", return_value=resp_429):
             with patch("granite.enrichers.tg_finder.random.uniform", return_value=0):
                 with patch("granite.enrichers.tg_finder.time.sleep"):
-                    from granite.enrichers.tg_finder import _tg_request
-                    result = _tg_request("https://t.me/test", {})
+                    from granite.enrichers.tg_finder import tg_request
+                    result = tg_request("https://t.me/test", {})
         assert result is None
 
     def test_200_returns_immediately(self):
@@ -445,8 +445,8 @@ class TestTgRateLimit:
 
         with patch("granite.enrichers.tg_finder.requests.get", return_value=resp_ok):
             with patch("granite.enrichers.tg_finder.time.sleep") as mock_sleep:
-                from granite.enrichers.tg_finder import _tg_request
-                result = _tg_request("https://t.me/test", {})
+                from granite.enrichers.tg_finder import tg_request
+                result = tg_request("https://t.me/test", {})
         assert result is not None
         assert mock_sleep.call_count == 0
 
@@ -454,6 +454,6 @@ class TestTgRateLimit:
         """При ошибке соединения возвращает None."""
         import requests as req_mod
         with patch("granite.enrichers.tg_finder.requests.get", side_effect=req_mod.RequestException("connection refused")):
-            from granite.enrichers.tg_finder import _tg_request
-            result = _tg_request("https://t.me/test", {})
+            from granite.enrichers.tg_finder import tg_request
+            result = tg_request("https://t.me/test", {})
         assert result is None
