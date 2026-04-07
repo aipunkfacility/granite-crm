@@ -4,6 +4,7 @@ import os
 import re
 from sqlalchemy import String
 from granite.database import Database, EnrichedCompanyRow
+from granite.utils import sanitize_filename
 from loguru import logger
 
 
@@ -131,7 +132,6 @@ class CsvExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            from granite.utils import sanitize_filename
             filepath = os.path.join(self.output_dir, f"{sanitize_filename(city)}_enriched.csv")
 
             fields = _CSV_FIELDS
@@ -157,7 +157,6 @@ class CsvExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            from granite.utils import sanitize_filename
             filepath = os.path.join(
                 self.output_dir, f"{sanitize_filename(city)}_{preset_name}.csv"
             )

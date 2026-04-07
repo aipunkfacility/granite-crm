@@ -41,7 +41,7 @@ class TechExtractor:
                 result["cms"] = "opencart"
                 
             # Проверка Marquiz (квизы очень популярны у интеграторов)
-            if "marquiz.ru" in html:
+            if "marquiz.ru" in html_lower:
                 result["has_marquiz"] = True
                 
         except Exception as e:

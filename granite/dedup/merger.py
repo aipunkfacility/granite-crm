@@ -50,7 +50,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
                 all_phones.append(norm)
 
     merged = {
-        "merged_from": [r["id"] for r in cluster_records],
+        "merged_from": [r.get("id") for r in cluster_records if r.get("id") is not None],
         "name_best": pick_best_value(*(r.get("name", "") for r in cluster_records)),
         "phones": all_phones,
         "address": pick_best_value(
@@ -68,7 +68,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
             )
         ),
         "messengers": merged_messengers,
-        "city": cluster_records[0].get("city", "") if cluster_records else "",
+        "city": cluster_records[0].get("city", ""),
         "needs_review": False,
         "review_reason": "",
     }

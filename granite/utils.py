@@ -120,7 +120,9 @@ def extract_domain(url: str) -> str | None:
         return None
     try:
         parsed = urlparse(url if "://" in url else f"https://{url}")
-        domain = parsed.netloc.lower().replace("www.", "")
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
         return domain if domain else None
     except Exception as e:
         logger.debug(f"extract_domain failed for '{url}': {e}")

@@ -4,7 +4,7 @@ import os
 import sys
 from logging.config import fileConfig
 
-from sqlalchemy import create_engine, event, pool, text
+from sqlalchemy import create_engine, event, pool
 from alembic import context
 
 # Добавляем корень проекта в sys.path, чтобы импортировать database.py
@@ -41,12 +41,14 @@ def get_database_url() -> str:
     if configured_url:
         if any(configured_url.startswith(s) for s in _VALID_SCHEMES):
             return configured_url
+        logger.warning(f"Configured database URL has unrecognized scheme: {configured_url}")
 
     # 2. Переменная окружения (для CI/Docker)
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
         if any(env_url.startswith(s) for s in _VALID_SCHEMES):
             return env_url
+        logger.warning(f"Environment DATABASE_URL has unrecognized scheme: {env_url}")
 
     # 3. Из config.yaml
     config_path = os.environ.get("GRANITE_CONFIG", "config.yaml")

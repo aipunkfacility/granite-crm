@@ -46,11 +46,11 @@ def load_config(config_path: str | None = None):
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     except FileNotFoundError:
-        print(f"Ошибка: файл конфигурации не найден: {path}")
-        sys.exit(1)
+        print_status(f"Ошибка: файл конфигурации не найден: {path}", "error")
+        raise typer.Exit(1)
     except yaml.YAMLError as e:
-        print(f"Ошибка: некорректный YAML в файле конфигурации: {e}")
-        sys.exit(1)
+        print_status(f"Ошибка: некорректный YAML в файле конфигурации: {e}", "error")
+        raise typer.Exit(1)
 
 @app.command()
 def run(
@@ -78,7 +78,7 @@ def run(
 @app.command()
 def export(
     city: str = typer.Argument(..., help="Название города или 'all'"),
-    format: str = typer.Option("csv", "--format", "-f", help="Формат экспорта: csv или md")
+    fmt: str = typer.Option("csv", "--format", "-f", help="Формат экспорта: csv или md")
 ):
     """Экспорт готовых данных из БД."""
     config = load_config()
@@ -92,7 +92,7 @@ def export(
         target_cities = [city]
 
     for c in target_cities:
-        if format == "csv":
+        if fmt == "csv":
             exporter = CsvExporter(db)
         else:
             exporter = MarkdownExporter(db)
@@ -191,8 +191,8 @@ def db_downgrade(
         try:
             rev_num = int(revision)
         except ValueError:
-            print(f"Ошибка: неверный формат revision: {revision}")
-            sys.exit(1)
+            print_status(f"Ошибка: неверный формат revision: {revision}", "error")
+            raise typer.Exit(1)
 
         if revision in ("base", "0") or (revision.startswith("-") and rev_num < -1):
             confirm = typer.confirm(f"Вы уверены, что хотите откатить до {revision}? Это может удалить данные.")
@@ -211,13 +211,13 @@ def db_downgrade(
 @db_app.command("history")
 def db_history(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Показать детали каждой миграции"),
-    range: str = typer.Option(None, "--range", "-r", help="Диапазон (например: base..head, rev1..rev2)")
+    rev_range: str = typer.Option(None, "--range", "-r", help="Диапазон (например: base..head, rev1..rev2)")
 ):
     """Показать историю миграций."""
     try:
         alembic_cfg = _get_alembic_config()
         from alembic import command
-        command.history(alembic_cfg, verbose=verbose, rev_range=range)
+        command.history(alembic_cfg, verbose=verbose, rev_range=rev_range)
     except Exception as e:
         print_status(f"Ошибка: {e}", "error")
         raise typer.Exit(1)
@@ -295,17 +295,20 @@ def db_check():
         db_path = config.get("database", {}).get("path", "data/granite.db")
         engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
 
-        with engine.connect() as conn:
-            migration_context = MigrationContext.configure(conn)
-            diff = compare_metadata(migration_context, Base.metadata)
+        try:
+            with engine.connect() as conn:
+                migration_context = MigrationContext.configure(conn)
+                diff = compare_metadata(migration_context, Base.metadata)
 
-        if not diff:
-            print_status("Схема БД совпадает с ORM-моделями — миграции не нужны.", "success")
-        else:
-            print_status(f"Обнаружено {len(diff)} различий между ORM и БД:", "warning")
-            for item in diff:
-                print(f"  • {item}")
-            print_status("Запустите 'python cli.py db migrate \"описание\"' для создания миграции.", "info")
+            if not diff:
+                print_status("Схема БД совпадает с ORM-моделями — миграции не нужны.", "success")
+            else:
+                print_status(f"Обнаружено {len(diff)} различий между ORM и БД:", "warning")
+                for item in diff:
+                    print(f"  • {item}")
+                print_status("Запустите 'python cli.py db migrate \"описание\"' для создания миграции.", "info")
+        finally:
+            engine.dispose()
 
     except Exception as e:
         print_status(f"Ошибка проверки: {e}", "error")

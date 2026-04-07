@@ -59,29 +59,37 @@ if PLAYWRIGHT_AVAILABLE:
                 _has_stealth = False
 
         pw = sync_playwright().start()
-        browser = pw.chromium.launch(
-            headless=headless,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        context = browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            user_agent=_get_random_desktop_ua(),
-        )
-        page = context.new_page()
-        if _has_stealth:
-            try:
-                stealth_sync(page)
-            except TypeError:
-                # Если stealth_sync это модуль, а не функция — пропускаем
-                logger.warning("playwright_stealth: не удалось применить stealth, продолжаем без него")
         try:
-            yield browser, page
-        finally:
-            for cleanup_fn in [lambda: context.close(), lambda: browser.close(), lambda: pw.stop()]:
+            browser = pw.chromium.launch(
+                headless=headless,
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            try:
+                context = browser.new_context(
+                    viewport={"width": 1920, "height": 1080},
+                    user_agent=_get_random_desktop_ua(),
+                )
                 try:
-                    cleanup_fn()
+                    page = context.new_page()
+                    if _has_stealth:
+                        try:
+                            stealth_sync(page)
+                        except TypeError:
+                            # Если stealth_sync это модуль, а не функция — пропускаем
+                            logger.warning("playwright_stealth: не удалось применить stealth, продолжаем без него")
+                    yield browser, page
+                finally:
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+            finally:
+                try:
+                    browser.close()
                 except Exception:
                     pass
+        finally:
+            pw.stop()
 else:
     @contextmanager
     def playwright_session(headless: bool = True):

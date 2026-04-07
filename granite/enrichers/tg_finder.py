@@ -2,7 +2,7 @@
 import re
 import time
 import random
-from granite.utils import adaptive_delay, TRANSLIT_MAP, get_random_ua
+from granite.utils import adaptive_delay, TRANSLIT_MAP, get_random_ua, normalize_phone
 import requests
 from loguru import logger
 from granite.enrichers._tg_common import TG_MAX_RETRIES, TG_INITIAL_BACKOFF
@@ -50,8 +50,6 @@ def find_tg_by_phone(phone: str, config: dict) -> str | None:
         return None
 
     # Нормализация телефона перед построением URL
-    from granite.utils import normalize_phone
-
     norm_phone = normalize_phone(phone)
     if not norm_phone or len(norm_phone) != 11:
         return None

@@ -56,8 +56,11 @@ class JspravScraper(BaseScraper):
         if self._city_lower.startswith(loc_lower) or loc_lower.startswith(
             self._city_lower
         ):
-            return True
-        if len(loc_lower) > 4:
+            shorter = min(len(self._city_lower), len(loc_lower))
+            longer = max(len(self._city_lower), len(loc_lower))
+            if shorter * 100 / longer >= 70:
+                return True
+        if len(loc_lower) >= 3:
             stem = loc_lower.rstrip("аеоуияью")
             if stem and stem == self._city_lower.rstrip("аеоуияью"):
                 return True
@@ -147,8 +150,8 @@ class JspravScraper(BaseScraper):
                         try:
                             lat = float(c["geo"].get("latitude", 0))
                             lon = float(c["geo"].get("longitude", 0))
-                            if lat and lon:
-                                geo = (lat, lon)
+                            if lat is not None and lon is not None:
+                                geo = [lat, lon]
                         except (ValueError, TypeError):
                             pass
 
@@ -289,9 +292,10 @@ class JspravScraper(BaseScraper):
                     continue  # не теряем набранные компании при ошибке страницы
 
             # Предупреждение если не добрали до саммари
-            if declared_total is not None and len(companies) < declared_total:
+            cat_count = len(companies) - companies_before
+            if declared_total is not None and cat_count < declared_total:
                 logger.warning(
-                    f"  JSprav: получено {len(companies)} из {declared_total} для {self.city}. "
+                    f"  JSprav: получено {cat_count} из {declared_total} для {self.city}/{category}. "
                     f"jsprav.ru отдаёт только {last_page_num} стр. через статическую пагинацию. "
                     f"Остальные компании недоступны без JavaScript."
                 )

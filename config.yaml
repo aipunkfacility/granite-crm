@@ -448,7 +448,7 @@ export_presets:
   full_dump:
     description: "Все обогащённые компании"
     filters: "1=1"
-    format: "json"
+    format: "csv"
 
 # ===== Логирование =====
 logging:

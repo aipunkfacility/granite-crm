@@ -52,8 +52,11 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
         block = blocks[key]
         if len(block) >= _SMALL_BLOCK_THRESHOLD:
             continue
-        # Check adjacent blocks only
-        for adj_key in (sorted_keys[idx - 1], sorted_keys[idx + 1]) if idx + 1 < len(sorted_keys) else (sorted_keys[idx - 1],):
+        # Only compare forward to avoid duplicate mirrored pairs
+        adj_candidates = []
+        if idx + 1 < len(sorted_keys):
+            adj_candidates.append(sorted_keys[idx + 1])
+        for adj_key in adj_candidates:
             if adj_key not in blocks or adj_key == key:
                 continue
             adj_block = blocks[adj_key]

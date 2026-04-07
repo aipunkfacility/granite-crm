@@ -39,7 +39,7 @@ class FirecrawlScraper(BaseScraper):
             try:
                 with open(outfile, "r", encoding="utf-8") as f:
                     return json.load(f)
-            except FileNotFoundError:
+            except (FileNotFoundError, json.JSONDecodeError):
                 pass
             # Если файл не создался — попробуем распарсить stdout
             stdout = result.stdout.strip()

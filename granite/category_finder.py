@@ -73,9 +73,9 @@ def _search_city(city: str) -> dict | None:
             # Проверяем минимум 6 общих символов или начало
             if city_lower[:6] == first_name_lower[:6]:
                 return first
-        elif city_lower.startswith(first_name_lower) or first_name_lower.startswith(
+        elif len(first_name_lower) >= 3 and (city_lower.startswith(first_name_lower) or first_name_lower.startswith(
             city_lower
-        ):
+        )):
             return first
 
         return None
@@ -146,34 +146,38 @@ def _save_cache(cache: dict):
         yaml.dump(cache, f, allow_unicode=True, default_flow_style=False)
 
 
+_cache_lock = threading.Lock()
+
+
 def discover_categories(cities: list[str], config: dict) -> dict:
     """Поиск поддоменов и категорий для городов области."""
-    cache = _load_cache()
-    found_any = False
+    with _cache_lock:
+        cache = _load_cache()
+        found_any = False
 
-    for city in cities:
-        logger.info(f"  Поиск категорий: {city}")
+        for city in cities:
+            logger.info(f"  Поиск категорий: {city}")
 
-        cached = cache.get("jsprav", {}).get(city, [])
-        if cached:
-            logger.info(f"    jsprav {city}: из кэша — {cached}")
-            continue
+            cached = cache.get("jsprav", {}).get(city, [])
+            if cached:
+                logger.info(f"    jsprav {city}: из кэша — {cached}")
+                continue
 
-        result = find_jsprav(city, config)
-        if result.get("categories"):
-            cache.setdefault("jsprav", {})[city] = result["categories"]
-            cache.setdefault("_subdomains", {}).setdefault("jsprav", {})[city] = result[
-                "subdomain"
-            ]
-            found_any = True
+            result = find_jsprav(city, config)
+            if result.get("categories"):
+                cache.setdefault("jsprav", {})[city] = result["categories"]
+                cache.setdefault("_subdomains", {}).setdefault("jsprav", {})[city] = result[
+                    "subdomain"
+                ]
+                found_any = True
 
-    if found_any:
-        _save_cache(cache)
-        logger.info(f"Кэш категорий обновлён: {CACHE_PATH}")
-    else:
-        logger.info("Кэш категорий не изменён")
+        if found_any:
+            _save_cache(cache)
+            logger.info(f"Кэш категорий обновлён: {CACHE_PATH}")
+        else:
+            logger.info("Кэш категорий не изменён")
 
-    return cache
+        return cache
 
 
 def get_categories(

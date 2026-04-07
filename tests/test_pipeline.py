@@ -1,7 +1,7 @@
 # tests/test_pipeline.py — Тесты пайплайна с моками БД и скреперов
 import pytest
 from unittest.mock import patch, MagicMock
-from granite.database import Database, EnrichedCompanyRow, CompanyRow, RawCompanyRow
+from granite.database import EnrichedCompanyRow
 from granite.exporters.csv import CsvExporter
 from granite.exporters.markdown import MarkdownExporter
 

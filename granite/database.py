@@ -13,7 +13,7 @@ from sqlalchemy import (
     event,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import yaml
 from loguru import logger
@@ -34,7 +34,7 @@ class RawCompanyRow(Base):
     emails = Column(JSON, default=list)  # list[str]
     geo = Column(String, nullable=True)  # "lat,lon"
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
-    scraped_at = Column(DateTime, default=lambda: datetime.utcnow())
+    scraped_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     city = Column(String, nullable=False, index=True)
 
     def __repr__(self):
@@ -57,8 +57,8 @@ class CompanyRow(Base):
     segment = Column(String, default="Не определено")
     needs_review = Column(Boolean, default=False)
     review_reason = Column(String, default="")
-    created_at = Column(DateTime, default=lambda: datetime.utcnow())
-    updated_at = Column(DateTime, default=lambda: datetime.utcnow())
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
@@ -90,8 +90,8 @@ class EnrichedCompanyRow(Base):
 
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.utcnow(),
-        onupdate=lambda: datetime.utcnow(),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     def to_dict(self):

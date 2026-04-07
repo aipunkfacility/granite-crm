@@ -32,7 +32,10 @@ class JspravPlaywrightScraper(BaseScraper):
         if city_lower in self.subdomain_map:
             return self.subdomain_map[city_lower]
 
-        return slugify(self.city)
+        base = slugify(self.city)
+        if base.endswith("iy"):
+            base = base[:-2] + "ij"
+        return base
 
     def scrape(self) -> list[RawCompany]:
         if not self.page:

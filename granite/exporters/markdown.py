@@ -6,6 +6,13 @@ from granite.exporters.csv import _apply_preset_filter
 from granite.utils import sanitize_filename
 
 
+def _capitalize_city(name: str) -> str:
+    """Capitalize city name preserving hyphens (Санкт-Петербург, not Санкт-петербург)."""
+    if not name:
+        return name
+    return name[:1].upper() + name[1:]
+
+
 def _escape_md(text: str) -> str:
     """Экранирование markdown-символов для таблиц."""
     if not text:
@@ -73,7 +80,7 @@ class MarkdownExporter:
             segments = _group_by_segment(records)
 
             with open(filepath, "w", encoding="utf-8") as f:
-                f.write(f"# База мастерских: {city.capitalize()}\n\n")
+                f.write(f"# База мастерских: {_capitalize_city(city)}\n\n")
                 f.write(f"**Всего компаний:** {len(records)}\n\n")
 
                 for seg in ["A", "B", "C", "D"]:
@@ -102,7 +109,7 @@ class MarkdownExporter:
             segments = _group_by_segment(records)
 
             with open(filepath, "w", encoding="utf-8") as f:
-                f.write(f"# База мастерских: {city.capitalize()} — {preset_name}\n\n")
+                f.write(f"# База мастерских: {_capitalize_city(city)} — {preset_name}\n\n")
                 if description:
                     f.write(f"**Фильтр:** {description}\n\n")
                 f.write(f"**Всего компаний:** {len(records)}\n\n")

@@ -46,17 +46,11 @@ class EnrichmentPhase:
 
         with self.db.session_scope() as session:
             if only_new:
-                from sqlalchemy import select
-
                 # SQL subquery: NOT IN (SELECT id FROM enriched_companies WHERE city=...)
-                enriched_subq = (
-                    select(EnrichedCompanyRow.id)
-                    .where(EnrichedCompanyRow.city == city)
-                )
-                stmt = select(CompanyRow).where(
-                    CompanyRow.city == city, CompanyRow.id.notin_(enriched_subq)
-                )
-                companies = session.execute(stmt).scalars().all()
+                enriched_ids = session.query(EnrichedCompanyRow.id).filter_by(city=city).subquery()
+                companies = session.query(CompanyRow).filter(
+                    CompanyRow.city == city, CompanyRow.id.notin_(enriched_ids)
+                ).all()
 
                 # Подсчёт enriched для информационного сообщения
                 enriched_count = session.query(EnrichedCompanyRow.id).filter_by(city=city).count()
@@ -185,9 +179,9 @@ class EnrichmentPhase:
                 erow.tg_trust = tg_trust
 
                 session.merge(erow)
-                count += 1
-                if count % 50 == 0:
+                if count % 50 == 49:
                     session.commit()
+                count += 1
 
                 parts = []
                 if erow.messengers:
@@ -286,7 +280,7 @@ class EnrichmentPhase:
                     found += 1
                     logger.info(f"  ✓ {company_name}: добавлено {', '.join(updated)}")
                 else:
-                    logger.debug(f"  — {company_name}: ничего нового не найдено")
+                    logger.debug(f"  — {company_name}: ничего нового")
 
                 session.commit()
             except Exception as e:
@@ -418,5 +412,8 @@ class EnrichmentPhase:
         return updated
 
     def _is_enabled(self, source: str) -> bool:
-        """Проверить включён ли источник в config.yaml."""
+        """Проверить включён ли источник в config.yaml.
+
+        NOTE: This duplicates RegionResolver.is_source_enabled() — keep in sync.
+        """
         return self.config.get("sources", {}).get(source, {}).get("enabled", True)

@@ -5,9 +5,9 @@
 устранения дублирования JSON-парсинга и возможности мокирования в тестах.
 """
 
+import re
 import subprocess
 import json
-import re
 from loguru import logger
 from granite.utils import extract_emails
 
@@ -25,12 +25,27 @@ class FirecrawlClient:
 
     # ── JSON-парсинг stdout (устраняет дублирование между search и scrape) ──
 
+    def _extract_json(self, text: str) -> str | None:
+        """Extract first balanced JSON object from text."""
+        start = text.find('{')
+        if start == -1:
+            return None
+        depth = 0
+        for i in range(start, len(text)):
+            if text[i] == '{':
+                depth += 1
+            elif text[i] == '}':
+                depth -= 1
+                if depth == 0:
+                    return text[start:i + 1]
+        return None
+
     def _parse_json_output(self, stdout: str) -> dict | None:
         """Парсит stdout firecrawl CLI как JSON.
 
         Пробует:
         1. Распарсить весь stdout как JSON
-        2. Найти первый {...} блок через regex с балансом скобок
+        2. Найти первый {...} блок через балансировку скобок
         """
         stdout = stdout.strip()
         if not stdout:
@@ -39,11 +54,10 @@ class FirecrawlClient:
         try:
             return json.loads(stdout)
         except json.JSONDecodeError:
-            # Нежадный поиск с балансом скобок
-            m = re.search(r"\{(?:[^{}]|\{[^{}]*\})*\}", stdout)
-            if m:
+            json_str = self._extract_json(stdout)
+            if json_str:
                 try:
-                    return json.loads(m.group())
+                    return json.loads(json_str)
                 except json.JSONDecodeError:
                     pass
             return None

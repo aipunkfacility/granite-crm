@@ -68,18 +68,13 @@ def validate_phone(phone: str) -> bool:
 
 def validate_phones(phones: list[str]) -> list[str]:
     """Оставляем только валидные и нормализованные номера."""
-    result = []
+    seen: set[str] = set()
+    unique = []
     for p in phones:
         norm = normalize_phone(p)
-        if norm and validate_phone(norm):
-            result.append(norm)
-    # Дедупликация с сохранением порядка
-    seen: set = set()
-    unique = []
-    for p in result:
-        if p not in seen:
-            seen.add(p)
-            unique.append(p)
+        if norm and validate_phone(norm) and norm not in seen:
+            seen.add(norm)
+            unique.append(norm)
     return unique
 
 
