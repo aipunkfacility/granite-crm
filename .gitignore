@@ -1,0 +1,14 @@
+data/
+*.db
+*.db-wal
+*.db-shm
+__pycache__/
+*.pyc
+.env
+.venv/
+dist/
+build/
+*.egg-info/
+.idea/
+.vscode/
+*.log

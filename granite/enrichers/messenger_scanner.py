@@ -21,12 +21,15 @@ class MessengerScanner:
 
         base_url_clean = base_url.rstrip("/")
 
+        html = None
+        contacts_url = None
+
         # 1. Сканируем главную страницу
         try:
             html = fetch_page(base_url_clean + "/", timeout=10)
             if html:
                 self._extract_social_links(html, found_messengers)
-        except (requests.RequestException, Exception) as e:
+        except (RequestException, Exception) as e:
             logger.debug(f"MessengerScanner scan_website main page error: {e}")
 
         # Если уже нашли telegram — скорее всего этого достаточно
@@ -45,7 +48,10 @@ class MessengerScanner:
                     for link in extra_links:
                         if link == contacts_url:
                             continue
-                        if "telegram" in found_messengers and "whatsapp" in found_messengers:
+                        if (
+                            "telegram" in found_messengers
+                            and "whatsapp" in found_messengers
+                        ):
                             break
                         try:
                             ehtml = fetch_page(link, timeout=10)
@@ -70,22 +76,28 @@ class MessengerScanner:
             r'href=["\']([^"\']*(?:contact|kontakt|kontakty|kontaktyi|about|o-nas|o_kompanii)[^"\']*)["\']',
         ]
 
-        soup_pattern = re.compile(r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', re.DOTALL | re.IGNORECASE)
+        soup_pattern = re.compile(
+            r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+            re.DOTALL | re.IGNORECASE,
+        )
 
         found_links = []
         seen_hrefs = set()
 
         for match in soup_pattern.finditer(html):
             href = match.group(1)
-            text = re.sub(r'<[^>]+>', '', match.group(2)).strip().lower()
+            text = re.sub(r"<[^>]+>", "", match.group(2)).strip().lower()
 
-            if href.startswith(('#', 'javascript:', 'tel:', 'mailto:')):
+            if href.startswith(("#", "javascript:", "tel:", "mailto:")):
                 continue
             if href in seen_hrefs:
                 continue
 
             # По тексту ссылки
-            if any(kw in text for kw in ['контакт', 'связ', 'телефон', 'обратн', 'написать']):
+            if any(
+                kw in text
+                for kw in ["контакт", "связ", "телефон", "обратн", "написать"]
+            ):
                 full_url = urljoin(base_url + "/", href)
                 found_links.append(full_url)
                 seen_hrefs.add(href)
@@ -93,7 +105,9 @@ class MessengerScanner:
 
             # По URL
             href_lower = href.lower()
-            if any(p in href_lower for p in ['contact', 'kontakt', 'kontakty', 'kontaktyi']):
+            if any(
+                p in href_lower for p in ["contact", "kontakt", "kontakty", "kontaktyi"]
+            ):
                 full_url = urljoin(base_url + "/", href)
                 found_links.append(full_url)
                 seen_hrefs.add(href)
@@ -111,7 +125,7 @@ class MessengerScanner:
 
         for match in link_pattern.finditer(html):
             href = match.group(1)
-            if href.startswith(('#', 'javascript:', 'tel:', 'mailto:')):
+            if href.startswith(("#", "javascript:", "tel:", "mailto:")):
                 continue
             href_lower = href.lower()
             if href_lower in seen:
@@ -123,11 +137,20 @@ class MessengerScanner:
                 continue
 
             # Интересующие страницы
-            if any(kw in href_lower for kw in [
-                'about', 'o-nas', 'o_kompanii',
-                'production', 'proizvodstvo', 'catalog', 'katalog',
-                'uslugi', 'services',
-            ]):
+            if any(
+                kw in href_lower
+                for kw in [
+                    "about",
+                    "o-nas",
+                    "o_kompanii",
+                    "production",
+                    "proizvodstvo",
+                    "catalog",
+                    "katalog",
+                    "uslugi",
+                    "services",
+                ]
+            ):
                 links.append(full_url)
                 seen.add(href_lower)
 
@@ -139,18 +162,27 @@ class MessengerScanner:
             return
 
         # Telegram: t.me, telegram.me
-        for m in re.finditer(r'href=["\'](https?://(?:t\.me|telegram\.me)/([^"\'\s]+))["\']', html):
+        for m in re.finditer(
+            r'href=["\'](https?://(?:t\.me|telegram\.me)/([^"\'\s]+))["\']', html
+        ):
             link = m.group(1).rstrip("/")
-            if not any(kw in link.lower() for kw in ['share', 'joinchat']):  # пропускаем кнопки "поделиться"
+            if not any(
+                kw in link.lower() for kw in ["share", "joinchat"]
+            ):  # пропускаем кнопки "поделиться"
                 if "telegram" not in result:
                     result["telegram"] = link
 
         # WhatsApp: wa.me, api.whatsapp.com
-        for m in re.finditer(r'href=["\'](https?://(?:wa\.me|api\.whatsapp\.com/send\?phone=[^"\'\s]+))["\']', html):
+        for m in re.finditer(
+            r'href=["\'](https?://(?:wa\.me|api\.whatsapp\.com/send\?phone=[^"\'\s]+))["\']',
+            html,
+        ):
             if "whatsapp" not in result:
                 result["whatsapp"] = m.group(1)
 
         # VK
-        for m in re.finditer(r'href=["\'](https?://(?:www\.)?vk\.com/([^"\'\s]+))["\']', html):
+        for m in re.finditer(
+            r'href=["\'](https?://(?:www\.)?vk\.com/([^"\'\s]+))["\']', html
+        ):
             if "vk" not in result:
                 result["vk"] = m.group(1)

@@ -2,10 +2,12 @@
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 
+
 class CheckpointManager:
     """Управление стадиями и возобновлением.
     Смотрит в базу и понимает с какого места продолжить.
     """
+
     def __init__(self, db: Database):
         self.db = db
 
@@ -15,20 +17,22 @@ class CheckpointManager:
         """
         session = self.db.get_session()
         try:
-            from database import RawCompanyRow, CompanyRow
-            
-            enriched_count = session.query(EnrichedCompanyRow).filter_by(city=city).count()
+            from granite.database import RawCompanyRow, CompanyRow
+
+            enriched_count = (
+                session.query(EnrichedCompanyRow).filter_by(city=city).count()
+            )
             if enriched_count > 0:
                 return "enriched"
-                
+
             dedup_count = session.query(CompanyRow).filter_by(city=city).count()
             if dedup_count > 0:
                 return "deduped"
-                
+
             raw_count = session.query(RawCompanyRow).filter_by(city=city).count()
             if raw_count > 0:
                 return "scraped"
-                
+
             return "start"
         except Exception as e:
             logger.error(f"Ошибка проверки чекпоинта: {e}")
@@ -40,7 +44,8 @@ class CheckpointManager:
         """Полная очистка всех данных по городу (при --force)."""
         session = self.db.get_session()
         try:
-            from database import RawCompanyRow, CompanyRow
+            from granite.database import RawCompanyRow, CompanyRow
+
             session.query(EnrichedCompanyRow).filter_by(city=city).delete()
             session.query(CompanyRow).filter_by(city=city).delete()
             session.query(RawCompanyRow).filter_by(city=city).delete()

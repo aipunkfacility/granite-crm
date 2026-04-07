@@ -13,7 +13,9 @@ class DgisScraper(BaseScraper):
         super().__init__(config, city)
         self.page = playwright_page
         self.source_config = config.get("sources", {}).get("dgis", {})
-        self.search_category = self.source_config.get("search_category", "изготовление памятников")
+        self.search_category = self.source_config.get(
+            "search_category", "изготовление памятников"
+        )
 
     def scrape(self) -> list[RawCompany]:
         if not self.page:
@@ -21,7 +23,8 @@ class DgisScraper(BaseScraper):
             return []
 
         companies = []
-        from utils import slugify
+        from granite.utils import slugify
+
         city_slug = slugify(self.city)
         url = f"https://2gis.ru/{city_slug}/search/{quote(self.search_category)}"
         logger.info(f"  2GIS: {url}")
@@ -65,11 +68,17 @@ class DgisScraper(BaseScraper):
                     if link_elem:
                         href = link_elem.get_attribute("href")
                         if href:
-                            source_url = f"https://2gis.ru{href}" if href.startswith("/") else href
+                            source_url = (
+                                f"https://2gis.ru{href}"
+                                if href.startswith("/")
+                                else href
+                            )
 
                     # 2GIS часто показывает VK/Telegram прямо в карточке
                     card_messengers: dict = {}
-                    for a_tag in card.query_selector_all("a[href*='vk.com'], a[href*='t.me'], a[href*='instagram.com']"):
+                    for a_tag in card.query_selector_all(
+                        "a[href*='vk.com'], a[href*='t.me'], a[href*='instagram.com']"
+                    ):
                         href = a_tag.get_attribute("href") or ""
                         if "vk.com" in href:
                             card_messengers["vk"] = href
@@ -78,17 +87,19 @@ class DgisScraper(BaseScraper):
                         elif "instagram.com" in href:
                             card_messengers["instagram"] = href
 
-                    companies.append(RawCompany(
-                        source=Source.DGIS,
-                        source_url=source_url,
-                        name=name,
-                        phones=phones,
-                        address_raw=address,
-                        website=None,
-                        emails=[],
-                        city=self.city,
-                        messengers=card_messengers,
-                    ))
+                    companies.append(
+                        RawCompany(
+                            source=Source.DGIS,
+                            source_url=source_url,
+                            name=name,
+                            phones=phones,
+                            address_raw=address,
+                            website=None,
+                            emails=[],
+                            city=self.city,
+                            messengers=card_messengers,
+                        )
+                    )
                 except Exception as e:
                     logger.debug(f"  2GIS: пропущена карточка (ошибка: {e})")
                     continue

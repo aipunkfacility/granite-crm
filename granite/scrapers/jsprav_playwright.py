@@ -18,17 +18,21 @@ class JspravPlaywrightScraper(BaseScraper):
         self.page = playwright_page
         self.source_config = config.get("sources", {}).get("jsprav", {})
         self.subdomain_map = self.source_config.get("subdomain_map", {})
-        self.categories = self.source_config.get("categories", [
-            "izgotovlenie-pamyatnikov",
-            "pamyatniki-i-nadgrobiya",
-        ])
+        self.categories = self.source_config.get(
+            "categories",
+            [
+                "izgotovlenie-pamyatnikov",
+                "pamyatniki-i-nadgrobiya",
+            ],
+        )
 
     def _get_subdomain(self) -> str:
         city_lower = self.city.lower()
         if city_lower in self.subdomain_map:
             return self.subdomain_map[city_lower]
-            
-        from utils import slugify
+
+        from granite.utils import slugify
+
         return slugify(self.city)
 
     def scrape(self) -> list[RawCompany]:
@@ -72,7 +76,8 @@ class JspravPlaywrightScraper(BaseScraper):
                     try:
                         company_url = (
                             f"https://{subdomain}.jsprav.ru{href}"
-                            if href.startswith("/") else href
+                            if href.startswith("/")
+                            else href
                         )
                         self.page.goto(company_url, timeout=20000)
                         self.page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -99,24 +104,28 @@ class JspravPlaywrightScraper(BaseScraper):
 
                         # Мессенджеры
                         messengers: dict = {}
-                        for a_tag in self.page.query_selector_all("a[href*='t.me'], a[href*='vk.com']"):
+                        for a_tag in self.page.query_selector_all(
+                            "a[href*='t.me'], a[href*='vk.com']"
+                        ):
                             a_href = a_tag.get_attribute("href") or ""
                             if "t.me" in a_href:
                                 messengers["telegram"] = a_href
                             elif "vk.com" in a_href:
                                 messengers["vk"] = a_href
 
-                        companies.append(RawCompany(
-                            source=Source.JSPRAV_PW,
-                            source_url=company_url,
-                            name=name,
-                            phones=phones,
-                            address_raw=address,
-                            website=website,
-                            emails=emails,
-                            city=self.city,
-                            messengers=messengers,
-                        ))
+                        companies.append(
+                            RawCompany(
+                                source=Source.JSPRAV_PW,
+                                source_url=company_url,
+                                name=name,
+                                phones=phones,
+                                address_raw=address,
+                                website=website,
+                                emails=emails,
+                                city=self.city,
+                                messengers=messengers,
+                            )
+                        )
 
                         # Возвращаемся к списку
                         self.page.goto(base_url, timeout=20000)
