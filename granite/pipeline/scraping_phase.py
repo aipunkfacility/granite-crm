@@ -35,7 +35,7 @@ class ScrapingPhase:
         """
         self.config = config
         self.db = db
-        self.region = region_resolver
+        self.region_resolver = region_resolver
 
     def run(self, city: str, region_cities: list[str] | None = None) -> int:
         """Запустить фазу 0+1 для города.
@@ -51,11 +51,11 @@ class ScrapingPhase:
             region_cities = [city]
 
         # Показываем какие источники включены
-        active = self.region.get_active_sources(_STANDARD_SOURCES)
+        active = self.region_resolver.get_active_sources(_STANDARD_SOURCES)
         print_status(f"Источники: {', '.join(active)}", "info")
 
         # ФАЗА 0: Поиск рабочих категорий в справочниках
-        if self.region.is_source_enabled("jsprav"):
+        if self.region_resolver.is_source_enabled("jsprav"):
             print_status("Поиск категорий в справочниках...", "info")
             cat_cache = discover_categories(region_cities, self.config)
         else:
@@ -125,28 +125,28 @@ class ScrapingPhase:
         firmsru_cats = get_categories(cat_cache, "firmsru", rc)
 
         # 1. Быстрые скреперы (без Playwright)
-        if self.region.is_source_enabled("jsprav"):
+        if self.region_resolver.is_source_enabled("jsprav"):
             jsprav = JspravScraper(
                 self.config, rc, categories=jsprav_cats, subdomain=jsprav_sub
             )
             city_results.extend(jsprav.run())
 
-        if self.region.is_source_enabled("firecrawl"):
+        if self.region_resolver.is_source_enabled("firecrawl"):
             firecrawl = FirecrawlScraper(self.config, rc)
             city_results.extend(firecrawl.run())
 
         # 2. Playwright скреперы (NOT parallelizable — shared browser session)
         pw_sources = ["dgis", "yell", "firmsru"]
-        if any(self.region.is_source_enabled(s) for s in pw_sources):
+        if any(self.region_resolver.is_source_enabled(s) for s in pw_sources):
             with playwright_session(headless=True) as (browser, page):
                 if page:
-                    if self.region.is_source_enabled("dgis"):
+                    if self.region_resolver.is_source_enabled("dgis"):
                         dgis = DgisScraper(self.config, rc, page)
                         city_results.extend(dgis.run())
-                    if self.region.is_source_enabled("yell"):
+                    if self.region_resolver.is_source_enabled("yell"):
                         yell = YellScraper(self.config, rc, page, categories=yell_cats)
                         city_results.extend(yell.run())
-                    if self.region.is_source_enabled("firmsru"):
+                    if self.region_resolver.is_source_enabled("firmsru"):
                         firmsru = FirmsruScraper(
                             self.config, rc, page, categories=firmsru_cats
                         )

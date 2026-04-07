@@ -46,26 +46,26 @@ class EnrichmentPhase:
 
         with self.db.session_scope() as session:
             if only_new:
-                enriched_ids = {
-                    r[0]
-                    for r in session.query(EnrichedCompanyRow.id)
-                    .filter_by(city=city)
-                    .all()
-                }
-                if enriched_ids:
-                    from sqlalchemy import select
+                from sqlalchemy import select
 
-                    stmt = select(CompanyRow).where(
-                        CompanyRow.city == city, CompanyRow.id.notin_(enriched_ids)
-                    )
-                    companies = session.execute(stmt).scalars().all()
-                else:
-                    companies = session.query(CompanyRow).filter_by(city=city).all()
+                # SQL subquery: NOT IN (SELECT id FROM enriched_companies WHERE city=...)
+                enriched_subq = (
+                    select(EnrichedCompanyRow.id)
+                    .where(EnrichedCompanyRow.city == city)
+                )
+                stmt = select(CompanyRow).where(
+                    CompanyRow.city == city, CompanyRow.id.notin_(enriched_subq)
+                )
+                companies = session.execute(stmt).scalars().all()
+
+                # Подсчёт enriched для информационного сообщения
+                enriched_count = session.query(EnrichedCompanyRow.id).filter_by(city=city).count()
+
                 if not companies:
                     print_status("Нет новых компаний для обогащения", "info")
                     return 0
                 print_status(
-                    f"Новых компаний: {len(companies)} (всего enriched: {len(enriched_ids)})",
+                    f"Новых компаний: {len(companies)} (всего enriched: {enriched_count})",
                     "info",
                 )
             else:

@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urlunparse
 from bs4 import BeautifulSoup
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phone, normalize_phones, extract_domain, slugify
+from granite.utils import normalize_phone, normalize_phones, extract_domain, slugify, get_random_ua
 from loguru import logger
 
 JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
@@ -165,7 +165,7 @@ class JspravScraper(BaseScraper):
         companies = []
         subdomain = self._get_subdomain()
         ua = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": get_random_ua()
         }
 
         for category in self.categories:

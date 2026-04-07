@@ -51,7 +51,7 @@ def test_classifier_max_score(classifier):
     }
     
     score = classifier.calculate_score(company)
-    # 10(web) + 15(bitrix) + 5(marquiz) + 15(tg) + 15(tg_trust) + 10(wa) + 5(2_phones) + 5(email) + 15(network) = 90
+    # 10(web) + 15(bitrix) + 5(marquiz) + 15(tg) + 15(tg_trust) + 10(wa) + 5(2_phones) + 5(email) + 15(network) = 95
     assert score == 95 # 10+15+5+15+15+10+5+5+15 = 95
     segment = classifier.determine_segment(score)
     assert segment == "A"

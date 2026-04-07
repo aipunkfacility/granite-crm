@@ -122,7 +122,8 @@ def extract_domain(url: str) -> str | None:
         parsed = urlparse(url if "://" in url else f"https://{url}")
         domain = parsed.netloc.lower().replace("www.", "")
         return domain if domain else None
-    except Exception:
+    except Exception as e:
+        logger.debug(f"extract_domain failed for '{url}': {e}")
         return None
 
 
@@ -230,7 +231,8 @@ def check_site_alive(url: str) -> int | None:
         headers = {"User-Agent": get_random_ua()}
         r = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
         return r.status_code
-    except Exception:
+    except Exception as e:
+        logger.debug(f"check_site_alive failed for '{url}': {e}")
         return None
 
 

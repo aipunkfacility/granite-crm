@@ -31,84 +31,75 @@ def _build_csv_row(d: dict) -> dict:
 def _apply_preset_filter(query, preset_name: str, preset: dict):
     """Parse preset filter string and apply ORM filters to the query.
 
-    Maps SQL-like filter conditions from config.yaml to SQLAlchemy ORM filters:
-    - "telegram IS NOT NULL" → messengers JSON has "telegram" key
-    - "whatsapp IS NOT NULL" → messengers JSON has "whatsapp" key
-    - "email IS NOT NULL" → emails column is not empty/null
-    - "priority_score >= 50" → crm_score >= 50
-    - "has_production = 1" → not in current schema, skip
-    - "website_status = 200" → not stored directly, skip
-    - "1=1" → all records (full_dump)
+    Maps SQL-like filter conditions from config.yaml to SQLAlchemy ORM filters.
+    Uses a dispatch table instead of sequential regex matching.
     """
     filter_str = preset.get("filters", "")
     if not filter_str or filter_str.strip() == "1=1":
         return query
 
     conditions = re.split(r"\s+AND\s+", filter_str, flags=re.IGNORECASE)
+
+    # Lookup table: (regex_pattern) -> handler(query, match) -> query
+    def _filter_messenger_has(messenger_key: str):
+        """Returns a handler for IS NOT NULL on a messenger key."""
+        def handler(q, _m):
+            return q.filter(
+                EnrichedCompanyRow.messengers.cast(String).contains(f'"{messenger_key}"')
+            )
+        return handler
+
+    def _filter_messenger_null(messenger_key: str):
+        """Returns a handler for IS NULL on a messenger key."""
+        def handler(q, _m):
+            return q.filter(
+                ~EnrichedCompanyRow.messengers.cast(String).contains(f'"{messenger_key}"')
+            )
+        return handler
+
+    _FILTER_TABLE = [
+        (r"telegram\s+IS\s+NOT\s+NULL", _filter_messenger_has("telegram")),
+        (r"whatsapp\s+IS\s+NOT\s+NULL", _filter_messenger_has("whatsapp")),
+        (r"email\s+IS\s+NOT\s+NULL", lambda q, _m: q.filter(
+            EnrichedCompanyRow.emails.isnot(None),
+            EnrichedCompanyRow.emails != [],
+        )),
+        (r"priority_score\s*>=\s*(\d+)", lambda q, m: q.filter(
+            EnrichedCompanyRow.crm_score >= int(m.group(1))
+        )),
+        (r"telegram\s+IS\s+NULL", _filter_messenger_null("telegram")),
+        (r"whatsapp\s+IS\s+NULL", _filter_messenger_null("whatsapp")),
+    ]
+
+    # Unsupported conditions — log and skip
+    _SKIP_PATTERNS = [
+        r"has_production\s*=\s*\d+",
+        r"website_status\s*=\s*\d+",
+        r"has_portrait_service\s*=\s*\d+",
+        r"status\s*!=\s*'?\w+'?",
+    ]
+
     for cond in conditions:
         cond = cond.strip()
+        matched = False
 
-        # telegram IS NOT NULL
-        if re.match(r"telegram\s+IS\s+NOT\s+NULL", cond, re.IGNORECASE):
-            query = query.filter(
-                EnrichedCompanyRow.messengers.cast(String).contains('"telegram"')
-            )
+        for pattern, handler in _FILTER_TABLE:
+            m = re.match(pattern, cond, re.IGNORECASE)
+            if m:
+                query = handler(query, m)
+                matched = True
+                break
 
-        # whatsapp IS NOT NULL
-        elif re.match(r"whatsapp\s+IS\s+NOT\s+NULL", cond, re.IGNORECASE):
-            query = query.filter(
-                EnrichedCompanyRow.messengers.cast(String).contains('"whatsapp"')
-            )
+        if not matched:
+            for skip_pat in _SKIP_PATTERNS:
+                if re.match(skip_pat, cond, re.IGNORECASE):
+                    logger.debug(
+                        f"Preset '{preset_name}': '{cond}' not in current schema, skipping"
+                    )
+                    matched = True
+                    break
 
-        # email IS NOT NULL
-        elif re.match(r"email\s+IS\s+NOT\s+NULL", cond, re.IGNORECASE):
-            query = query.filter(
-                EnrichedCompanyRow.emails.isnot(None),
-                EnrichedCompanyRow.emails != [],  # SQLAlchemy handles JSON comparison
-            )
-
-        # priority_score >= N
-        elif m_score := re.match(r"priority_score\s*>=\s*(\d+)", cond, re.IGNORECASE):
-            threshold = int(m_score.group(1))
-            query = query.filter(EnrichedCompanyRow.crm_score >= threshold)
-
-        # has_production = 1 → not in current schema, skip
-        elif re.match(r"has_production\s*=\s*1", cond, re.IGNORECASE):
-            logger.debug(
-                f"Preset '{preset_name}': 'has_production = 1' not in current schema, skipping"
-            )
-
-        # website_status = N → not stored directly, skip
-        elif re.match(r"website_status\s*=\s*\d+", cond, re.IGNORECASE):
-            logger.debug(
-                f"Preset '{preset_name}': 'website_status' not stored directly, skipping"
-            )
-
-        # has_portrait_service = 0 → not in current schema, skip
-        elif re.match(r"has_portrait_service\s*=\s*\d+", cond, re.IGNORECASE):
-            logger.debug(
-                f"Preset '{preset_name}': 'has_portrait_service' not in current schema, skipping"
-            )
-
-        # status != 'contacted' → not in current enriched schema, skip
-        elif re.match(r"status\s*!=\s*'?\w+'?", cond, re.IGNORECASE):
-            logger.debug(
-                f"Preset '{preset_name}': 'status' filter not applicable to enriched table, skipping"
-            )
-
-        # telegram IS NULL
-        elif re.match(r"telegram\s+IS\s+NULL", cond, re.IGNORECASE):
-            query = query.filter(
-                ~EnrichedCompanyRow.messengers.cast(String).contains('"telegram"')
-            )
-
-        # whatsapp IS NULL
-        elif re.match(r"whatsapp\s+IS\s+NULL", cond, re.IGNORECASE):
-            query = query.filter(
-                ~EnrichedCompanyRow.messengers.cast(String).contains('"whatsapp"')
-            )
-
-        else:
+        if not matched:
             logger.warning(
                 f"Preset '{preset_name}': unknown filter condition: '{cond}', skipping"
             )

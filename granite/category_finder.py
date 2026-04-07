@@ -97,7 +97,8 @@ def _check_head(url: str, timeout: int = 8) -> bool:
             url, timeout=timeout, headers=DEFAULT_HEADERS, allow_redirects=True
         )
         return r.status_code == 200
-    except Exception:
+    except Exception as e:
+        logger.debug(f"_check_head failed for '{url}': {e}")
         return False
 
 
