@@ -1,31 +1,17 @@
 # exporters/markdown.py
 import os
-import re
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 from granite.exporters.csv import _apply_preset_filter
-
-
-def _sanitize_filename(name: str) -> str:
-    """Санитизация имени файла: убираем path traversal и небезопасные символы."""
-    if not name:
-        return "unnamed"
-    name = name.lower().strip()
-    name = re.sub(r"[^a-z0-9_\-]", "_", name)
-    name = re.sub(r"_+", "_", name)
-    name = name.strip("_")
-    return name[:100]
+from granite.utils import sanitize_filename
 
 
 def _escape_md(text: str) -> str:
-    """Экранирование markdown-символов для таблиц: | [ ] ( )"""
+    """Экранирование markdown-символов для таблиц."""
     if not text:
         return ""
-    text = text.replace("|", "\\|")
-    text = text.replace("[", "\\[")
-    text = text.replace("]", "\\]")
-    text = text.replace("(", "\\(")
-    text = text.replace(")", "\\)")
+    for ch in ('\\', '|', '[', ']', '(', ')', '*', '_', '#', '`', '~'):
+        text = text.replace(ch, '\\' + ch)
     return text
 
 
@@ -49,19 +35,17 @@ def _write_segment_table(f, seg_label: str, seg_records: list):
     f.write("| Название | Телефон | Сайт | Telegram | CMS | Score |\n")
     f.write("|----------|---------|------|----------|-----|-------|\n")
 
-    for r in sorted(seg_records, key=lambda x: x.crm_score, reverse=True):
+    for r in sorted(seg_records, key=lambda x: x.crm_score or 0, reverse=True):
         d = r.to_dict()
         phones = "<br>".join(d.get("phones", []))
 
         site = d.get("website") or ""
-        site_safe = _escape_md(site)
-        site_render = f"[Сайт]({site_safe})" if site else "-"
+        site_render = f"[Сайт]({site})" if site else "-"
 
         tg = d.get("messengers", {}).get("telegram", "")
-        tg_safe = _escape_md(tg)
-        tg_render = f"[TG]({tg_safe})" if tg else "-"
+        tg_render = f"[TG]({tg})" if tg else "-"
 
-        name = _escape_md(d["name"])
+        name = _escape_md(d.get("name", "Unknown"))
         f.write(
             f"| **{name}** | {phones} | {site_render} | {tg_render} | {d.get('cms', '-')} | {d.get('crm_score', 0)} |\n"
         )
@@ -83,7 +67,7 @@ class MarkdownExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            safe_city = _sanitize_filename(city)
+            safe_city = sanitize_filename(city)
             filepath = os.path.join(self.output_dir, f"{safe_city}_report.md")
 
             segments = _group_by_segment(records)
@@ -111,7 +95,7 @@ class MarkdownExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            safe_city = _sanitize_filename(city)
+            safe_city = sanitize_filename(city)
             filepath = os.path.join(self.output_dir, f"{safe_city}_{preset_name}.md")
 
             description = preset.get("description", "")

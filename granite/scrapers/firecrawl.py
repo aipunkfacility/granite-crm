@@ -36,9 +36,11 @@ class FirecrawlScraper(BaseScraper):
                 errors="replace",
                 timeout=120,
             )
-            if os.path.exists(outfile):
+            try:
                 with open(outfile, "r", encoding="utf-8") as f:
                     return json.load(f)
+            except FileNotFoundError:
+                pass
             # Если файл не создался — попробуем распарсить stdout
             stdout = result.stdout.strip()
             if stdout:
@@ -62,7 +64,8 @@ class FirecrawlScraper(BaseScraper):
             search_query = f"{query} {region_name}"
             logger.info(f"  Firecrawl поиск: {search_query}")
 
-            result = self._run(["search", search_query, "--limit", "10"])
+            search_limit = self.source_config.get("search_limit", 10)
+            result = self._run(["search", search_query, "--limit", str(search_limit)])
             if not result:
                 logger.warning("  Firecrawl: пустой ответ от search")
                 continue

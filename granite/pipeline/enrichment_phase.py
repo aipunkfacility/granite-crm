@@ -185,8 +185,9 @@ class EnrichmentPhase:
                 erow.tg_trust = tg_trust
 
                 session.merge(erow)
-                session.commit()
                 count += 1
+                if count % 50 == 0:
+                    session.commit()
 
                 parts = []
                 if erow.messengers:
@@ -201,6 +202,8 @@ class EnrichmentPhase:
                 session.rollback()
                 logger.error(f"Ошибка обогащения {c.name_best}: {e}")
 
+        # Final commit for any remaining records not flushed by the batch
+        session.commit()
         return count
 
     def _run_deep_enrich_for(
@@ -235,7 +238,7 @@ class EnrichmentPhase:
         needs_deep = []
         for r in records:
             has_site = bool(r.website)
-            has_email = bool(r.emails and len(r.emails) > 0)
+            has_email = bool(r.emails)
             if not has_site or not has_email:
                 needs_deep.append(r)
 
@@ -247,7 +250,7 @@ class EnrichmentPhase:
 
         total_msg = (
             f"Точечный поиск: {len(needs_deep)} компаний без сайта или email"
-            if not hasattr(records[0], "_sa_instance_state") or name_attr == "name_best"
+            if name_attr == "name_best"
             else f"Компаний для точечного поиска: {len(needs_deep)}"
         )
         print_status(total_msg, "info")
@@ -259,7 +262,7 @@ class EnrichmentPhase:
         found = 0
         for i, record in enumerate(needs_deep, 1):
             try:
-                company_name = getattr(record, name_attr, record.name_best)
+                company_name = getattr(record, name_attr, None) or getattr(record, "name_best", None) or getattr(record, "name", "")
                 query = f"{company_name} {city}"
 
                 erow = session.get(EnrichedCompanyRow, record.id)

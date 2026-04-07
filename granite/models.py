@@ -39,7 +39,7 @@ class RawCompany(BaseModel):
     address_raw: str = ""
     website: str | None = None
     emails: list[str] = Field(default_factory=list)
-    geo: tuple[float, float] | None = None  # (lat, lon)
+    geo: list[float] | None = None  # [lat, lon]
     messengers: dict[str, str] = Field(default_factory=dict)  # {"telegram": "...", "vk": "...", "whatsapp": "..."}
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     city: str = ""

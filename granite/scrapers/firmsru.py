@@ -8,12 +8,12 @@ from loguru import logger
 class FirmsruScraper(BaseScraper):
     """Скрепер firmsru.ru через Playwright. Страница передаётся извне."""
 
-    def __init__(self, config: dict, city: str, playwright_page=None, categories: list[str] = None):
+    def __init__(self, config: dict, city: str, playwright_page=None, categories: list[str] | None = None):
         super().__init__(config, city)
         self.page = playwright_page
         self.source_config = config.get("sources", {}).get("firmsru", {})
         self.categories = categories  # от category_finder
-        self.base_path = self.source_config.get("base_path", None)
+        self.base_path = self.source_config.get("base_path")
 
     def _build_urls(self) -> list[str]:
         """Список URL для парсинга."""
@@ -43,7 +43,6 @@ class FirmsruScraper(BaseScraper):
             logger.info(f"  Firmsru: {url}")
             try:
                 self.page.goto(url, timeout=30000, wait_until="domcontentloaded")
-                self.page.wait_for_load_state("domcontentloaded", timeout=20000)
 
                 for _ in range(5):
                     self.page.evaluate("window.scrollBy(0, 1000)")

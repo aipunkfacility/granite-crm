@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urlunparse
 from bs4 import BeautifulSoup
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phone, normalize_phones, extract_domain, slugify, get_random_ua
+from granite.utils import normalize_phone, normalize_phones, extract_domain, slugify, get_random_ua, adaptive_delay
 from loguru import logger
 
 JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
@@ -20,8 +20,8 @@ class JspravScraper(BaseScraper):
         self,
         config: dict,
         city: str,
-        categories: list[str] = None,
-        subdomain: str = None,
+        categories: list[str] | None = None,
+        subdomain: str | None = None,
     ):
         super().__init__(config, city)
         self.source_config = config.get("sources", {}).get("jsprav", {})
@@ -37,7 +37,7 @@ class JspravScraper(BaseScraper):
     def _get_subdomain(self) -> str:
         if self._cached_subdomain:
             return self._cached_subdomain
-        city_lower = self.city.lower()
+        city_lower = self._city_lower
         if city_lower in self.subdomain_map:
             return self.subdomain_map[city_lower]
         base = slugify(self.city)
@@ -104,7 +104,10 @@ class JspravScraper(BaseScraper):
         companies = []
         for script in soup.find_all("script", type="application/ld+json"):
             try:
-                data = json.loads(script.string)
+                raw = script.string
+                if not raw:
+                    continue
+                data = json.loads(raw)
                 if data.get("@type") != "ItemList":
                     continue
                 for item in data.get("itemListElement", []):
@@ -130,8 +133,14 @@ class JspravScraper(BaseScraper):
                         seen_urls.add(org_url)
 
                     same = c.get("sameAs", [])
-                    phones = normalize_phones(c.get("telephone", []))
-                    website = same[0] if same else None
+                    tel = c.get("telephone", [])
+                    if isinstance(tel, str):
+                        tel = [tel]
+                    phones = normalize_phones(tel)
+                    if isinstance(same, str):
+                        website = same if same else None
+                    else:
+                        website = same[0] if same else None
 
                     geo = None
                     if c.get("geo"):
@@ -170,6 +179,7 @@ class JspravScraper(BaseScraper):
 
         for category in self.categories:
             seen_urls = set()
+            companies_before = len(companies)
             declared_total = None
             url = f"https://{subdomain}.jsprav.ru/{category}/"
             empty_streak = 0
@@ -245,9 +255,9 @@ class JspravScraper(BaseScraper):
                     )
 
                     # Набрали declared total — стоп
-                    if declared_total is not None and len(companies) >= declared_total:
+                    if declared_total is not None and (len(companies) - companies_before) >= declared_total:
                         logger.info(
-                            f"  JSprav: набрано {len(companies)} из {declared_total} — стоп"
+                            f"  Jsprav: набрано {len(companies) - companies_before} из {declared_total} для категории {category} — стоп"
                         )
                         break
 
@@ -272,7 +282,7 @@ class JspravScraper(BaseScraper):
                         break
 
                     url = next_url
-                    time.sleep(1.0)
+                    adaptive_delay(0.8, 1.5)
 
                 except Exception as e:
                     logger.error(f"  JSprav error ({url}): {e}")

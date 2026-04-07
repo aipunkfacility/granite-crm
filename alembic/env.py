@@ -24,6 +24,8 @@ if config.config_file_name is not None:
 # Метаданные ORM — источник правды для autogenerate
 target_metadata = Base.metadata
 
+_VALID_SCHEMES = ("sqlite", "postgresql", "mysql", "oracle", "mssql")
+
 
 def get_database_url() -> str:
     """
@@ -37,15 +39,13 @@ def get_database_url() -> str:
     # 1. sqlalchemy.url из Alembic config (если задан программно — e.g. в тестах / CLI)
     configured_url = config.get_main_option("sqlalchemy.url")
     if configured_url:
-        valid_schemes = ("sqlite", "postgresql", "mysql", "oracle", "mssql")
-        if any(configured_url.startswith(s) for s in valid_schemes):
+        if any(configured_url.startswith(s) for s in _VALID_SCHEMES):
             return configured_url
 
     # 2. Переменная окружения (для CI/Docker)
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
-        valid_schemes = ("sqlite", "postgresql", "mysql", "oracle", "mssql")
-        if any(env_url.startswith(s) for s in valid_schemes):
+        if any(env_url.startswith(s) for s in _VALID_SCHEMES):
             return env_url
 
     # 3. Из config.yaml
@@ -91,6 +91,7 @@ def run_migrations_online() -> None:
     )
 
     # Устанавливаем PRAGMA через event — не ломает транзакции Alembic
+    # NOTE: This mirrors granite.database._set_sqlite_pragma. Keep in sync.
     if db_url.startswith("sqlite"):
 
         @event.listens_for(engine, "connect")

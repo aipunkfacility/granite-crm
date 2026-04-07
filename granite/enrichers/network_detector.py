@@ -44,23 +44,31 @@ class NetworkDetector:
                 logger.info("Нет компаний для анализа сетей.")
                 return
 
-            # ── Признак 1: домены ──
+            # ── Единый проход: подсчёт доменов/телефонов и кэши нормализации ──
             domain_count: dict[str, int] = {}
-            for _id, website, _phones in rows:
+            phone_count: dict[str, int] = {}
+            # Cache: row_id -> list of normalized phones (avoids double normalization)
+            cached_norm_phones: dict[int, list[str]] = {}
+            # Cache: row_id -> extracted domain
+            cached_domains: dict[int, str | None] = {}
+
+            for row_id, website, phones in rows:
+                # Domain counting
                 domain = extract_domain(website)
+                cached_domains[row_id] = domain
                 if domain:
                     domain_count[domain] = domain_count.get(domain, 0) + 1
 
-            network_domains = {d for d, cnt in domain_count.items() if cnt >= threshold}
-
-            # ── Признак 2: телефоны (нормализованные) ──
-            phone_count: dict[str, int] = {}
-            for _id, _website, phones in rows:
+                # Phone counting with normalization cache
+                norms: list[str] = []
                 for p in phones or []:
                     norm = _normalize_phone(p)
                     if norm:
+                        norms.append(norm)
                         phone_count[norm] = phone_count.get(norm, 0) + 1
+                cached_norm_phones[row_id] = norms
 
+            network_domains = {d for d, cnt in domain_count.items() if cnt >= threshold}
             network_phones = {p for p, cnt in phone_count.items() if cnt >= threshold}
 
             # Логируем что нашли
@@ -75,15 +83,15 @@ class NetworkDetector:
                 logger.info("Сетей не обнаружено.")
                 return
 
-            # ── Применяем флаги — один UPDATE через WHERE id IN (...) ──
+            # ── Применяем флаги — используем кэш вместо повторного вызова ──
             network_ids: list[int] = []
             for row_id, website, phones in rows:
-                domain = extract_domain(website)
+                domain = cached_domains[row_id]
                 is_net = domain in network_domains
 
                 if not is_net:
-                    for p in phones or []:
-                        if _normalize_phone(p) in network_phones:
+                    for norm in cached_norm_phones[row_id]:
+                        if norm in network_phones:
                             is_net = True
                             break
 

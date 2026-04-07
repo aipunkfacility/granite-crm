@@ -1,7 +1,6 @@
 # category_finder.py — поиск поддоменов jsprav через API
 # POST /api/cities/ с JSON {"q":"Город"} → [{name, region, url}]
 import yaml
-import json
 import re
 import threading
 import requests
@@ -87,7 +86,7 @@ def _search_city(city: str) -> dict | None:
 
 def _extract_subdomain(url: str) -> str:
     """http://kamyishin.jsprav.ru → kamyishin"""
-    m = re.search(r"https?://([a-z0-9-]+)\.jsprav\.ru", url)
+    m = re.search(r"https?://([a-z0-9-]+)\.jsprav\.ru", url, re.IGNORECASE)
     return m.group(1) if m else ""
 
 
@@ -185,7 +184,7 @@ def get_categories(
 
 
 def get_subdomain(
-    cache: dict, source: str, city: str, config: dict = None
+    cache: dict, source: str, city: str, config: dict | None = None
 ) -> str | None:
     subdomain = cache.get("_subdomains", {}).get(source, {}).get(city)
     if subdomain:

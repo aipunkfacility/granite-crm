@@ -42,8 +42,15 @@ def setup_logging(config: dict):
 
 def load_config(config_path: str | None = None):
     path = config_path or _config_path
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except FileNotFoundError:
+        print(f"Ошибка: файл конфигурации не найден: {path}")
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"Ошибка: некорректный YAML в файле конфигурации: {e}")
+        sys.exit(1)
 
 @app.command()
 def run(
@@ -61,7 +68,7 @@ def run(
     
     target_cities = []
     if city.lower() == "all":
-        target_cities = [c["name"] for c in config.get("cities", [])]
+        target_cities = [c["name"] for c in config.get("cities", []) if "name" in c]
     else:
         target_cities = [city]
         
@@ -80,7 +87,7 @@ def export(
     
     target_cities = []
     if city.lower() == "all":
-        target_cities = [c["name"] for c in config.get("cities", [])]
+        target_cities = [c["name"] for c in config.get("cities", []) if "name" in c]
     else:
         target_cities = [city]
 
@@ -121,7 +128,7 @@ def export_preset(
 
     target_cities = []
     if city.lower() == "all":
-        target_cities = [c["name"] for c in config.get("cities", [])]
+        target_cities = [c["name"] for c in config.get("cities", []) if "name" in c]
     else:
         target_cities = [city]
 
@@ -181,7 +188,13 @@ def db_downgrade(
         from alembic import command
 
         # Подтверждение для отката более чем на одну версию или до base
-        if revision in ("base", "0") or (revision.startswith("-") and int(revision) < -1):
+        try:
+            rev_num = int(revision)
+        except ValueError:
+            print(f"Ошибка: неверный формат revision: {revision}")
+            sys.exit(1)
+
+        if revision in ("base", "0") or (revision.startswith("-") and rev_num < -1):
             confirm = typer.confirm(f"Вы уверены, что хотите откатить до {revision}? Это может удалить данные.")
             if not confirm:
                 raise typer.Exit(0)

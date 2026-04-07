@@ -19,16 +19,16 @@ def _get_random_desktop_ua() -> str:
     которые сами по себе являются сигнатурой ботов.
     """
     uas = [
-        # Chrome на Windows
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        # Chrome на macOS
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-        # Firefox на Windows
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:122.0) Gecko/20100101 Firefox/122.0",
-        # Edge на Windows
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
+        # Chrome 134 на Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+        # Chrome 134 на macOS
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
+        # Firefox 135 на Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
+        # Edge 134 на Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0",
     ]
     return random.choice(uas)
 
@@ -47,12 +47,12 @@ if PLAYWRIGHT_AVAILABLE:
         """
         try:
             from playwright_stealth import stealth_sync
-            _has_stealth = True
+            _has_stealth = callable(stealth_sync)
         except ImportError:
             try:
                 from playwright_stealth import stealth
                 stealth_sync = stealth
-                _has_stealth = True
+                _has_stealth = callable(stealth)
             except ImportError:
                 logger.warning("playwright-stealth не установлен, продолжаем без него "
                                "(pip install playwright-stealth)")
@@ -77,9 +77,11 @@ if PLAYWRIGHT_AVAILABLE:
         try:
             yield browser, page
         finally:
-            context.close()
-            browser.close()
-            pw.stop()
+            for cleanup_fn in [lambda: context.close(), lambda: browser.close(), lambda: pw.stop()]:
+                try:
+                    cleanup_fn()
+                except Exception:
+                    pass
 else:
     @contextmanager
     def playwright_session(headless: bool = True):

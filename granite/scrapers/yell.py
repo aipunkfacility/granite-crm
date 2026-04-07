@@ -8,12 +8,12 @@ from loguru import logger
 class YellScraper(BaseScraper):
     """Скрепер yell.ru через Playwright. Страница передаётся извне."""
 
-    def __init__(self, config: dict, city: str, playwright_page=None, categories: list[str] = None):
+    def __init__(self, config: dict, city: str, playwright_page=None, categories: list[str] | None = None):
         super().__init__(config, city)
         self.page = playwright_page
         self.source_config = config.get("sources", {}).get("yell", {})
         self.categories = categories  # от category_finder, полные пути типа "/catalog/izgotovlenie-pamyatnikov"
-        self.base_path = self.source_config.get("base_path", None)  # фоллбэк если категории не найдены
+        self.base_path = self.source_config.get("base_path")  # фоллбэк если категории не найдены
 
     def _get_urls(self) -> list[str]:
         """Список URL для парсинга."""
@@ -43,7 +43,6 @@ class YellScraper(BaseScraper):
             logger.info(f"  Yell: {url}")
             try:
                 self.page.goto(url, timeout=30000, wait_until="domcontentloaded")
-                self.page.wait_for_load_state("domcontentloaded", timeout=20000)
 
                 for _ in range(5):
                     self.page.evaluate("window.scrollBy(0, 1000)")
@@ -68,9 +67,9 @@ class YellScraper(BaseScraper):
                         addr_elem = card.query_selector("address, div.address, span.address")
                         address = addr_elem.inner_text().strip() if addr_elem else ""
 
-                        phone_elem = card.query_selector("span.phone, a.phone, div.phone")
-                        phone_text = phone_elem.inner_text() if phone_elem else ""
-                        phones = normalize_phones([phone_text])
+                        phone_elems = card.query_selector_all("span.phone, a.phone, div.phone, a[href^='tel:']")
+                        phones_raw = [pe.inner_text() for pe in phone_elems]
+                        phones = normalize_phones(phones_raw)
 
                         site_elem = card.query_selector(
                             "a.website-link, a[href*='http']:not([href*='yell'])"

@@ -20,7 +20,7 @@ from granite.scrapers.firmsru import FirmsruScraper
 from granite.scrapers.firecrawl import FirecrawlScraper
 
 # Стандартные источники для отображения
-_STANDARD_SOURCES = ["jsprav", "firecrawl", "dgis", "yell", "firmsru"]
+STANDARD_SOURCES = ["jsprav", "firecrawl", "dgis", "yell", "firmsru"]
 
 
 class ScrapingPhase:
@@ -51,7 +51,7 @@ class ScrapingPhase:
             region_cities = [city]
 
         # Показываем какие источники включены
-        active = self.region_resolver.get_active_sources(_STANDARD_SOURCES)
+        active = self.region_resolver.get_active_sources(STANDARD_SOURCES)
         print_status(f"Источники: {', '.join(active)}", "info")
 
         # ФАЗА 0: Поиск рабочих категорий в справочниках

@@ -39,13 +39,13 @@ class PipelineManager:
         self.firecrawl = FirecrawlClient(
             timeout=config.get("firecrawl", {}).get("timeout", 60),
             search_limit=config.get("firecrawl", {}).get("search_limit", 3),
-            request_delay=config.get("firecrawl", {}).get("delay", 2.0),
         )
         self.scraping = ScrapingPhase(config, db, self.region)
         self.dedup = DedupPhase(db)
         self.enrichment = EnrichmentPhase(config, db, self.firecrawl)
         self.scoring = ScoringPhase(db, Classifier(config))
         self.export = ExportPhase(config, db)
+        self.network_detector = NetworkDetector(self.db)
 
     def run_city(self, city: str, force: bool = False,
                  run_scrapers: bool = True, re_enrich: bool = False):
@@ -81,8 +81,7 @@ class PipelineManager:
 
         # Пересчёт сетей только для текущего города/области
         print_status("Проверка филиальных сетей...", "info")
-        net_det = NetworkDetector(self.db)
-        net_det.scan_for_networks(threshold=2, city=city)
+        self.network_detector.scan_for_networks(threshold=2, city=city)
 
         # Пересчет скоринга (т.к. мы обновили is_network)
         self.scoring.run(city)

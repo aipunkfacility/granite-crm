@@ -2,7 +2,8 @@
 # Рефакторинг функции scrape_jsprav() из scripts/scrape_city.py
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phones, extract_emails, adaptive_delay
+import re
+from granite.utils import normalize_phones, extract_emails, adaptive_delay, slugify
 from loguru import logger
 
 
@@ -31,8 +32,6 @@ class JspravPlaywrightScraper(BaseScraper):
         if city_lower in self.subdomain_map:
             return self.subdomain_map[city_lower]
 
-        from granite.utils import slugify
-
         return slugify(self.city)
 
     def scrape(self) -> list[RawCompany]:
@@ -58,7 +57,8 @@ class JspravPlaywrightScraper(BaseScraper):
 
                 # Собираем ссылки на компании
                 # Экранируем спецсимволы в category для CSS селектора
-                safe_category = category.replace("'", "\\'").replace('"', '\\"')
+                # CSS selectors require escaping special characters
+                safe_category = re.sub(r"([()\[\]{}\\\"'])", r"\\\g<1>", category)
                 company_links = self.page.query_selector_all(
                     f"a[href*='/{safe_category}/']"
                 )

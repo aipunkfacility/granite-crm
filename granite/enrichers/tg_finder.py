@@ -73,7 +73,7 @@ def find_tg_by_phone(phone: str, config: dict) -> str | None:
     return None
 
 
-def generate_usernames(name: str, phone: str = None) -> list[str]:
+def generate_usernames(name: str, phone: str | None = None) -> list[str]:
     """Метод 2: Генерация юзернеймов из названия и телефона."""
     base = _translit(name)
     base = re.sub(r"[^a-z0-9]", "", base)
@@ -90,7 +90,6 @@ def generate_usernames(name: str, phone: str = None) -> list[str]:
 
     if phone and len(phone) >= 11:
         variants.append(f"{base[:15]}{phone[-4:]}")
-        variants.append(phone)
 
     # Возвращаем уникальные
     # Сохраняем порядок

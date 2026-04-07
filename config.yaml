@@ -267,6 +267,7 @@ cities:
     geo_center: [46.3479, 48.0330]
 
 # ===== Общие настройки скрапинга =====
+# NOTE: timeout and request_delay are available but not yet wired to all HTTP utilities
 scraping:
   request_delay: 1.5
   timeout: 15

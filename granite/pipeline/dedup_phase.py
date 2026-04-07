@@ -5,6 +5,8 @@
 кластеризации и слияния дубликатов.
 """
 
+from typing import Any
+
 from granite.database import Database, RawCompanyRow, CompanyRow
 from loguru import logger
 from granite.pipeline.status import print_status
@@ -104,7 +106,9 @@ class DedupPhase:
             return len(superclusters)
 
     @staticmethod
-    def _union_find(dicts: list[dict], clusters: list[list[int]]) -> list[list[int]]:
+    def _union_find(
+        dicts: list[dict[str, Any]], clusters: list[list[int]]
+    ) -> list[list[int]]:
         """Объединение перекрывающихся кластеров через Union-Find.
 
         Args:

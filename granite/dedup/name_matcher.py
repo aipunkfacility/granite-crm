@@ -21,6 +21,9 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
     matches = []
 
     # Блокировка по первой букве названия
+    # NOTE: First-letter blocking may miss matches where prefixes differ
+    # (e.g., "ООО Ритуал-Сервис" vs "Ритуал-Сервис"). Consider using
+    # sorted n-gram blocking for better recall.
     blocks: dict[str, list[dict]] = defaultdict(list)
     for company in companies:
         name_lower = company.get("name", "").lower().strip()
@@ -30,6 +33,7 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
         blocks[key].append(company)
 
     total_comparisons = 0
+    sorted_keys = sorted(blocks.keys())
     for key, block_companies in blocks.items():
         n = len(block_companies)
         # Пропускаем блоки из 1 записи
@@ -40,6 +44,24 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
                 total_comparisons += 1
                 if compare_names(block_companies[i]["name"], block_companies[j]["name"], threshold):
                     matches.append([block_companies[i]["id"], block_companies[j]["id"]])
+
+    # Secondary pass: for small blocks, also compare against adjacent blocks
+    # to recover cross-prefix matches (e.g., "ООО Ритуал" vs "Ритуал")
+    _SMALL_BLOCK_THRESHOLD = 5
+    for idx, key in enumerate(sorted_keys):
+        block = blocks[key]
+        if len(block) >= _SMALL_BLOCK_THRESHOLD:
+            continue
+        # Check adjacent blocks only
+        for adj_key in (sorted_keys[idx - 1], sorted_keys[idx + 1]) if idx + 1 < len(sorted_keys) else (sorted_keys[idx - 1],):
+            if adj_key not in blocks or adj_key == key:
+                continue
+            adj_block = blocks[adj_key]
+            for a in block:
+                for b in adj_block:
+                    total_comparisons += 1
+                    if compare_names(a["name"], b["name"], threshold):
+                        matches.append([a["id"], b["id"]])
 
     logger.debug(f"Name matcher: {len(companies)} компаний, {total_comparisons} сравнений, {len(matches)} совпадений")
     return matches

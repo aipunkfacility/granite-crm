@@ -108,7 +108,7 @@ def extract_emails(text: str) -> list[str]:
     """Извлечение email из текста."""
     if not text:
         return []
-    return list(set(re.findall(
+    return list(dict.fromkeys(re.findall(
         r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
         text, re.IGNORECASE
     )))
@@ -219,7 +219,8 @@ def fetch_page(url: str, timeout: int = 15) -> str:
         logger.warning(f"Timeout: {url}")
         raise NetworkError(f"Timeout: {url}")
     except requests.exceptions.HTTPError as e:
-        logger.warning(f"HTTP {e.response.status_code}: {url}")
+        status = e.response.status_code if e.response is not None else "?"
+        logger.warning(f"HTTP {status}: {url}")
         raise
 
 
@@ -234,6 +235,21 @@ def check_site_alive(url: str) -> int | None:
     except Exception as e:
         logger.debug(f"check_site_alive failed for '{url}': {e}")
         return None
+
+
+def sanitize_filename(name: str) -> str:
+    """Санитизация имени файла: убираем path traversal и небезопасные символы.
+
+    Используется в экспортерах и дедуп-модулях для безопасного создания файлов
+    из пользовательских данных (названия городов, компаний).
+    """
+    if not name:
+        return "unnamed"
+    name = name.lower().strip()
+    name = re.sub(r"[^a-z0-9_-]", "_", name)
+    name = re.sub(r"_+", "_", name)
+    name = name.strip("_")
+    return name[:100]
 
 
 def pick_best_value(*values: str) -> str:

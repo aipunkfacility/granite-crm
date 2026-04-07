@@ -7,8 +7,8 @@ class TechExtractor:
     """Извлекает движок сайта (CMS) и наличие виджетов типа Marquiz."""
 
     def __init__(self, config: dict):
-        self.config = config
-        
+        pass  # config kept for API compatibility
+
     def extract(self, url: str) -> dict:
         result = {
             "cms": "unknown",
@@ -23,20 +23,21 @@ class TechExtractor:
             if not html:
                 return result
                 
-            # Проверка CMS
-            if "wp-content" in html or "WordPress" in html:
+            # Проверка CMS (case-insensitive)
+            html_lower = html.lower()
+            if "wp-content" in html_lower or "wordpress" in html_lower:
                 result["cms"] = "wordpress"
-            elif "bitrix" in html or "1c-bitrix" in html:
+            elif "bitrix" in html_lower or "1c-bitrix" in html_lower:
                 result["cms"] = "bitrix"
-            elif "tilda.ws" in html or "tilda.cc" in html or "created on Tilda" in html:
+            elif "tilda.ws" in html_lower or "tilda.cc" in html_lower or "created on tilda" in html_lower:
                 result["cms"] = "tilda"
-            elif "flexbe" in html:
+            elif "flexbe" in html_lower:
                 result["cms"] = "flexbe"
-            elif "lpmotor" in html:
+            elif "lpmotor" in html_lower:
                 result["cms"] = "lpmotor"
-            elif "Joomla" in html:
+            elif "joomla" in html_lower:
                 result["cms"] = "joomla"
-            elif "OpenCart" in html or "route=common/home" in html:
+            elif "opencart" in html_lower or "route=common/home" in html_lower:
                 result["cms"] = "opencart"
                 
             # Проверка Marquiz (квизы очень популярны у интеграторов)

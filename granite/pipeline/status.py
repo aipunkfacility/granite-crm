@@ -16,6 +16,8 @@ def print_status(message: str, level: str = "info"):
         console.print(f"[red]✖[/red] {message}")
     elif level == "bold":
         console.print(f"[bold white]{message}[/bold white]")
+    else:
+        console.print(f"[dim]{message}[/dim]  [red](unknown level: {level})[/red]")
 
 def print_table(title: str, columns: list[str], rows: list[list[str]]):
     """Вывод красивой таблицы через rich."""

@@ -2,15 +2,14 @@
 import re
 from urllib.parse import urljoin, urlparse
 from loguru import logger
-from granite.utils import fetch_page
-from requests.exceptions import RequestException
+from granite.utils import fetch_page, adaptive_delay
 
 
 class MessengerScanner:
     """Сканирует сайт на наличие ссылок на мессенджеры и соцсети."""
 
     def __init__(self, config: dict):
-        self.config = config
+        pass
 
     def scan_website(self, base_url: str) -> dict:
         """Сканирует сайт: сначала главная, затем найденные страницы."""
@@ -29,7 +28,7 @@ class MessengerScanner:
             html = fetch_page(base_url_clean + "/", timeout=10)
             if html:
                 self._extract_social_links(html, found_messengers)
-        except (RequestException, Exception) as e:
+        except Exception as e:
             logger.debug(f"MessengerScanner scan_website main page error: {e}")
 
         # Если уже нашли telegram — скорее всего этого достаточно
@@ -38,6 +37,7 @@ class MessengerScanner:
 
         # 2. Ищем ссылки на странице контактов с главной
         try:
+            adaptive_delay()
             contacts_url = self._find_contacts_link(base_url_clean, html)
             if contacts_url:
                 chtml = fetch_page(contacts_url, timeout=10)
@@ -54,6 +54,7 @@ class MessengerScanner:
                         ):
                             break
                         try:
+                            adaptive_delay()
                             ehtml = fetch_page(link, timeout=10)
                             if ehtml:
                                 self._extract_social_links(ehtml, found_messengers)

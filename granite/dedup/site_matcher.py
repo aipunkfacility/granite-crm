@@ -10,7 +10,7 @@ def cluster_by_site(companies: list[dict]) -> list[list[int]]:
     Args:
         companies: список dict с полями {"id": int, "website": str|None}
     """
-    domain_to_ids: dict = {}
+    domain_to_ids: dict[str, list[int]] = {}
 
     for company in companies:
         domain = extract_domain(company.get("website"))

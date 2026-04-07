@@ -7,7 +7,7 @@ from granite.utils import normalize_phone, check_site_alive
 from loguru import logger
 
 # Private/loopback IP ranges to block (SSRF protection)
-ALLOWED_HOSTS = frozenset(
+INTERNAL_HOSTS = frozenset(
     [
         "localhost",
         "127.0.0.1",
@@ -41,10 +41,13 @@ def _is_internal_url(url: str) -> bool:
         host = parsed.hostname
         if not host:
             return True
-        if host in ALLOWED_HOSTS:
+        if host in INTERNAL_HOSTS:
             return True
         try:
             ip = ipaddress.ip_address(host)
+            # Handle IPv6-mapped IPv4 addresses (e.g., ::ffff:127.0.0.1)
+            if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+                ip = ip.ipv4_mapped
             for network in BLOCKED_IP_RANGES:
                 if ip in network:
                     return True
@@ -117,4 +120,4 @@ def validate_email(email: str) -> bool:
 
 def validate_emails(emails: list[str]) -> list[str]:
     """Фильтрация валидных email с дедупликацией."""
-    return list(dict.fromkeys(e for e in emails if validate_email(e)))
+    return list(dict.fromkeys(e.strip() for e in emails if validate_email(e)))

@@ -5,6 +5,7 @@
 не зависящая от БД или пайплайна.
 """
 from granite.regions import get_region_cities
+from granite.pipeline.scraping_phase import STANDARD_SOURCES
 
 
 class RegionResolver:
@@ -53,5 +54,5 @@ class RegionResolver:
             sources: список источников для проверки (по умолчанию все стандартные).
         """
         if sources is None:
-            sources = ["jsprav", "firecrawl", "dgis", "yell", "firmsru"]
+            sources = STANDARD_SOURCES
         return [s for s in sources if self.is_source_enabled(s)]

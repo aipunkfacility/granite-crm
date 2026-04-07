@@ -13,11 +13,12 @@ class BaseScraper(ABC):
         self.config = config
         self.city = city
         self.city_config = self._get_city_config()
+        self.last_error: str | None = None
 
     def _get_city_config(self) -> dict:
         """Получить конфиг города из config.yaml."""
         for c in self.config.get("cities", []):
-            if c["name"] == self.city:
+            if c.get("name") == self.city:
                 return c
         return {}
 

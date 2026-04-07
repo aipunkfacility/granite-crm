@@ -13,7 +13,7 @@ from sqlalchemy import (
     event,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from datetime import datetime, timezone
+from datetime import datetime
 import os
 import yaml
 from loguru import logger
@@ -34,10 +34,11 @@ class RawCompanyRow(Base):
     emails = Column(JSON, default=list)  # list[str]
     geo = Column(String, nullable=True)  # "lat,lon"
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
-    scraped_at = Column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
+    scraped_at = Column(DateTime, default=lambda: datetime.utcnow())
     city = Column(String, nullable=False, index=True)
-    merged_into = Column(Integer, ForeignKey("companies.id"), nullable=True)
-    # DEPRECATED: merged_into — не используется в текущем пайплайне, оставлен для совместимости схемы
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(id={self.id}, name={self.name!r})>"
 
 
 class CompanyRow(Base):
@@ -56,8 +57,11 @@ class CompanyRow(Base):
     segment = Column(String, default="Не определено")
     needs_review = Column(Boolean, default=False)
     review_reason = Column(String, default="")
-    created_at = Column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
+    created_at = Column(DateTime, default=lambda: datetime.utcnow())
+    updated_at = Column(DateTime, default=lambda: datetime.utcnow())
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
 
 
 class EnrichedCompanyRow(Base):
@@ -86,8 +90,8 @@ class EnrichedCompanyRow(Base):
 
     updated_at = Column(
         DateTime,
-        default=lambda: datetime.now(tz=timezone.utc),
-        onupdate=lambda: datetime.now(tz=timezone.utc),
+        default=lambda: datetime.utcnow(),
+        onupdate=lambda: datetime.utcnow(),
     )
 
     def to_dict(self):
@@ -108,22 +112,8 @@ class EnrichedCompanyRow(Base):
             "segment": self.segment,
         }
 
-
-class PipelineRunRow(Base):
-    # DEPRECATED: PipelineRunRow — не используется в текущем пайплайне.
-    # Оставлен для совместимости схемы (Alembic-миграция создаёт таблицу pipeline_runs).
-    __tablename__ = "pipeline_runs"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    city = Column(String, nullable=False, index=True)
-    stage = Column(String, nullable=False)
-    source = Column(String, nullable=True)
-    started_at = Column(DateTime, default=lambda: datetime.now(tz=timezone.utc))
-    finished_at = Column(DateTime, nullable=True)
-    records_found = Column(Integer, default=0)
-    records_errors = Column(Integer, default=0)
-    status = Column(String, default="running")
-    error_message = Column(Text, default="")
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(id={self.id}, name={self.name!r})>"
 
 
 # ===== Синглтон для доступа к БД =====
@@ -177,8 +167,13 @@ class Database:
         auto_migrate: bool = True,
     ):
         if not db_path:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = yaml.safe_load(f)
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config = yaml.safe_load(f)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+            except yaml.YAMLError as e:
+                raise ValueError(f"Invalid YAML in config file {config_path}: {e}")
             db_path = config.get("database", {}).get("path", "data/granite.db")
 
         self._db_path = db_path
@@ -191,6 +186,7 @@ class Database:
         self.engine = create_engine(
             f"sqlite:///{db_path}",
             echo=False,
+            pool_pre_ping=True,
             connect_args={"check_same_thread": False},
         )
 

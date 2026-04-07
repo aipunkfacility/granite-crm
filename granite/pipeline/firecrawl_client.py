@@ -8,7 +8,6 @@
 import subprocess
 import json
 import re
-import time
 from loguru import logger
 from granite.utils import extract_emails
 
@@ -19,11 +18,10 @@ class FirecrawlClient:
     """Обёртка над firecrawl CLI (search + scrape)."""
 
     def __init__(
-        self, timeout: int = 60, search_limit: int = 3, request_delay: float = 2.0
+        self, timeout: int = 60, search_limit: int = 3
     ):
         self.timeout = timeout
         self.search_limit = search_limit
-        self.request_delay = request_delay
 
     # ── JSON-парсинг stdout (устраняет дублирование между search и scrape) ──
 
@@ -103,6 +101,10 @@ class FirecrawlClient:
         Returns:
             {"phones": [...], "emails": [...]} или None.
         """
+        if url and not url.startswith(("http://", "https://")):
+            logger.warning(f"Skipping invalid URL: {url}")
+            return None
+
         try:
             result = subprocess.run(
                 ["firecrawl", "scrape", url, "--format", "markdown"],

@@ -79,10 +79,9 @@ class TestFirecrawlClient:
 
     def test_custom_timeout_and_limit(self):
         """Конфигурация timeout и search_limit."""
-        client = FirecrawlClient(timeout=120, search_limit=5, request_delay=3.0)
+        client = FirecrawlClient(timeout=120, search_limit=5)
         assert client.timeout == 120
         assert client.search_limit == 5
-        assert client.request_delay == 3.0
 
 
 # ═══════════════════════════════════════════════════════════
@@ -393,7 +392,6 @@ class TestPipelineManagerInit:
 
         assert pm.firecrawl.timeout == 120
         assert pm.firecrawl.search_limit == 5
-        assert pm.firecrawl.request_delay == 3.0
 
 
 # ═══════════════════════════════════════════════════════════

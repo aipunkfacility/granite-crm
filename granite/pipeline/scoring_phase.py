@@ -12,7 +12,12 @@ from granite.pipeline.status import print_status
 
 
 class ScoringPhase:
-    """Пересчёт crm_score и segment для enriched-записей города."""
+    """Пересчёт crm_score и segment для enriched-записей города.
+
+    Design note: scoring relies on a single bulk commit via the ``session_scope``
+    context manager (intentional — unlike enrichment_phase which commits
+    per-record / in batches, scoring is CPU-only and safe to flush at once).
+    """
 
     def __init__(self, db: Database, classifier):
         """

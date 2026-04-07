@@ -3,7 +3,8 @@ from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
 from granite.utils import normalize_phones, adaptive_delay
 from loguru import logger
-from urllib.parse import quote
+from urllib.parse import quote, urljoin
+from granite.utils import slugify
 
 
 class DgisScraper(BaseScraper):
@@ -23,7 +24,6 @@ class DgisScraper(BaseScraper):
             return []
 
         companies = []
-        from granite.utils import slugify
 
         city_slug = slugify(self.city)
         url = f"https://2gis.ru/{city_slug}/search/{quote(self.search_category)}"
@@ -31,7 +31,6 @@ class DgisScraper(BaseScraper):
 
         try:
             self.page.goto(url, timeout=30000, wait_until="domcontentloaded")
-            self.page.wait_for_load_state("domcontentloaded", timeout=20000)
 
             for _ in range(3):
                 self.page.evaluate("window.scrollBy(0, 1000)")
@@ -68,8 +67,6 @@ class DgisScraper(BaseScraper):
                     if link_elem:
                         href = link_elem.get_attribute("href")
                         if href:
-                            from urllib.parse import urljoin
-
                             source_url = urljoin("https://2gis.ru", href)
 
                     # 2GIS часто показывает VK/Telegram прямо в карточке

@@ -31,7 +31,7 @@ class TestExporter:
         row = MagicMock()
         for k, v in defaults.items():
             setattr(row, k, v)
-        row.to_dict = lambda: defaults
+        row.to_dict = lambda: dict(defaults)
         return row
 
     def test_csv_exporter_writes_file(self, tmp_path):

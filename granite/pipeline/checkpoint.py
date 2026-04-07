@@ -40,7 +40,7 @@ class CheckpointManager:
             from granite.database import RawCompanyRow, CompanyRow
 
             session.query(EnrichedCompanyRow).filter_by(city=city).delete()
-            session.query(CompanyRow).filter_by(city=city).delete()
             session.query(RawCompanyRow).filter_by(city=city).delete()
+            session.query(CompanyRow).filter_by(city=city).delete()
             session.commit()
             logger.info(f"Очищены все данные для города {city}")

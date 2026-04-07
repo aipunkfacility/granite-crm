@@ -7,12 +7,19 @@ from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 
 
+_CSV_FIELDS = [
+    "id", "name", "phones", "address", "website", "emails",
+    "segment", "crm_score", "is_network", "cms", "has_marquiz",
+    "telegram", "vk", "whatsapp",
+]
+
+
 def _build_csv_row(d: dict) -> dict:
     """Сборка строки CSV из dict компании."""
     messengers = d.get("messengers", {})
     return {
-        "id": d["id"],
-        "name": d["name"],
+        "id": d.get("id", ""),
+        "name": d.get("name", ""),
         "phones": "; ".join(d.get("phones", [])),
         "address": d.get("address_raw", ""),
         "website": d.get("website", ""),
@@ -62,7 +69,8 @@ def _apply_preset_filter(query, preset_name: str, preset: dict):
         (r"whatsapp\s+IS\s+NOT\s+NULL", _filter_messenger_has("whatsapp")),
         (r"email\s+IS\s+NOT\s+NULL", lambda q, _m: q.filter(
             EnrichedCompanyRow.emails.isnot(None),
-            EnrichedCompanyRow.emails != [],
+            EnrichedCompanyRow.emails.cast(String) != "[]",
+            EnrichedCompanyRow.emails.cast(String) != "",
         )),
         (r"priority_score\s*>=\s*(\d+)", lambda q, m: q.filter(
             EnrichedCompanyRow.crm_score >= int(m.group(1))
@@ -123,29 +131,15 @@ class CsvExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            filepath = os.path.join(self.output_dir, f"{city.lower()}_enriched.csv")
+            from granite.utils import sanitize_filename
+            filepath = os.path.join(self.output_dir, f"{sanitize_filename(city)}_enriched.csv")
 
-            fields = [
-                "id",
-                "name",
-                "phones",
-                "address",
-                "website",
-                "emails",
-                "segment",
-                "crm_score",
-                "is_network",
-                "cms",
-                "has_marquiz",
-                "telegram",
-                "vk",
-                "whatsapp",
-            ]
+            fields = _CSV_FIELDS
 
             with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.DictWriter(f, fieldnames=fields)
                 writer.writeheader()
-                for r in sorted(records, key=lambda x: x.crm_score, reverse=True):
+                for r in sorted(records, key=lambda x: x.crm_score or 0, reverse=True):
                     writer.writerow(_build_csv_row(r.to_dict()))
             logger.info(f"Экспорт CSV завершен: {filepath}")
 
@@ -163,31 +157,17 @@ class CsvExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
+            from granite.utils import sanitize_filename
             filepath = os.path.join(
-                self.output_dir, f"{city.lower()}_{preset_name}.csv"
+                self.output_dir, f"{sanitize_filename(city)}_{preset_name}.csv"
             )
 
-            fields = [
-                "id",
-                "name",
-                "phones",
-                "address",
-                "website",
-                "emails",
-                "segment",
-                "crm_score",
-                "is_network",
-                "cms",
-                "has_marquiz",
-                "telegram",
-                "vk",
-                "whatsapp",
-            ]
+            fields = _CSV_FIELDS
 
             with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
                 writer = csv.DictWriter(f, fieldnames=fields)
                 writer.writeheader()
-                for r in sorted(records, key=lambda x: x.crm_score, reverse=True):
+                for r in sorted(records, key=lambda x: x.crm_score or 0, reverse=True):
                     writer.writerow(_build_csv_row(r.to_dict()))
             logger.info(
                 f"Экспорт CSV (пресет '{preset_name}'): {filepath} ({len(records)} записей)"

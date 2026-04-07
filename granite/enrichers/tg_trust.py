@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from granite.utils import adaptive_delay, get_random_ua
 from granite.enrichers.tg_finder import tg_request
-from granite.enrichers._tg_common import TG_MAX_RETRIES, TG_INITIAL_BACKOFF
+from granite.enrichers._tg_common import TG_MAX_RETRIES
 
 
 def check_tg_trust(url: str) -> dict:
