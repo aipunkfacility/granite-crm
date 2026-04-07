@@ -2,6 +2,17 @@
 from granite.utils import pick_best_value, extract_street, normalize_phones
 from loguru import logger
 import os
+import re
+
+
+def _sanitize_filename(name: str) -> str:
+    """Санитизация имени файла: убираем path traversal и небезопасные символы."""
+    if not name:
+        return "unnamed"
+    name = name.lower().strip()
+    name = re.sub(r"[^a-z0-9_\-]", "_", name)
+    name = re.sub(r"_+", "_", name)
+    return name.strip("_")[:100]
 
 
 def _label(index: int) -> str:
@@ -52,12 +63,20 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
         "merged_from": [r["id"] for r in cluster_records],
         "name_best": pick_best_value(*(r.get("name", "") for r in cluster_records)),
         "phones": all_phones,
-        "address": pick_best_value(*(r.get("address_raw", "") for r in cluster_records)),
-        "website": pick_best_value(*(r.get("website", "") or "" for r in cluster_records)),
-        "emails": list(dict.fromkeys(
-            e for r in cluster_records for e in r.get("emails", [])
-            if e  # skip None/empty
-        )),
+        "address": pick_best_value(
+            *(r.get("address_raw", "") for r in cluster_records)
+        ),
+        "website": pick_best_value(
+            *(r.get("website", "") or "" for r in cluster_records)
+        ),
+        "emails": list(
+            dict.fromkeys(
+                e
+                for r in cluster_records
+                for e in r.get("emails", [])
+                if e  # skip None/empty
+            )
+        ),
         "messengers": merged_messengers,
         "city": cluster_records[0].get("city", ""),
         "needs_review": False,
@@ -80,9 +99,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
 
 
 def generate_conflicts_md(
-    conflicts: list[dict],
-    city: str,
-    output_dir: str = "data/conflicts"
+    conflicts: list[dict], city: str, output_dir: str = "data/conflicts"
 ):
     """Генерация conflicts.md для Human-in-the-loop.
 
@@ -98,7 +115,8 @@ def generate_conflicts_md(
         return
 
     os.makedirs(output_dir, exist_ok=True)
-    filepath = os.path.join(output_dir, f"{city.lower()}_conflicts.md")
+    safe_city = _sanitize_filename(city)
+    filepath = os.path.join(output_dir, f"{safe_city}_conflicts.md")
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(f"# Конфликты дедупликации — {city}\n\n")

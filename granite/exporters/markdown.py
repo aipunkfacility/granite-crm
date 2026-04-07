@@ -1,13 +1,32 @@
 # exporters/markdown.py
 import os
+import re
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 from granite.exporters.csv import _apply_preset_filter
 
 
+def _sanitize_filename(name: str) -> str:
+    """Санитизация имени файла: убираем path traversal и небезопасные символы."""
+    if not name:
+        return "unnamed"
+    name = name.lower().strip()
+    name = re.sub(r"[^a-z0-9_\-]", "_", name)
+    name = re.sub(r"_+", "_", name)
+    name = name.strip("_")
+    return name[:100]
+
+
 def _escape_md(text: str) -> str:
-    """Экранирование pipe-символов для markdown-таблиц."""
-    return text.replace("|", "\\|") if text else ""
+    """Экранирование markdown-символов для таблиц: | [ ] ( )"""
+    if not text:
+        return ""
+    text = text.replace("|", "\\|")
+    text = text.replace("[", "\\[")
+    text = text.replace("]", "\\]")
+    text = text.replace("(", "\\(")
+    text = text.replace(")", "\\)")
+    return text
 
 
 def _group_by_segment(records):
@@ -33,13 +52,19 @@ def _write_segment_table(f, seg_label: str, seg_records: list):
     for r in sorted(seg_records, key=lambda x: x.crm_score, reverse=True):
         d = r.to_dict()
         phones = "<br>".join(d.get("phones", []))
-        site = f"[Сайт]({d['website']})" if d.get("website") else "-"
 
-        tg = d.get("messengers", {}).get("telegram")
-        tg_link = f"[TG]({tg})" if tg else "-"
+        site = d.get("website") or ""
+        site_safe = _escape_md(site)
+        site_render = f"[Сайт]({site_safe})" if site else "-"
+
+        tg = d.get("messengers", {}).get("telegram", "")
+        tg_safe = _escape_md(tg)
+        tg_render = f"[TG]({tg_safe})" if tg else "-"
 
         name = _escape_md(d["name"])
-        f.write(f"| **{name}** | {phones} | {site} | {tg_link} | {d.get('cms', '-')} | {d.get('crm_score', 0)} |\n")
+        f.write(
+            f"| **{name}** | {phones} | {site_render} | {tg_render} | {d.get('cms', '-')} | {d.get('crm_score', 0)} |\n"
+        )
 
     f.write("\n")
 
@@ -59,7 +84,8 @@ class MarkdownExporter:
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            filepath = os.path.join(self.output_dir, f"{city.lower()}_report.md")
+            safe_city = _sanitize_filename(city)
+            filepath = os.path.join(self.output_dir, f"{safe_city}_report.md")
 
             segments = _group_by_segment(records)
 
@@ -83,11 +109,14 @@ class MarkdownExporter:
             records = query.all()
 
             if not records:
-                logger.warning(f"Нет данных для экспорта {city} с пресетом '{preset_name}' (markdown)")
+                logger.warning(
+                    f"Нет данных для экспорта {city} с пресетом '{preset_name}' (markdown)"
+                )
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            filepath = os.path.join(self.output_dir, f"{city.lower()}_{preset_name}.md")
+            safe_city = _sanitize_filename(city)
+            filepath = os.path.join(self.output_dir, f"{safe_city}_{preset_name}.md")
 
             description = preset.get("description", "")
             segments = _group_by_segment(records)
@@ -101,6 +130,8 @@ class MarkdownExporter:
                 for seg in ["A", "B", "C", "D"]:
                     _write_segment_table(f, seg, segments[seg])
 
-            logger.info(f"Экспорт Markdown (пресет '{preset_name}'): {filepath} ({len(records)} записей)")
+            logger.info(
+                f"Экспорт Markdown (пресет '{preset_name}'): {filepath} ({len(records)} записей)"
+            )
         finally:
             session.close()
