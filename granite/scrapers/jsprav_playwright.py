@@ -57,7 +57,11 @@ class JspravPlaywrightScraper(BaseScraper):
                     adaptive_delay(0.5, 1.0)
 
                 # Собираем ссылки на компании
-                company_links = self.page.query_selector_all(f"a[href*='/{category}/']")
+                # Экранируем спецсимволы в category для CSS селектора
+                safe_category = category.replace("'", "\\'").replace('"', '\\"')
+                company_links = self.page.query_selector_all(
+                    f"a[href*='/{safe_category}/']"
+                )
                 seen_urls: set = set()
                 hrefs = []
                 for link in company_links:
