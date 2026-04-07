@@ -173,7 +173,7 @@ def run_alembic_upgrade(db_path: str, config_path: str = "config.yaml"):
 class Database:
     def __init__(
         self,
-        db_path: str = None,
+        db_path: str | None = None,
         config_path: str = "config.yaml",
         auto_migrate: bool = True,
     ):

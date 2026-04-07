@@ -44,61 +44,74 @@ def _apply_preset_filter(query, preset_name: str, preset: dict):
     if not filter_str or filter_str.strip() == "1=1":
         return query
 
-    conditions = re.split(r'\s+AND\s+', filter_str, flags=re.IGNORECASE)
+    conditions = re.split(r"\s+AND\s+", filter_str, flags=re.IGNORECASE)
     for cond in conditions:
         cond = cond.strip()
 
         # telegram IS NOT NULL
-        if re.match(r'telegram\s+IS\s+NOT\s+NULL', cond, re.IGNORECASE):
-            query = query.filter(EnrichedCompanyRow.messengers.cast(String).contains('"telegram"'))
+        if re.match(r"telegram\s+IS\s+NOT\s+NULL", cond, re.IGNORECASE):
+            query = query.filter(
+                EnrichedCompanyRow.messengers.cast(String).contains('"telegram"')
+            )
 
         # whatsapp IS NOT NULL
-        elif re.match(r'whatsapp\s+IS\s+NOT\s+NULL', cond, re.IGNORECASE):
-            query = query.filter(EnrichedCompanyRow.messengers.cast(String).contains('"whatsapp"'))
+        elif re.match(r"whatsapp\s+IS\s+NOT\s+NULL", cond, re.IGNORECASE):
+            query = query.filter(
+                EnrichedCompanyRow.messengers.cast(String).contains('"whatsapp"')
+            )
 
         # email IS NOT NULL
-        elif re.match(r'email\s+IS\s+NOT\s+NULL', cond, re.IGNORECASE):
+        elif re.match(r"email\s+IS\s+NOT\s+NULL", cond, re.IGNORECASE):
             query = query.filter(
                 EnrichedCompanyRow.emails.isnot(None),
-                EnrichedCompanyRow.emails != "[]",
-                EnrichedCompanyRow.emails != []
+                EnrichedCompanyRow.emails != [],  # SQLAlchemy handles JSON comparison
             )
 
         # priority_score >= N
-        elif (m_score := re.match(r'priority_score\s*>=\s*(\d+)', cond, re.IGNORECASE)):
+        elif m_score := re.match(r"priority_score\s*>=\s*(\d+)", cond, re.IGNORECASE):
             threshold = int(m_score.group(1))
             query = query.filter(EnrichedCompanyRow.crm_score >= threshold)
 
         # has_production = 1 → not in current schema, skip
-        elif re.match(r'has_production\s*=\s*1', cond, re.IGNORECASE):
-            logger.debug(f"Preset '{preset_name}': 'has_production = 1' not in current schema, skipping")
+        elif re.match(r"has_production\s*=\s*1", cond, re.IGNORECASE):
+            logger.debug(
+                f"Preset '{preset_name}': 'has_production = 1' not in current schema, skipping"
+            )
 
         # website_status = N → not stored directly, skip
-        elif re.match(r'website_status\s*=\s*\d+', cond, re.IGNORECASE):
-            logger.debug(f"Preset '{preset_name}': 'website_status' not stored directly, skipping")
+        elif re.match(r"website_status\s*=\s*\d+", cond, re.IGNORECASE):
+            logger.debug(
+                f"Preset '{preset_name}': 'website_status' not stored directly, skipping"
+            )
 
         # has_portrait_service = 0 → not in current schema, skip
-        elif re.match(r'has_portrait_service\s*=\s*\d+', cond, re.IGNORECASE):
-            logger.debug(f"Preset '{preset_name}': 'has_portrait_service' not in current schema, skipping")
+        elif re.match(r"has_portrait_service\s*=\s*\d+", cond, re.IGNORECASE):
+            logger.debug(
+                f"Preset '{preset_name}': 'has_portrait_service' not in current schema, skipping"
+            )
 
         # status != 'contacted' → not in current enriched schema, skip
         elif re.match(r"status\s*!=\s*'?\w+'?", cond, re.IGNORECASE):
-            logger.debug(f"Preset '{preset_name}': 'status' filter not applicable to enriched table, skipping")
+            logger.debug(
+                f"Preset '{preset_name}': 'status' filter not applicable to enriched table, skipping"
+            )
 
         # telegram IS NULL
-        elif re.match(r'telegram\s+IS\s+NULL', cond, re.IGNORECASE):
+        elif re.match(r"telegram\s+IS\s+NULL", cond, re.IGNORECASE):
             query = query.filter(
                 ~EnrichedCompanyRow.messengers.cast(String).contains('"telegram"')
             )
 
         # whatsapp IS NULL
-        elif re.match(r'whatsapp\s+IS\s+NULL', cond, re.IGNORECASE):
+        elif re.match(r"whatsapp\s+IS\s+NULL", cond, re.IGNORECASE):
             query = query.filter(
                 ~EnrichedCompanyRow.messengers.cast(String).contains('"whatsapp"')
             )
 
         else:
-            logger.warning(f"Preset '{preset_name}': unknown filter condition: '{cond}', skipping")
+            logger.warning(
+                f"Preset '{preset_name}': unknown filter condition: '{cond}', skipping"
+            )
 
     return query
 
@@ -123,9 +136,20 @@ class CsvExporter:
             filepath = os.path.join(self.output_dir, f"{city.lower()}_enriched.csv")
 
             fields = [
-                "id", "name", "phones", "address", "website", "emails",
-                "segment", "crm_score", "is_network", "cms", "has_marquiz",
-                "telegram", "vk", "whatsapp"
+                "id",
+                "name",
+                "phones",
+                "address",
+                "website",
+                "emails",
+                "segment",
+                "crm_score",
+                "is_network",
+                "cms",
+                "has_marquiz",
+                "telegram",
+                "vk",
+                "whatsapp",
             ]
 
             with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
@@ -146,16 +170,31 @@ class CsvExporter:
             records = query.all()
 
             if not records:
-                logger.warning(f"Нет данных для экспорта {city} с пресетом '{preset_name}'")
+                logger.warning(
+                    f"Нет данных для экспорта {city} с пресетом '{preset_name}'"
+                )
                 return
 
             os.makedirs(self.output_dir, exist_ok=True)
-            filepath = os.path.join(self.output_dir, f"{city.lower()}_{preset_name}.csv")
+            filepath = os.path.join(
+                self.output_dir, f"{city.lower()}_{preset_name}.csv"
+            )
 
             fields = [
-                "id", "name", "phones", "address", "website", "emails",
-                "segment", "crm_score", "is_network", "cms", "has_marquiz",
-                "telegram", "vk", "whatsapp"
+                "id",
+                "name",
+                "phones",
+                "address",
+                "website",
+                "emails",
+                "segment",
+                "crm_score",
+                "is_network",
+                "cms",
+                "has_marquiz",
+                "telegram",
+                "vk",
+                "whatsapp",
             ]
 
             with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
@@ -163,6 +202,8 @@ class CsvExporter:
                 writer.writeheader()
                 for r in sorted(records, key=lambda x: x.crm_score, reverse=True):
                     writer.writerow(_build_csv_row(r.to_dict()))
-            logger.info(f"Экспорт CSV (пресет '{preset_name}'): {filepath} ({len(records)} записей)")
+            logger.info(
+                f"Экспорт CSV (пресет '{preset_name}'): {filepath} ({len(records)} записей)"
+            )
         finally:
             session.close()

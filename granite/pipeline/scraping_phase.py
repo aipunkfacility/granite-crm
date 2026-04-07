@@ -4,6 +4,7 @@
 Вынесено из PipelineManager — скрапинг — полностью самостоятельная фаза
 с собственной логикой параллелизации и сохранения.
 """
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from granite.database import Database, RawCompanyRow
@@ -70,8 +71,9 @@ class ScrapingPhase:
         self._save_raw(raw_results)
         return len(raw_results)
 
-    def _collect_results(self, city: str, region_cities: list[str],
-                         cat_cache: dict, max_threads: int) -> list:
+    def _collect_results(
+        self, city: str, region_cities: list[str], cat_cache: dict, max_threads: int
+    ) -> list:
         """Собрать результаты скрапинга (параллельно или последовательно)."""
         raw_results = []
 
@@ -124,11 +126,13 @@ class ScrapingPhase:
 
         # 1. Быстрые скреперы (без Playwright)
         if self.region.is_source_enabled("jsprav"):
-            jsprav = JspravScraper(self.config, rc, categories=jsprav_cats, subdomain=jsprav_sub)
+            jsprav = JspravScraper(
+                self.config, rc, categories=jsprav_cats, subdomain=jsprav_sub
+            )
             city_results.extend(jsprav.run())
 
         if self.region.is_source_enabled("firecrawl"):
-            firecrawl = FirecrawlScraper(self.config, rc, self.db)
+            firecrawl = FirecrawlScraper(self.config, rc)
             city_results.extend(firecrawl.run())
 
         # 2. Playwright скреперы (NOT parallelizable — shared browser session)
@@ -143,7 +147,9 @@ class ScrapingPhase:
                         yell = YellScraper(self.config, rc, page, categories=yell_cats)
                         city_results.extend(yell.run())
                     if self.region.is_source_enabled("firmsru"):
-                        firmsru = FirmsruScraper(self.config, rc, page, categories=firmsru_cats)
+                        firmsru = FirmsruScraper(
+                            self.config, rc, page, categories=firmsru_cats
+                        )
                         city_results.extend(firmsru.run())
 
         return city_results

@@ -15,7 +15,7 @@ from loguru import logger
 class FirecrawlScraper(BaseScraper):
     """Скрепер через firecrawl CLI (работает без API-ключа в демо-режиме)."""
 
-    def __init__(self, config: dict, city: str, db=None):
+    def __init__(self, config: dict, city: str):
         super().__init__(config, city)
         self.source_config = config.get("sources", {}).get("firecrawl", {})
         self.queries = self.source_config.get("queries", [])

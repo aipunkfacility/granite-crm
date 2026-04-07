@@ -19,7 +19,7 @@ _jsprav_local = threading.local()
 
 def _get_jsprav_session() -> requests.Session:
     """Создать сессию с CSRF-токеном для jsprav.ru (thread-safe)."""
-    if not hasattr(_jsprav_local, 'session') or _jsprav_local.session is None:
+    if not hasattr(_jsprav_local, "session") or _jsprav_local.session is None:
         session = requests.Session()
         session.headers.update(UA)
 
@@ -77,7 +77,7 @@ def _search_city(city: str) -> dict | None:
 
 def _extract_subdomain(url: str) -> str:
     """http://kamyishin.jsprav.ru → kamyishin"""
-    m = re.search(r'https?://([a-z0-9-]+)\.jsprav\.ru', url)
+    m = re.search(r"https?://([a-z0-9-]+)\.jsprav\.ru", url)
     return m.group(1) if m else ""
 
 
@@ -150,7 +150,9 @@ def discover_categories(cities: list[str], config: dict) -> dict:
         result = find_jsprav(city, config)
         if result.get("categories"):
             cache.setdefault("jsprav", {})[city] = result["categories"]
-            cache.setdefault("_subdomains", {}).setdefault("jsprav", {})[city] = result["subdomain"]
+            cache.setdefault("_subdomains", {}).setdefault("jsprav", {})[city] = result[
+                "subdomain"
+            ]
             found_any = True
 
     if found_any:
@@ -162,16 +164,22 @@ def discover_categories(cities: list[str], config: dict) -> dict:
     return cache
 
 
-def get_categories(cache: dict, source: str, city: str, fallback: list = None) -> list[str]:
+def get_categories(
+    cache: dict, source: str, city: str, fallback: list[str] | None = None
+) -> list[str]:
     found = cache.get(source, {}).get(city, [])
     return found if found else (fallback or [])
 
 
-def get_subdomain(cache: dict, source: str, city: str, config: dict = None) -> str | None:
+def get_subdomain(
+    cache: dict, source: str, city: str, config: dict = None
+) -> str | None:
     subdomain = cache.get("_subdomains", {}).get(source, {}).get(city)
     if subdomain:
         return subdomain
     if source == "jsprav" and config:
-        subdomain_map = config.get("sources", {}).get("jsprav", {}).get("subdomain_map", {})
+        subdomain_map = (
+            config.get("sources", {}).get("jsprav", {}).get("subdomain_map", {})
+        )
         return subdomain_map.get(city.lower())
     return None

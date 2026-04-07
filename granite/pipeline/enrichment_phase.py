@@ -98,11 +98,7 @@ class EnrichmentPhase:
 
         with self.db.session_scope() as session:
             all_enriched = session.query(EnrichedCompanyRow).filter_by(city=city).all()
-            needs_deep = [
-                e
-                for e in all_enriched
-                if not e.website or not e.emails or len(e.emails) == 0
-            ]
+            needs_deep = [e for e in all_enriched if not e.website or not e.emails]
 
             if not needs_deep:
                 print_status(
