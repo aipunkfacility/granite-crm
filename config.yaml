@@ -1,0 +1,462 @@
+# config.yaml — ЕДИНСТВЕННЫЙ источник настроек
+
+# ===== Города =====
+cities:
+  - name: "Москва"
+    population: 13179670
+    region: "Город федерального значения"
+    status: "pending"
+    geo_center: [55.7558, 37.6173]
+
+  - name: "Санкт-Петербург"
+    population: 5664000
+    region: "Город федерального значения"
+    status: "pending"
+    geo_center: [59.9343, 30.3351]
+
+  - name: "Новосибирск"
+    population: 1630000
+    region: "Новосибирская область"
+    status: "pending"
+    geo_center: [54.9885, 82.9207]
+
+  - name: "Екатеринбург"
+    population: 1530000
+    region: "Свердловская область"
+    status: "pending"
+    geo_center: [56.8389, 60.6057]
+
+  - name: "Казань"
+    population: 1320000
+    region: "Республика Татарстан"
+    status: "pending"
+    geo_center: [55.7887, 49.1221]
+
+  - name: "Нижний Новгород"
+    population: 1210000
+    region: "Нижегородская область"
+    status: "pending"
+    geo_center: [56.2965, 43.9361]
+
+  - name: "Красноярск"
+    population: 1200000
+    region: "Красноярский край"
+    status: "pending"
+    geo_center: [56.0153, 92.8932]
+
+  - name: "Челябинск"
+    population: 1170000
+    region: "Челябинская область"
+    status: "pending"
+    geo_center: [55.1644, 61.4368]
+
+  - name: "Уфа"
+    population: 1160000
+    region: "Республика Башкортостан"
+    status: "pending"
+    geo_center: [54.7388, 55.9721]
+
+  - name: "Самара"
+    population: 1150000
+    region: "Самарская область"
+    status: "pending"
+    geo_center: [53.2001, 50.1500]
+
+  - name: "Ростов-на-Дону"
+    population: 1140000
+    region: "Ростовская область"
+    status: "pending"
+    geo_center: [47.2357, 39.7015]
+
+  - name: "Краснодар"
+    population: 1130000
+    region: "Краснодарский край"
+    status: "pending"
+    geo_center: [45.0448, 38.9760]
+
+  - name: "Омск"
+    population: 1100000
+    region: "Омская область"
+    status: "pending"
+    geo_center: [54.9885, 73.3242]
+
+  - name: "Воронеж"
+    population: 1050000
+    region: "Воронежская область"
+    status: "pending"
+    geo_center: [51.6720, 39.1843]
+
+  - name: "Пермь"
+    population: 1020000
+    region: "Пермский край"
+    status: "pending"
+    geo_center: [58.0092, 56.2502]
+
+  - name: "Волгоград"
+    population: 1010000
+    region: "Волгоградская область"
+    status: "completed"
+    geo_center: [48.7080, 44.5133]
+
+  - name: "Саратов"
+    population: 887000
+    region: "Саратовская область"
+    status: "completed"
+    geo_center: [51.5924, 46.0340]
+
+  - name: "Тюмень"
+    population: 861000
+    region: "Тюменская область"
+    status: "pending"
+    geo_center: [57.1522, 65.5272]
+
+  - name: "Тольятти"
+    population: 668000
+    region: "Самарская область"
+    status: "pending"
+    geo_center: [53.5303, 49.3461]
+
+  - name: "Махачкала"
+    population: 622000
+    region: "Республика Дагестан"
+    status: "pending"
+    geo_center: [42.9849, 47.5047]
+
+  - name: "Барнаул"
+    population: 620000
+    region: "Алтайский край"
+    status: "pending"
+    geo_center: [53.3481, 83.7798]
+
+  - name: "Ижевск"
+    population: 618000
+    region: "Республика Удмуртия"
+    status: "pending"
+    geo_center: [56.8527, 53.2114]
+
+  - name: "Хабаровск"
+    population: 615000
+    region: "Хабаровский край"
+    status: "pending"
+    geo_center: [48.4827, 135.0840]
+
+  - name: "Ульяновск"
+    population: 611000
+    region: "Ульяновская область"
+    status: "pending"
+    geo_center: [54.3282, 48.3866]
+
+  - name: "Иркутск"
+    population: 609000
+    region: "Иркутская область"
+    status: "pending"
+    geo_center: [52.2978, 104.2964]
+
+  - name: "Владивосток"
+    population: 591000
+    region: "Приморский край"
+    status: "pending"
+    geo_center: [43.1155, 131.8855]
+
+  - name: "Ярославль"
+    population: 567000
+    region: "Ярославская область"
+    status: "pending"
+    geo_center: [57.6261, 39.8845]
+
+  - name: "Севастополь"
+    population: 561000
+    region: "Город федерального значения"
+    status: "pending"
+    geo_center: [44.6166, 33.5254]
+
+  - name: "Сочи"
+    population: 561000
+    region: "Краснодарский край"
+    status: "pending"
+    geo_center: [43.5992, 39.7257]
+
+  - name: "Кемерово"
+    population: 556000
+    region: "Кемеровская область"
+    status: "pending"
+    geo_center: [55.3348, 86.0883]
+
+  - name: "Томск"
+    population: 550000
+    region: "Томская область"
+    status: "pending"
+    geo_center: [56.4977, 84.9744]
+
+  - name: "Ставрополь"
+    population: 550000
+    region: "Ставропольский край"
+    status: "pending"
+    geo_center: [45.0428, 41.9734]
+
+  - name: "Набережные Челны"
+    population: 545000
+    region: "Республика Татарстан"
+    status: "pending"
+    geo_center: [55.7261, 52.4048]
+
+  - name: "Тула"
+    population: 542000
+    region: "Тульская область"
+    status: "pending"
+    geo_center: [54.1961, 37.6182]
+
+  - name: "Оренбург"
+    population: 536000
+    region: "Оренбургская область"
+    status: "pending"
+    geo_center: [51.7727, 55.0988]
+
+  - name: "Новокузнецк"
+    population: 533000
+    region: "Кемеровская область"
+    status: "pending"
+    geo_center: [53.7557, 87.1099]
+
+  - name: "Балашиха"
+    population: 530000
+    region: "Московская область"
+    status: "pending"
+    geo_center: [55.7960, 37.9382]
+
+  - name: "Рязань"
+    population: 520000
+    region: "Рязанская область"
+    status: "pending"
+    geo_center: [54.6269, 39.6916]
+
+  - name: "Киров"
+    population: 502000
+    region: "Кировская область"
+    status: "pending"
+    geo_center: [58.6036, 49.6680]
+
+  - name: "Чебоксары"
+    population: 497000
+    region: "Республика Чувашия"
+    status: "pending"
+    geo_center: [56.1439, 47.2489]
+
+  - name: "Калининград"
+    population: 489000
+    region: "Калининградская область"
+    status: "pending"
+    geo_center: [54.7104, 20.4522]
+
+  - name: "Пенза"
+    population: 488000
+    region: "Пензенская область"
+    status: "pending"
+    geo_center: [53.1959, 45.0185]
+
+  - name: "Липецк"
+    population: 486000
+    region: "Липецкая область"
+    status: "pending"
+    geo_center: [52.6088, 39.5987]
+
+  - name: "Астрахань"
+    population: 468000
+    region: "Астраханская область"
+    status: "completed"
+    geo_center: [46.3479, 48.0330]
+
+# ===== Общие настройки скрапинга =====
+scraping:
+  request_delay: 1.5
+  timeout: 15
+  max_retries: 3
+  retry_min_wait: 2
+  retry_max_wait: 30
+  user_agent_rotation: true
+  max_threads: 3
+
+# ===== Настройки источников =====
+sources:
+  firecrawl:
+    enabled: true
+    max_retries: 3
+    queries:
+      - "гранитная мастерская памятники"
+      - "производство памятников гранит"
+      - "мастерская по изготовлению памятников"
+      - "гранит памятники надгробия"
+      - "изготовление памятников из гранита"
+
+  jsprav:
+    enabled: true
+    max_retries: 3
+    method: "jsonld"
+    categories:
+      - "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
+    subdomain_map:
+      астрахань: "astrahan"
+      москва: "moskva1"
+      санкт-петербург: "sankt-peterburg1"
+
+  dgis:
+    enabled: false
+    max_retries: 3
+    search_category: "изготовление памятников"
+
+  yell:
+    enabled: false
+    max_retries: 3
+    base_path: "/catalog/izgotovlenie_pamyatnikov/"
+
+  firmsru:
+    enabled: false
+    max_retries: 3
+    base_path: "/{city}/izgotovlenie-pamyatnikov/"
+
+  jsprav_playwright:
+    enabled: false
+
+  google_maps:
+    enabled: false
+    max_retries: 5
+    grid_step_km: 5
+    queries:
+      - "гранитная мастерская"
+      - "изготовление памятников"
+      - "ритуальные услуги памятники"
+
+  avito:
+    enabled: false
+    max_retries: 2
+    category_path: "/uslugi/ritualnye_uslugi"
+
+# ===== Дедупликация =====
+dedup:
+  name_similarity_threshold: 88
+  phone_match_required: true
+  auto_merge_same_phone: true
+  auto_merge_same_site: true
+  needs_review_on_address_diff: true
+
+# ===== Обогащение =====
+enrichment:
+  messenger_pages:
+    - "/"
+    - "/contacts"
+    - "/kontakty"
+    - "/about"
+    - "/o-nas"
+    - "/katalog"
+    - "/produkciya"
+
+  tg_finder:
+    check_delay: 1.5
+    google_search_enabled: true
+    website_check_enabled: true
+
+  tg_trust:
+    empty_profile_penalty: -5
+
+  tech_keywords:
+    equipment:
+      - "лазерный станок"
+      - "ЧПУ"
+      - "CNC"
+      - "фрезерный станок"
+      - "гравировальный станок"
+      - "Сауно"
+      - "Миртелс"
+      - "Trotec"
+      - "Epilog"
+      - "лазерная гравировка"
+      - "станок с ЧПУ"
+
+    production:
+      - "собственное производство"
+      - "цех"
+      - "производственная база"
+      - "изготовление на заказ"
+      - "работаем с гранитом"
+      - "производство памятников"
+      - "гранитная мастерская"
+
+    portrait:
+      - "ретушь фото"
+      - "обработка портретов"
+      - "фото на памятник"
+      - "коррекция фото"
+      - "цветная печать на граните"
+      - "портрет на памятник"
+
+    site_constructor:
+      - "tilda"
+      - "tildaweb"
+      - "wix.com"
+      - "ucoz"
+      - "narod.ru"
+      - "jimdo"
+      - "weebly"
+      - "wordpress.com"
+
+# ===== Priority Score =====
+scoring:
+  weights:
+    has_website: 5
+    cms_bitrix: 10
+    cms_modern: 3
+    has_marquiz: 8
+    has_telegram: 15
+    has_whatsapp: 10
+    tg_trust_multiplier: 2
+    multiple_phones: 5
+    has_email: 5
+    is_network: 5
+  levels:
+    segment_A: 50
+    segment_B: 30
+    segment_C: 15
+
+# ===== Экспорт: Smart Filters / Presets =====
+export_presets:
+  hot_leads:
+    description: "Есть TG/WA + производство + высокий приоритет"
+    filters: "telegram IS NOT NULL AND has_production = 1 AND priority_score >= 50"
+    format: "csv"
+
+  producers_only:
+    description: "Производители без собственной ретуши"
+    filters: "has_production = 1 AND has_portrait_service = 0 AND status != 'contacted'"
+    format: "csv"
+
+  with_telegram:
+    description: "Все компании с найденным Telegram"
+    filters: "telegram IS NOT NULL AND status != 'contacted'"
+    format: "csv"
+
+  cold_email:
+    description: "Нет мессенджеров, но есть Email и живой сайт"
+    filters: "telegram IS NULL AND whatsapp IS NULL AND email IS NOT NULL AND website_status = 200"
+    format: "csv"
+
+  manual_search:
+    description: "Есть производство, но нет мессенджеров — нужен прозвон"
+    filters: "has_production = 1 AND telegram IS NULL AND whatsapp IS NULL"
+    format: "markdown"
+
+  full_dump:
+    description: "Все обогащённые компании"
+    filters: "1=1"
+    format: "json"
+
+# ===== Логирование =====
+logging:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level:<7} | {name}:{function}:{line} | {message}"
+  rotation: "10 MB"
+  retention: "30 days"
+  cities_log: true
+
+# ===== База данных =====
+database:
+  path: "data/granite.db"
