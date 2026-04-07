@@ -1,5 +1,4 @@
 # enrichers/network_detector.py
-import re
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 from granite.utils import extract_domain, normalize_phone as _normalize_phone
@@ -11,39 +10,44 @@ class NetworkDetector:
     Сеть определяется по двум признакам:
     1. Один и тот же домен сайта у 2+ компаний → сеть.
     2. Один и тот же нормализованный телефон у 2+ компаний → сеть.
+
+    Оптимизация: вместо загрузки всех ORM-объектов в память используются
+    лёгкие tuple-запросы (id, website, phones) и массовый UPDATE через IN.
     """
 
     def __init__(self, db: Database):
         self.db = db
 
-    def scan_for_networks(self, threshold: int = 2, city: str = None) -> None:
+    def scan_for_networks(self, threshold: int = 2, city: str | None = None) -> None:
         """Пересчитывает флаг is_network. Если передан city — только для этой области."""
         with self.db.session_scope() as session:
             # Сбрасываем флаги для целевой области (или всех)
+            base_q = session.query(EnrichedCompanyRow)
             if city:
-                session.query(EnrichedCompanyRow).filter_by(city=city).update(
-                    {EnrichedCompanyRow.is_network: False}
-                )
-            else:
-                session.query(EnrichedCompanyRow).update(
-                    {EnrichedCompanyRow.is_network: False}
-                )
+                base_q = base_q.filter_by(city=city)
+            reset_count = base_q.update(
+                {EnrichedCompanyRow.is_network: False}, synchronize_session=False
+            )
+            session.flush()
 
-            # Берём компании для сканирования (отдельный запрос после update)
+            # Загружаем только (id, website, phones) — лёгкие tuple без ORM-объектов
+            rows_q = session.query(
+                EnrichedCompanyRow.id,
+                EnrichedCompanyRow.website,
+                EnrichedCompanyRow.phones,
+            )
             if city:
-                all_companies = (
-                    session.query(EnrichedCompanyRow).filter_by(city=city).all()
-                )
-            else:
-                all_companies = session.query(EnrichedCompanyRow).all()
-            if not all_companies:
+                rows_q = rows_q.filter_by(city=city)
+
+            rows = rows_q.all()
+            if not rows:
                 logger.info("Нет компаний для анализа сетей.")
                 return
 
             # ── Признак 1: домены ──
             domain_count: dict[str, int] = {}
-            for c in all_companies:
-                domain = extract_domain(c.website)
+            for _id, website, _phones in rows:
+                domain = extract_domain(website)
                 if domain:
                     domain_count[domain] = domain_count.get(domain, 0) + 1
 
@@ -51,8 +55,8 @@ class NetworkDetector:
 
             # ── Признак 2: телефоны (нормализованные) ──
             phone_count: dict[str, int] = {}
-            for c in all_companies:
-                for p in c.phones or []:
+            for _id, _website, phones in rows:
+                for p in phones or []:
                     norm = _normalize_phone(p)
                     if norm:
                         phone_count[norm] = phone_count.get(norm, 0) + 1
@@ -67,23 +71,38 @@ class NetworkDetector:
                 for p in sorted(network_phones):
                     logger.debug(f"  Сеть по телефону: {p} ({phone_count[p]} компаний)")
 
-            # ── Применяем флаги ──
-            update_count = 0
-            for c in all_companies:
-                domain = extract_domain(c.website)
+            if not network_domains and not network_phones:
+                logger.info("Сетей не обнаружено.")
+                return
+
+            # ── Применяем флаги — один UPDATE через WHERE id IN (...) ──
+            network_ids: list[int] = []
+            for row_id, website, phones in rows:
+                domain = extract_domain(website)
                 is_net = domain in network_domains
 
                 if not is_net:
-                    for p in c.phones or []:
+                    for p in phones or []:
                         if _normalize_phone(p) in network_phones:
                             is_net = True
                             break
 
                 if is_net:
-                    c.is_network = True
-                    update_count += 1
+                    network_ids.append(row_id)
+
+            if network_ids:
+                # Массовый UPDATE чанками по 500 (SQLite LIMIT в execute)
+                chunk_size = 500
+                for i in range(0, len(network_ids), chunk_size):
+                    chunk = network_ids[i : i + chunk_size]
+                    update_q = session.query(EnrichedCompanyRow).filter(
+                        EnrichedCompanyRow.id.in_(chunk)
+                    )
+                    update_q.update(
+                        {EnrichedCompanyRow.is_network: True}, synchronize_session=False
+                    )
 
             logger.info(
-                f"Обнаружено {update_count} филиалов сетей "
+                f"Обнаружено {len(network_ids)} филиалов сетей "
                 f"(доменов: {len(network_domains)}, телефонов: {len(network_phones)})."
             )

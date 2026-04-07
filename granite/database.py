@@ -5,7 +5,6 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
-    Float,
     Boolean,
     DateTime,
     Text,
@@ -17,6 +16,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from datetime import datetime, timezone
 import os
 import yaml
+from loguru import logger
 
 Base = declarative_base()
 
@@ -110,7 +110,8 @@ class EnrichedCompanyRow(Base):
 
 
 class PipelineRunRow(Base):
-    # DEPRECATED: PipelineRunRow — не используется в текущем пайплайне, оставлен для совместимости схемы
+    # DEPRECATED: PipelineRunRow — не используется в текущем пайплайне.
+    # Оставлен для совместимости схемы (Alembic-миграция создаёт таблицу pipeline_runs).
     __tablename__ = "pipeline_runs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
