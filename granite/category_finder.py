@@ -64,9 +64,17 @@ def _search_city(city: str) -> dict | None:
             if name == city:
                 return item
 
-        # Если нет точного — берём первый
+        # Если нет точного — берём первый с похожим названием (не менее 6 символов совпадения)
         first = results[0]
-        if first.get("name", "").lower().startswith(city.lower()[:4]):
+        city_lower = city.lower()
+        first_name_lower = first.get("name", "").lower()
+        if len(city_lower) >= 6 and len(first_name_lower) >= 6:
+            # Проверяем минимум 6 общих символов или начало
+            if city_lower[:6] == first_name_lower[:6]:
+                return first
+        elif city_lower.startswith(first_name_lower) or first_name_lower.startswith(
+            city_lower
+        ):
             return first
 
         return None
