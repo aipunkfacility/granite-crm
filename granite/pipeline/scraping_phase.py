@@ -158,6 +158,14 @@ class ScrapingPhase:
         """Сохранить сырые данные в БД."""
         with self.db.session_scope() as session:
             for r in raw_results:
+                # Сериализация geo: list[float] → "lat,lon" (String в БД)
+                geo_str = None
+                if r.geo:
+                    try:
+                        geo_str = ",".join(str(v) for v in r.geo)
+                    except (TypeError, ValueError):
+                        pass
+
                 row = RawCompanyRow(
                     source=r.source.value,
                     source_url=r.source_url,
@@ -166,6 +174,7 @@ class ScrapingPhase:
                     address_raw=r.address_raw,
                     website=r.website,
                     emails=r.emails,
+                    geo=geo_str,
                     scraped_at=r.scraped_at,
                     city=r.city,
                     messengers=r.messengers,

@@ -10,6 +10,7 @@
   - pipeline/scoring_phase.py    — ScoringPhase (скоринг + сегментация)
   - pipeline/export_phase.py     — ExportPhase (CSV + пресеты)
 """
+from loguru import logger
 from granite.database import Database
 from granite.pipeline.checkpoint import CheckpointManager
 from granite.pipeline.status import print_status
@@ -38,9 +39,10 @@ class PipelineManager:
 
         # TODO: Consider lazy initialization for optional components (e.g. export-only mode)
         self.region = RegionResolver(config)
+        fc_config = config.get("sources", {}).get("firecrawl", {})
         self.firecrawl = FirecrawlClient(
-            timeout=config.get("firecrawl", {}).get("timeout", 60),
-            search_limit=config.get("firecrawl", {}).get("search_limit", 3),
+            timeout=fc_config.get("timeout", 60),
+            search_limit=fc_config.get("search_limit", 3),
         )
         self.scraping = ScrapingPhase(config, db, self.region)
         self.dedup = DedupPhase(db)
@@ -68,27 +70,35 @@ class PipelineManager:
 
         if re_enrich:
             # Пропускаем scrape+dedup, запускаем только точечный поиск (проход 2)
-            self.enrichment.run_deep_enrich_existing(city)
+            self._run_phase("обогащение (re-enrich)", lambda: self.enrichment.run_deep_enrich_existing(city))
         else:
             if stage == "start" and run_scrapers:
-                self.scraping.run(city, region_cities)
+                self._run_phase("скрапинг", lambda: self.scraping.run(city, region_cities))
                 stage = "scraped"
 
             if stage == "scraped":
-                self.dedup.run(city)
+                self._run_phase("дедупликация", lambda: self.dedup.run(city))
                 stage = "deduped"
 
             if stage == "deduped":
-                self.enrichment.run(city)
+                self._run_phase("обогащение", lambda: self.enrichment.run(city))
 
         # Пересчёт сетей только для текущего города/области
         print_status("Проверка филиальных сетей...", "info")
-        self.network_detector.scan_for_networks(threshold=2, city=city)
+        self._run_phase("сетей", lambda: self.network_detector.scan_for_networks(threshold=2, city=city))
 
         # Пересчет скоринга (т.к. мы обновили is_network)
-        self.scoring.run(city)
+        self._run_phase("скоринг", lambda: self.scoring.run(city))
 
         # Автоэкспорт
-        self.export.run(city)
+        self._run_phase("экспорт", lambda: self.export.run(city))
 
         print_status(f"Город {city} завершен!", "success")
+
+    def _run_phase(self, name: str, fn) -> None:
+        """Обёртка для фазы с обработкой ошибок. Логирует, но не прерывает pipeline."""
+        try:
+            fn()
+        except Exception as e:
+            logger.error(f"Ошибка фазы '{name}': {e}")
+            print_status(f"Фаза '{name}' завершена с ошибкой: {e}", "warning")

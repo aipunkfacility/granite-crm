@@ -44,13 +44,77 @@ def load_config(config_path: str | None = None):
     path = config_path or _config_path
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f)
+            config = yaml.safe_load(f)
     except FileNotFoundError:
         print_status(f"Ошибка: файл конфигурации не найден: {path}", "error")
         raise typer.Exit(1)
     except yaml.YAMLError as e:
         print_status(f"Ошибка: некорректный YAML в файле конфигурации: {e}", "error")
         raise typer.Exit(1)
+
+    if not _validate_config(config):
+        print_status("Ошибка: конфигурация не прошла валидацию (см. выше)", "error")
+        raise typer.Exit(1)
+    return config
+
+
+def _validate_config(config: dict) -> bool:
+    """Проверяет критические поля конфигурации при загрузке.
+
+    Валидирует структуру и типы ключевых секций, чтобы ошибки проявились
+    немедленно при запуске, а не через 30 минут работы пайплайна.
+    """
+    if not isinstance(config, dict):
+        print_status("Конфиг должен быть словарём (mapping) на верхнем уровне", "error")
+        return False
+
+    errors = []
+
+    # cities — обязательная секция
+    cities = config.get("cities")
+    if cities is None:
+        errors.append("Отсутствует секция 'cities'")
+    elif not isinstance(cities, list):
+        errors.append("'cities' должен быть списком")
+    elif len(cities) == 0:
+        errors.append("'cities' пуст — нет городов для обработки")
+
+    # scoring.weights — если есть, все значения должны быть числами
+    weights = config.get("scoring", {}).get("weights", {})
+    if isinstance(weights, dict):
+        for key, val in weights.items():
+            if not isinstance(val, (int, float)):
+                errors.append(f"scoring.weights.{key} = {val!r} — ожидается число")
+
+    # scoring.levels — если есть, пороги должны быть числами
+    levels = config.get("scoring", {}).get("levels", {})
+    if isinstance(levels, dict):
+        for key, val in levels.items():
+            if not isinstance(val, (int, float)):
+                errors.append(f"scoring.levels.{key} = {val!r} — ожидается число")
+
+    # database.path — если есть, должна быть строка
+    db_cfg = config.get("database", {})
+    if isinstance(db_cfg, dict):
+        db_path = db_cfg.get("path")
+        if db_path is not None and not isinstance(db_path, str):
+            errors.append(f"database.path = {db_path!r} — ожидается строка")
+
+    # scraping.max_threads — если есть, должно быть целым числом > 0
+    scrape_cfg = config.get("scraping", {})
+    if isinstance(scrape_cfg, dict):
+        max_threads = scrape_cfg.get("max_threads")
+        if max_threads is not None:
+            if not isinstance(max_threads, int) or max_threads < 1:
+                errors.append(f"scraping.max_threads = {max_threads!r} — ожидается целое число > 0")
+
+    for err in errors:
+        print_status(f"  Config validation: {err}", "error")
+
+    if errors:
+        print_status(f"Найдено {len(errors)} ошибок в конфигурации", "error")
+        return False
+    return True
 
 @app.command()
 def run(

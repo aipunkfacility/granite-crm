@@ -6,7 +6,7 @@
 """
 
 from collections import Counter
-from granite.database import Database, EnrichedCompanyRow
+from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from loguru import logger
 from granite.pipeline.status import print_status
 
@@ -53,6 +53,11 @@ class ScoringPhase:
                     c.crm_score = score
                     c.segment = segment
                     segments[segment] += 1
+
+                    # Синхронизация segment в companies-таблицу
+                    parent = session.get(CompanyRow, c.id)
+                    if parent is not None:
+                        parent.segment = segment
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning(
                         f"Ошибка скоринга для компании {c.id} ({c.name}): {e}"

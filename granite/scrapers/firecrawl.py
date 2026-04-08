@@ -127,7 +127,7 @@ class FirecrawlScraper(BaseScraper):
     def _scrape_details(self, url: str) -> dict | None:
         """Детальный скрапинг сайта через firecrawl scrape."""
         if not is_safe_url(url):
-            return {}
+            return None
         result = self._run(["scrape", url, "--format", "markdown"])
         if not result:
             return None

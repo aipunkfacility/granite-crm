@@ -129,6 +129,8 @@ class EnrichmentPhase:
         """Основной цикл обогащения: мессенджеры, Telegram, траст, CMS.
 
         Запускается внутри внешнего session_scope, поэтому не управляет сессией.
+        Использует session.flush() вместо session.commit() для батчей —
+        финальный commit делает session_scope при успешном выходе.
         """
         count = 0
         for c in companies:
@@ -183,7 +185,7 @@ class EnrichmentPhase:
 
                 session.merge(erow)
                 if count % 50 == 49:
-                    session.commit()
+                    session.flush()
                 count += 1
 
                 parts = []
@@ -196,11 +198,10 @@ class EnrichmentPhase:
                     f"Обогащено: {count}/{len(companies)} — {c.name_best} ({detail})"
                 )
             except Exception as e:
-                session.rollback()
                 logger.error(f"Ошибка обогащения {c.name_best}: {e}")
 
-        # Final commit for any remaining records not flushed by the batch
-        session.commit()
+        # Flush оставшиеся записи; финальный commit — через session_scope
+        session.flush()
         return count
 
     def _run_deep_enrich_for(
@@ -285,9 +286,8 @@ class EnrichmentPhase:
                 else:
                     logger.debug(f"  — {company_name}: ничего нового")
 
-                session.commit()
+                session.flush()
             except Exception as e:
-                session.rollback()
                 logger.error(
                     f"Ошибка deep enrich для {getattr(record, name_attr, '?')}: {e}"
                 )
@@ -402,6 +402,8 @@ class EnrichmentPhase:
                         existing_msg[k] = v
                         updated.append(k)
                 erow.messengers = existing_msg
+                if c:
+                    c.messengers = existing_msg
 
                 if erow.cms in (None, "unknown", ""):
                     tech = tech_ext.extract(valid_url)

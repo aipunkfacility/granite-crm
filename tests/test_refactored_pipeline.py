@@ -379,11 +379,11 @@ class TestPipelineManagerInit:
         assert isinstance(pm.firecrawl, FirecrawlClient)
 
     def test_firecrawl_config_from_yaml(self, tmp_path):
-        """Настройки firecrawl из конфига."""
+        """Настройки firecrawl из секции sources.firecrawl в конфиге."""
         mock_db = MagicMock()
         config = {
             "cities": [],
-            "firecrawl": {"timeout": 120, "search_limit": 5, "delay": 3.0},
+            "sources": {"firecrawl": {"timeout": 120, "search_limit": 5, "delay": 3.0}},
         }
 
         with patch("granite.pipeline.manager.CheckpointManager"), \

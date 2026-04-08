@@ -227,12 +227,17 @@ def fetch_page(url: str, timeout: int = 15) -> str:
 
 
 def check_site_alive(url: str) -> int | None:
-    """HEAD-запрос для проверки, живой ли сайт. Возвращает статус-код или None."""
+    """HEAD-запрос для проверки, живой ли сайт. Возвращает статус-код или None.
+
+    Использует allow_redirects=True для корректной обработки HTTP→HTTPS
+    редиректов (301/302). Без follow redirects сайты с HTTP→HTTPS считались
+    бы «мёртвыми», и обогащение (мессенджеры, CMS) бы пропускалось.
+    """
     if not url:
         return None
     try:
         headers = {"User-Agent": get_random_ua()}
-        r = requests.head(url, headers=headers, timeout=10, allow_redirects=False)
+        r = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
         return r.status_code
     except Exception as e:
         logger.debug(f"check_site_alive failed for '{url}': {e}")
