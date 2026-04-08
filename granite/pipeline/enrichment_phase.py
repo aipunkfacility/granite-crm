@@ -158,8 +158,8 @@ class EnrichmentPhase:
                                 messengers[k] = v
 
                         tech = tech_ext.extract(valid_url)
-                        erow.cms = tech["cms"]
-                        erow.has_marquiz = tech["has_marquiz"]
+                        erow.cms = tech.get("cms", "unknown")
+                        erow.has_marquiz = tech.get("has_marquiz", False)
 
                 # 2. Поиск Telegram
                 if "telegram" not in messengers:
@@ -261,6 +261,9 @@ class EnrichmentPhase:
         for i, record in enumerate(needs_deep, 1):
             try:
                 company_name = getattr(record, name_attr, None) or getattr(record, "name_best", None) or getattr(record, "name", "")
+                if not company_name or not company_name.strip():
+                    logger.debug(f"  Пропуск: пустое название компании (id={record.id})")
+                    continue
                 query = f"{company_name} {city}"
 
                 erow = session.get(EnrichedCompanyRow, record.id)

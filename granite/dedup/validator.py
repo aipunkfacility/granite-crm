@@ -35,27 +35,12 @@ BLOCKED_IP_RANGES = [
 
 
 def _is_internal_url(url: str) -> bool:
-    """Проверка что URL не указывает на internal/private сеть (SSRF protection)."""
-    try:
-        parsed = urlparse(url)
-        host = parsed.hostname
-        if not host:
-            return True
-        if host in INTERNAL_HOSTS:
-            return True
-        try:
-            ip = ipaddress.ip_address(host)
-            # Handle IPv6-mapped IPv4 addresses (e.g., ::ffff:127.0.0.1)
-            if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-                ip = ip.ipv4_mapped
-            for network in BLOCKED_IP_RANGES:
-                if ip in network:
-                    return True
-        except ValueError:
-            pass
-        return False
-    except Exception:
-        return True
+    """Проверка что URL не указывает на internal/private сеть (SSRF protection).
+
+    Delegates to granite.utils.is_safe_url() — single source of truth for SSRF checks.
+    Returns True if URL is internal/blocked, False if safe.
+    """
+    return not _is_safe_url(url)
 
 
 def validate_phone(phone: str) -> bool:

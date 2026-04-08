@@ -28,7 +28,7 @@ class RegionResolver:
         """
         target_region = None
         for c in self.config.get("cities", []):
-            if c["name"] == city:
+            if c.get("name") == city:
                 target_region = c.get("region", "")
                 break
         if not target_region:
@@ -43,7 +43,9 @@ class RegionResolver:
         siblings = []
         for c in self.config.get("cities", []):
             if c.get("region") == target_region:
-                siblings.append(c["name"])
+                c_name = c.get("name")
+                if c_name:
+                    siblings.append(c_name)
         return siblings if siblings else [city]
 
     def is_source_enabled(self, source: str) -> bool:

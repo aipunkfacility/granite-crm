@@ -19,7 +19,7 @@ class TechExtractor:
             return result
 
         if not is_safe_url(url):
-            return None
+            return result
             
         try:
             html = fetch_page(url, timeout=10)

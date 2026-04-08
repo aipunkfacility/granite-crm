@@ -364,9 +364,12 @@ class TestPipelineManagerInit:
         config = {"cities": [{"name": "Тест"}]}
 
         with patch("granite.pipeline.manager.CheckpointManager"), \
-             patch("granite.pipeline.manager.Classifier"), \
-             patch("granite.pipeline.manager.NetworkDetector"):
+             patch("granite.enrichers.classifier.Classifier"), \
+             patch("granite.enrichers.network_detector.NetworkDetector"):
             pm = PipelineManager(config, mock_db)
+            # Trigger lazy property access
+            _ = pm.scoring
+            _ = pm.network_detector
 
         assert hasattr(pm, 'region')
         assert hasattr(pm, 'firecrawl')
@@ -387,8 +390,9 @@ class TestPipelineManagerInit:
         }
 
         with patch("granite.pipeline.manager.CheckpointManager"), \
-             patch("granite.pipeline.manager.Classifier"):
+             patch("granite.enrichers.classifier.Classifier"):
             pm = PipelineManager(config, mock_db)
+            _ = pm.scoring  # trigger lazy init
 
         assert pm.firecrawl.timeout == 120
         assert pm.firecrawl.search_limit == 5

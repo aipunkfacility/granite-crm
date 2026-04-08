@@ -78,6 +78,13 @@ def _validate_config(config: dict) -> bool:
         errors.append("'cities' должен быть списком")
     elif len(cities) == 0:
         errors.append("'cities' пуст — нет городов для обработки")
+    else:
+        for i, c in enumerate(cities):
+            if not isinstance(c, dict):
+                errors.append(f"cities[{i}] = {c!r} — ожидается словарь с полями name, region")
+                continue
+            if "name" not in c or not c["name"]:
+                errors.append(f"cities[{i}] — отсутствует или пустое поле 'name'")
 
     # scoring.weights — если есть, все значения должны быть числами
     weights = config.get("scoring", {}).get("weights", {})

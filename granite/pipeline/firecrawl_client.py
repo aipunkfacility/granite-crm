@@ -9,7 +9,7 @@ import re
 import subprocess
 import json
 from loguru import logger
-from granite.utils import extract_emails
+from granite.utils import extract_emails, is_safe_url, _sanitize_url_for_log
 
 MIN_MARKDOWN_LENGTH = 50
 
@@ -108,7 +108,12 @@ class FirecrawlClient:
             {"phones": [...], "emails": [...]} или None.
         """
         if url and not url.startswith(("http://", "https://")):
-            logger.warning(f"Skipping invalid URL: {url}")
+            logger.warning(f"Skipping invalid URL: {_sanitize_url_for_log(url)}")
+            return None
+
+        # SSRF protection: block internal/private URLs before subprocess
+        if not is_safe_url(url):
+            logger.warning(f"SSRF blocked (firecrawl scrape): {_sanitize_url_for_log(url)}")
             return None
 
         try:
@@ -157,7 +162,7 @@ class FirecrawlClient:
             return {"phones": phones, "emails": extract_emails(markdown)}
 
         except subprocess.TimeoutExpired:
-            logger.warning(f"Firecrawl scrape таймаут: {url[:80]}")
+            logger.warning(f"Firecrawl scrape таймаут: {_sanitize_url_for_log(url, 80)}")
             return None
         except FileNotFoundError:
             logger.error("firecrawl CLI не найден — установите firecrawl-cli")

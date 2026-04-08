@@ -14,9 +14,12 @@ def _capitalize_city(name: str) -> str:
 
 
 def _escape_md(text: str) -> str:
-    """Экранирование markdown-символов для таблиц."""
+    """Экранирование markdown-символов и HTML-тегов для таблиц."""
     if not text:
         return ""
+    # Escape HTML tags first (before markdown escaping)
+    text = text.replace('<', '&lt;').replace('>', '&gt;')
+    # Then escape markdown special characters
     for ch in ('\\', '|', '[', ']', '(', ')', '*', '_', '#', '`', '~'):
         text = text.replace(ch, '\\' + ch)
     return text

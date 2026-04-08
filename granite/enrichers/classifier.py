@@ -60,11 +60,11 @@ class Classifier:
 
     def determine_segment(self, score: int) -> str:
         """Определение сегмента на основе Score."""
-        if score >= self.thresholds.get("segment_A", 60):
+        if score >= self.thresholds.get("segment_A", 50):
             return "A"
-        elif score >= self.thresholds.get("segment_B", 40):
+        elif score >= self.thresholds.get("segment_B", 30):
             return "B"
-        elif score >= self.thresholds.get("segment_C", 20):
+        elif score >= self.thresholds.get("segment_C", 15):
             return "C"
         else:
             return "D"

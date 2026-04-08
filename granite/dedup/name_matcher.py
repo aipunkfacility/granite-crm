@@ -43,7 +43,10 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
             for j in range(i + 1, n):
                 total_comparisons += 1
                 if compare_names(block_companies[i].get("name") or "", block_companies[j].get("name") or "", threshold):
-                    matches.append([block_companies[i]["id"], block_companies[j]["id"]])
+                    id_i = block_companies[i].get("id")
+                    id_j = block_companies[j].get("id")
+                    if id_i is not None and id_j is not None:
+                        matches.append([id_i, id_j])
 
     # Secondary pass: for small blocks, also compare against adjacent blocks
     # to recover cross-prefix matches (e.g., "ООО Ритуал" vs "Ритуал")
@@ -64,7 +67,10 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
                 for b in adj_block:
                     total_comparisons += 1
                     if compare_names(a.get("name") or "", b.get("name") or "", threshold):
-                        matches.append([a["id"], b["id"]])
+                        aid = a.get("id")
+                        bid = b.get("id")
+                        if aid is not None and bid is not None:
+                            matches.append([aid, bid])
 
     logger.debug(f"Name matcher: {len(companies)} компаний, {total_comparisons} сравнений, {len(matches)} совпадений")
     return matches

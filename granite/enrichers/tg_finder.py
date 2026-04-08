@@ -2,7 +2,7 @@
 import re
 import time
 import random
-from granite.utils import adaptive_delay, TRANSLIT_MAP, get_random_ua, normalize_phone, is_safe_url
+from granite.utils import adaptive_delay, TRANSLIT_MAP, get_random_ua, normalize_phone, is_safe_url, _sanitize_url_for_log
 import requests
 from loguru import logger
 from granite.enrichers._tg_common import TG_MAX_RETRIES, TG_INITIAL_BACKOFF
@@ -24,7 +24,7 @@ def tg_request(url: str, headers: dict, timeout: int = 10) -> requests.Response 
             if r.status_code == 429:
                 wait = backoff + random.uniform(0, 2)
                 logger.warning(
-                    f"TG rate limit (429) для {url[:60]}, "
+                    f"TG rate limit (429) для {_sanitize_url_for_log(url, 60)}, "
                     f"повтор через {wait:.0f}с (попытка {attempt + 1}/{TG_MAX_RETRIES})"
                 )
                 time.sleep(wait)
@@ -32,14 +32,16 @@ def tg_request(url: str, headers: dict, timeout: int = 10) -> requests.Response 
                 continue
             return r
         except requests.RequestException as e:
-            logger.warning(f"TG request error ({url[:60]}): {e}")
+            logger.warning(f"TG request error ({_sanitize_url_for_log(url, 60)}): {e}")
             return None
-    logger.warning(f"TG: исчерпано {TG_MAX_RETRIES} попыток для {url[:60]} — пропуск")
+    logger.warning(f"TG: исчерпано {TG_MAX_RETRIES} попыток для {_sanitize_url_for_log(url, 60)} — пропуск")
     return None
 
 
 def _translit(text: str) -> str:
     """Транслитерация кириллицы в латиницу. Использует тот же словарь что и slugify()."""
+    if not text:
+        return ""
     text = text.lower()
     for cyr, lat in TRANSLIT_MAP:
         text = text.replace(cyr, lat)
@@ -75,6 +77,8 @@ def find_tg_by_phone(phone: str, config: dict) -> str | None:
 
 def generate_usernames(name: str, phone: str | None = None) -> list[str]:
     """Метод 2: Генерация юзернеймов из названия и телефона."""
+    if not name:
+        return []
     base = _translit(name)
     base = re.sub(r"[^a-z0-9]", "", base)
 
@@ -105,6 +109,8 @@ def generate_usernames(name: str, phone: str | None = None) -> list[str]:
 
 def find_tg_by_name(name: str, phone: str, config: dict) -> str | None:
     """Генерация и проверка юзернеймов."""
+    if not name:
+        return None
     enrich_config = config.get("enrichment", {})
     tg_config = enrich_config.get("tg_finder", {})
     tg_delay = tg_config.get("check_delay", 1.5)

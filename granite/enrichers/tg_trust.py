@@ -10,7 +10,13 @@ from granite.enrichers.tg_finder import tg_request
 def check_tg_trust(url: str) -> dict:
     """Анализирует Telegram-профиль: живой ли это контакт."""
     if not url or "t.me/" not in url:
-        return {"trust_score": 0}
+        return {
+            "has_avatar": False,
+            "has_description": False,
+            "is_bot": False,
+            "is_channel": False,
+            "trust_score": 0,
+        }
 
     headers = {"User-Agent": get_random_ua()}
 

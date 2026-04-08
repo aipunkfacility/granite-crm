@@ -6,6 +6,7 @@ import threading
 import requests
 from pathlib import Path
 from loguru import logger
+from granite.utils import is_safe_url
 
 __all__ = [
     "CACHE_PATH",
@@ -101,6 +102,9 @@ def _extract_subdomain(url: str) -> str:
 
 
 def _check_head(url: str, timeout: int = 8) -> bool:
+    if not is_safe_url(url):
+        logger.warning(f"_check_head: skipping unsafe URL '{url}'")
+        return False
     try:
         r = requests.head(
             url, timeout=timeout, headers=DEFAULT_HEADERS, allow_redirects=True

@@ -39,7 +39,13 @@ class FirecrawlScraper(BaseScraper):
             )
             try:
                 with open(outfile, "r", encoding="utf-8") as f:
-                    return json.load(f)
+                    data = json.load(f)
+                # Clean up temp file immediately to avoid accumulation
+                try:
+                    os.unlink(outfile)
+                except FileNotFoundError:
+                    pass
+                return data
             except (FileNotFoundError, json.JSONDecodeError):
                 pass
             # Если файл не создался — попробуем распарсить stdout
@@ -80,7 +86,6 @@ class FirecrawlScraper(BaseScraper):
             for item in web_results:
                 url = item.get("url", "")
                 title = item.get("title", "")
-                description = item.get("description", "")
                 if not url or not title:
                     continue
 

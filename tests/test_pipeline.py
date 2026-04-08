@@ -209,6 +209,7 @@ class TestEnrichedCompanyRow:
         assert d["phones"] == ["79031234567"]
         assert d["messengers"]["telegram"] == "t.me/test"
         assert d["crm_score"] == 25
+        assert "updated_at" in d
 
     def test_to_dict_empty_collections(self):
         """Пустые коллекции возвращают [] и {}, не None."""
@@ -219,3 +220,30 @@ class TestEnrichedCompanyRow:
         assert d["phones"] == []
         assert d["emails"] == []
         assert d["messengers"] == {}
+
+    def test_to_dict_includes_updated_at_after_commit(self):
+        """updated_at попадает в to_dict() после session.commit()."""
+        from granite.database import Database, CompanyRow
+        import time
+        uid = int(time.time() * 1000) % 10_000_000
+        db = Database(auto_migrate=False)
+        try:
+            with db.session_scope() as session:
+                parent = CompanyRow(id=uid, name_best="Updated", city="Тест")
+                session.add(parent)
+            with db.session_scope() as session:
+                company = EnrichedCompanyRow(
+                    id=uid, name="Updated", city="Тест", segment="D",
+                )
+                session.merge(company)
+            with db.session_scope() as session:
+                row = session.get(EnrichedCompanyRow, uid)
+                assert row is not None
+                d = row.to_dict()
+                assert "updated_at" in d
+                assert d["updated_at"] is not None
+        finally:
+            # Cleanup
+            with db.session_scope() as session:
+                session.query(EnrichedCompanyRow).filter_by(id=uid).delete()
+                session.query(CompanyRow).filter_by(id=uid).delete()

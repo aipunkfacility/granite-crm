@@ -66,6 +66,7 @@ class CompanyRow(Base):
 
 
 class PipelineRunRow(Base):
+    # DEPRECATED: table exists in schema but is not used. Kept for Alembic compatibility.
     __tablename__ = "pipeline_runs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -129,6 +130,7 @@ class EnrichedCompanyRow(Base):
             "is_network": self.is_network,
             "crm_score": self.crm_score,
             "segment": self.segment,
+            "updated_at": self.updated_at,
         }
 
     def __repr__(self):
@@ -193,6 +195,15 @@ class Database:
                 raise FileNotFoundError(f"Config file not found: {config_path}")
             except yaml.YAMLError as e:
                 raise ValueError(f"Invalid YAML in config file {config_path}: {e}")
+
+            # Validate config if _validate_config is available (from cli.py)
+            try:
+                from granite.cli import _validate_config
+                if not _validate_config(config):
+                    logger.warning("Config validation failed, proceeding with defaults")
+            except ImportError:
+                logger.debug("_validate_config not available, skipping config validation")
+
             db_path = config.get("database", {}).get("path", "data/granite.db")
 
         self._db_path = db_path

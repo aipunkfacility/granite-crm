@@ -46,7 +46,7 @@ class DedupPhase:
                         "source": r.source,
                         "source_url": r.source_url or "",
                         "name": r.name,
-                        "phones": r.phones or [],
+                        "phones": r.phones if isinstance(r.phones, list) else [r.phones] if isinstance(r.phones, str) else [],
                         "address_raw": r.address_raw or "",
                         "website": r.website,
                         "emails": r.emails or [],
@@ -90,6 +90,8 @@ class DedupPhase:
                     status="raw",
                     merged_from=merged.get("merged_from", []),
                     messengers=merged.get("messengers", {}),
+                    needs_review=merged.get("needs_review", False),
+                    review_reason=merged.get("review_reason", ""),
                 )
                 session.add(row)
 

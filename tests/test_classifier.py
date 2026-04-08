@@ -69,3 +69,11 @@ def test_classifier_segment_B(classifier):
     assert score == 25
     segment = classifier.determine_segment(score)
     assert segment == "C" # 25 is >= 20 -> C
+
+
+def test_classifier_flexbe_gets_modern_cms_bonus(classifier):
+    """Flexbe is classified as a modern CMS (same as WordPress/Tilda)."""
+    company = {"website": "http://site.ru", "cms": "flexbe"}
+    score = classifier.calculate_score(company)
+    # 10 (has_website) + 10 (cms_modern) = 20
+    assert score == 20

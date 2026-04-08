@@ -26,7 +26,7 @@ def _build_csv_row(d: dict) -> dict:
         "website": d.get("website", ""),
         "emails": "; ".join(d.get("emails", [])),
         "segment": d.get("segment", ""),
-        "crm_score": d.get("crm_score", 0),
+        "crm_score": d.get("crm_score") or 0,
         "is_network": "Yes" if d.get("is_network") else "No",
         "cms": d.get("cms", ""),
         "has_marquiz": "Yes" if d.get("has_marquiz") else "No",

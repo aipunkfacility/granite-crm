@@ -81,11 +81,6 @@ class MessengerScanner:
             return None
 
         # Ищем ссылки по тексту и URL
-        contact_patterns = [
-            r'href=["\']([^"\']+)["\'][^>]*>[^<]*(?:контакт|связ|телефон|обратн)[^<]*</a>',
-            r'href=["\']([^"\']*(?:contact|kontakt|kontakty|kontaktyi|about|o-nas|o_kompanii)[^"\']*)["\']',
-        ]
-
         soup_pattern = re.compile(
             r'<a\s[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
             re.DOTALL | re.IGNORECASE,

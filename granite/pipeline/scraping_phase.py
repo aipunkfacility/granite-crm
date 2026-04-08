@@ -78,7 +78,7 @@ class ScrapingPhase:
         raw_results = []
 
         if max_threads > 1 and len(region_cities) > 1:
-            # Параллельный парсинг городов (только быстрые скреперы без Playwright)
+            # Параллельный парсинг городов (каждый поток создаёт свою сессию Playwright)
             print_status(
                 f"Параллельный парсинг {len(region_cities)} городов на {max_threads} потоках",
                 "info",

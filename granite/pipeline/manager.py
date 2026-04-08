@@ -10,13 +10,11 @@
   - pipeline/scoring_phase.py    — ScoringPhase (скоринг + сегментация)
   - pipeline/export_phase.py     — ExportPhase (CSV + пресеты)
 """
+import sys
 from loguru import logger
 from granite.database import Database
 from granite.pipeline.checkpoint import CheckpointManager
 from granite.pipeline.status import print_status
-
-from granite.enrichers.classifier import Classifier
-from granite.enrichers.network_detector import NetworkDetector
 
 from granite.pipeline.firecrawl_client import FirecrawlClient
 from granite.pipeline.region_resolver import RegionResolver
@@ -37,7 +35,6 @@ class PipelineManager:
         self.db = db
         self.checkpoints = CheckpointManager(db)
 
-        # TODO: Consider lazy initialization for optional components (e.g. export-only mode)
         self.region = RegionResolver(config)
         fc_config = config.get("sources", {}).get("firecrawl", {})
         self.firecrawl = FirecrawlClient(
@@ -47,9 +44,25 @@ class PipelineManager:
         self.scraping = ScrapingPhase(config, db, self.region)
         self.dedup = DedupPhase(db)
         self.enrichment = EnrichmentPhase(config, db, self.firecrawl)
-        self.scoring = ScoringPhase(db, Classifier(config))
         self.export = ExportPhase(config, db)
-        self.network_detector = NetworkDetector(self.db)
+        # Lazy-loaded: ScoringPhase, NetworkDetector (тяжёлые зависимости)
+        self._scoring = None
+        self._network_detector = None
+
+    @property
+    def scoring(self):
+        if self._scoring is None:
+            from granite.enrichers.classifier import Classifier
+            from granite.pipeline.scoring_phase import ScoringPhase
+            self._scoring = ScoringPhase(self.db, Classifier(self.config))
+        return self._scoring
+
+    @property
+    def network_detector(self):
+        if self._network_detector is None:
+            from granite.enrichers.network_detector import NetworkDetector
+            self._network_detector = NetworkDetector(self.db)
+        return self._network_detector
 
     def run_city(self, city: str, force: bool = False,
                  run_scrapers: bool = True, re_enrich: bool = False):
@@ -95,10 +108,15 @@ class PipelineManager:
 
         print_status(f"Город {city} завершен!", "success")
 
+    _CRITICAL_PHASES = frozenset({"скрапинг", "дедупликация"})
+
     def _run_phase(self, name: str, fn) -> None:
-        """Обёртка для фазы с обработкой ошибок. Логирует, но не прерывает pipeline."""
+        """Обёртка для фазы с обработкой ошибок. Критические фазы прерывают pipeline."""
         try:
             fn()
         except Exception as e:
             logger.error(f"Ошибка фазы '{name}': {e}")
-            print_status(f"Фаза '{name}' завершена с ошибкой: {e}", "warning")
+            print_status(f"[ОШИБКА] Фаза '{name}' завершена с ошибкой: {e}", "warning")
+            if name in self._CRITICAL_PHASES:
+                print_status(f"Критическая фаза '{name}' не удалась. Остановка.", "error")
+                sys.exit(1)

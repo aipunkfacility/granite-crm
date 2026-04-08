@@ -85,7 +85,30 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
 
     if len(unique_streets) > 1:
         merged["needs_review"] = True
-        merged["review_reason"] = "same_name_diff_address"
+        # Verify names are actually similar before labelling "same_name"
+        names_raw = [r.get("name", "") for r in cluster_records]
+        unique_names = list({n.strip().lower() for n in names_raw if n and n.strip()})
+
+        def _jaccard_words(a: str, b: str) -> float:
+            sa, sb = set(a.split()), set(b.split())
+            if not sa or not sb:
+                return 0.0
+            return len(sa & sb) / len(sa | sb)
+
+        names_similar = True
+        if unique_names:
+            for i in range(len(unique_names)):
+                for j in range(i + 1, len(unique_names)):
+                    if _jaccard_words(unique_names[i], unique_names[j]) <= 0.5:
+                        names_similar = False
+                        break
+                if not names_similar:
+                    break
+
+        if len(unique_names) <= 2 and names_similar:
+            merged["review_reason"] = "same_name_diff_address"
+        else:
+            merged["review_reason"] = "different_addresses"
 
     # Проверка: разные города в кластере → конфликт
     cities = [r.get("city", "") for r in cluster_records if r.get("city")]

@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urlunparse
 from bs4 import BeautifulSoup
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phone, normalize_phones, extract_domain, slugify, get_random_ua, adaptive_delay
+from granite.utils import normalize_phone, normalize_phones, extract_domain, slugify, get_random_ua, adaptive_delay, _sanitize_url_for_log
 from loguru import logger
 
 JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
@@ -96,6 +96,9 @@ class JspravScraper(BaseScraper):
                 return data_url
 
         # Fallback: пробуем ?page=N (jsprav иногда не генерирует /page-N/ после 5-й)
+        # Guard against infinite pagination — stop after 50 pages
+        if page_num >= 50:
+            return None
         parsed = urlparse(base_dir)
         fallback = urlunparse(
             (parsed.scheme, parsed.netloc, parsed.path, "", f"page={page_num + 1}", "")
@@ -196,7 +199,7 @@ class JspravScraper(BaseScraper):
             while url:
                 page_num = self._extract_page_num(url)
                 last_page_num = page_num
-                logger.info(f"  JSprav: {url}")
+                logger.info(f"  JSprav: {_sanitize_url_for_log(url)}")
 
                 # Ретраи при таймауте/ошибках сети
                 r = None
@@ -293,7 +296,7 @@ class JspravScraper(BaseScraper):
                     adaptive_delay(0.8, 1.5)
 
                 except Exception as e:
-                    logger.error(f"  JSprav error ({url}): {e}")
+                    logger.error(f"  JSprav error ({_sanitize_url_for_log(url)}): {e}")
                     continue  # не теряем набранные компании при ошибке страницы
 
             # Предупреждение если не добрали до саммари

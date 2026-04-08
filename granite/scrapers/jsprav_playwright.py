@@ -44,6 +44,9 @@ class JspravPlaywrightScraper(BaseScraper):
 
         companies = []
         subdomain = self._get_subdomain()
+        if not re.match(r'^[a-z0-9][a-z0-9-]*$', subdomain):
+            logger.warning(f"Invalid subdomain '{subdomain}' for city '{self.city}'")
+            return []
 
         for category in self.categories:
             base_url = f"https://{subdomain}.jsprav.ru/{category}/"
