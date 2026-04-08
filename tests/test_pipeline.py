@@ -157,12 +157,28 @@ class TestPresetFilter:
         result = _apply_preset_filter(query, "cold_email", preset)
         assert query.filter.called
 
-    def test_apply_preset_filter_priority_score(self):
-        """Фильтр по priority_score >= N."""
+    def test_apply_preset_filter_crm_score(self):
+        """Фильтр по crm_score >= N."""
         from granite.exporters.csv import _apply_preset_filter
         query = MagicMock()
-        preset = {"filters": "priority_score >= 50"}
+        preset = {"filters": "crm_score >= 50"}
         result = _apply_preset_filter(query, "hot_leads", preset)
+        assert query.filter.called
+
+    def test_apply_preset_filter_segment(self):
+        """Фильтр по сегменту."""
+        from granite.exporters.csv import _apply_preset_filter
+        query = MagicMock()
+        preset = {"filters": "segment = 'A'"}
+        result = _apply_preset_filter(query, "high_score", preset)
+        assert query.filter.called
+
+    def test_apply_preset_filter_emails_plural(self):
+        """Фильтр по emails IS NOT NULL (множественное число)."""
+        from granite.exporters.csv import _apply_preset_filter
+        query = MagicMock()
+        preset = {"filters": "emails IS NOT NULL"}
+        result = _apply_preset_filter(query, "cold_email", preset)
         assert query.filter.called
 
     def test_apply_preset_filter_combined_and(self):
@@ -171,7 +187,7 @@ class TestPresetFilter:
         query = MagicMock()
         # Flask-SQLAlchemy chaining: filter() возвращает query, каждый вызов chained
         query.filter.return_value = query
-        preset = {"filters": "telegram IS NOT NULL AND priority_score >= 50"}
+        preset = {"filters": "telegram IS NOT NULL AND crm_score >= 50"}
         result = _apply_preset_filter(query, "hot_leads", preset)
         # filter вызван дважды (для каждого условия)
         assert query.filter.call_count >= 2
@@ -180,7 +196,7 @@ class TestPresetFilter:
         """Неизвестное условие — фильтр пропускается."""
         from granite.exporters.csv import _apply_preset_filter
         query = MagicMock()
-        preset = {"filters": "has_production = 1"}
+        preset = {"filters": "has_production = 1 AND status != 'raw'"}
         result = _apply_preset_filter(query, "producers_only", preset)
         assert not query.filter.called
 

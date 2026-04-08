@@ -66,18 +66,33 @@ def _apply_preset_filter(query, preset_name: str, preset: dict):
         return handler
 
     _FILTER_TABLE = [
+        # Messengers
         (r"telegram\s+IS\s+NOT\s+NULL", _filter_messenger_has("telegram")),
         (r"whatsapp\s+IS\s+NOT\s+NULL", _filter_messenger_has("whatsapp")),
-        (r"email\s+IS\s+NOT\s+NULL", lambda q, _m: q.filter(
+        (r"vk\s+IS\s+NOT\s+NULL", _filter_messenger_has("vk")),
+        (r"telegram\s+IS\s+NULL", _filter_messenger_null("telegram")),
+        (r"whatsapp\s+IS\s+NULL", _filter_messenger_null("whatsapp")),
+        (r"vk\s+IS\s+NULL", _filter_messenger_null("vk")),
+        # Emails
+        (r"emails?\s+IS\s+NOT\s+NULL", lambda q, _m: q.filter(
             EnrichedCompanyRow.emails.isnot(None),
             EnrichedCompanyRow.emails.cast(String) != "[]",
             EnrichedCompanyRow.emails.cast(String) != "",
         )),
-        (r"priority_score\s*>=\s*(\d+)", lambda q, m: q.filter(
+        # Score
+        (r"crm_score\s*>=\s*(\d+)", lambda q, m: q.filter(
             EnrichedCompanyRow.crm_score >= int(m.group(1))
         )),
-        (r"telegram\s+IS\s+NULL", _filter_messenger_null("telegram")),
-        (r"whatsapp\s+IS\s+NULL", _filter_messenger_null("whatsapp")),
+        (r"crm_score\s*<=\s*(\d+)", lambda q, m: q.filter(
+            EnrichedCompanyRow.crm_score <= int(m.group(1))
+        )),
+        (r"crm_score\s*=\s*(\d+)", lambda q, m: q.filter(
+            EnrichedCompanyRow.crm_score == int(m.group(1))
+        )),
+        # Segment
+        (r"segment\s*=\s*'?([A-D])'/?", lambda q, m: q.filter(
+            EnrichedCompanyRow.segment == m.group(1)
+        )),
     ]
 
     # Unsupported conditions — log and skip
