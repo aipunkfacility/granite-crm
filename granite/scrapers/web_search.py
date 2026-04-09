@@ -1,7 +1,7 @@
 # scrapers/web_search.py — поиск компаний через DuckDuckGo/Google/Bing + BeautifulSoup
 # Полная замена FirecrawlScraper без внешних зависимостей.
 import re
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urlparse, parse_qs
 from bs4 import BeautifulSoup
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
@@ -23,10 +23,32 @@ class WebSearchScraper(BaseScraper):
     """Поиск и сбор контактов компаний через поисковики + парсинг сайтов.
 
     Работает без внешних CLI:
-    1. Поиск запросов из конфигурации через DuckDuckGo/Google/Bing
+    1. Поиск запросов из конфигурации через DuckDuckGo Lite / Google / Bing
     2. Парсит каждый найденный сайт через requests+BeautifulSoup
     3. Извлекает телефоны, email, адреса
     """
+
+    # Домены, которые не ведут на сайты компаний — пропускаем
+    SKIP_DOMAINS = [
+        "duckduckgo.com",
+        "google.com",
+        "bing.com",
+        "yandex.ru",
+        "youtube.com",
+        "wikipedia.org",
+        "vk.com",
+        "telegram.org",
+        "instagram.com",
+        "facebook.com",
+        "ok.ru",
+        "twitter.com",
+        "tiktok.com",
+        "avito.ru",
+        "hh.ru",
+        "gismeteo.ru",
+        "2gis.ru",
+        "2gis.com",
+    ]
 
     def __init__(self, config: dict, city: str):
         super().__init__(config, city)
@@ -39,8 +61,55 @@ class WebSearchScraper(BaseScraper):
             self.queries = self.source_config.get("queries", [])
         self.search_limit = self.source_config.get("search_limit", 10)
 
+    def _is_skip_domain(self, url: str) -> bool:
+        """Проверяет, нужно ли пропустить URL (каталоги, соцсети)."""
+        return any(d in url for d in self.SKIP_DOMAINS)
+
     def _search_duckduckgo(self, query: str) -> list[dict]:
-        """DuckDuckGo HTML search — scraper-friendly, без CAPTCHA."""
+        """DuckDuckGo Lite HTML search — надёжный endpoint без CAPTCHA.
+
+        Использует https://lite.duckduckgo.com/lite/ — lite-версия
+        отдаёт таблицы с прямыми ссылками, без JS-редиректов.
+        """
+        results = []
+        search_url = "https://lite.duckduckgo.com/lite/"
+        params = {"q": query, "kl": "ru-ru"}
+
+        try:
+            resp = requests.post(
+                search_url,
+                data=params,
+                headers={"User-Agent": get_random_ua()},
+                timeout=15,
+                allow_redirects=True,
+            )
+            if resp.status_code != 200:
+                logger.debug(f"  WebSearch DDG Lite: status {resp.status_code}")
+                return results
+
+            soup = BeautifulSoup(resp.text, "html.parser")
+
+            # Lite-версия: ссылки в тегах <a class="result-link">
+            for a_tag in soup.select("a.result-link"):
+                url = a_tag.get("href", "")
+                title = a_tag.get_text(strip=True)
+
+                if not url or not title:
+                    continue
+                if not url.startswith(("http://", "https://")):
+                    continue
+                if self._is_skip_domain(url):
+                    continue
+
+                results.append({"url": url, "title": title})
+
+        except Exception as e:
+            logger.warning(f"  WebSearch DDG Lite: ошибка — {e}")
+
+        return results[: self.search_limit]
+
+    def _search_duckduckgo_html(self, query: str) -> list[dict]:
+        """DuckDuckGo HTML — второй вариант (html.duckduckgo.com/html/)."""
         results = []
         search_url = "https://html.duckduckgo.com/html/"
         params = {"q": query, "kl": "ru-ru"}
@@ -92,18 +161,15 @@ class WebSearchScraper(BaseScraper):
                 if not url or not title:
                     continue
 
-                # Skip non-useful results
-                skip_domains = ["duckduckgo.com", "google.com", "yandex.ru", "bing.com",
-                                "youtube.com", "wikipedia.org", "vk.com", "telegram.org"]
-                if any(d in url for d in skip_domains):
+                if self._is_skip_domain(url):
                     continue
 
                 results.append({"url": url, "title": title})
 
         except Exception as e:
-            logger.debug(f"  WebSearch DDG: {e}")
+            logger.debug(f"  WebSearch DDG HTML: {e}")
 
-        return results[:self.search_limit]
+        return results[: self.search_limit]
 
     def _search_google(self, query: str) -> list[dict]:
         """Google SERP — фоллбэк если DuckDuckGo не дал результатов."""
@@ -116,7 +182,12 @@ class WebSearchScraper(BaseScraper):
                 return results
 
             # Пропускаем consent/CAPTCHA страницы
-            if "consent.google.com" in html or "captcha" in html.lower() or len(html) < 5000:
+            if (
+                "consent.google.com" in html
+                or "captcha" in html.lower()
+                or len(html) < 5000
+            ):
+                logger.debug("  WebSearch Google: CAPTCHA/consent — пропускаем")
                 return results
 
             soup = BeautifulSoup(html, "html.parser")
@@ -134,11 +205,7 @@ class WebSearchScraper(BaseScraper):
                     continue
                 if url.startswith("/search") or url.startswith("#"):
                     continue
-                if "google.com" in url:
-                    continue
-
-                skip_domains = ["youtube.com", "wikipedia.org", "vk.com", "telegram.org"]
-                if any(d in url for d in skip_domains):
+                if self._is_skip_domain(url):
                     continue
 
                 results.append({"url": url, "title": title})
@@ -146,7 +213,7 @@ class WebSearchScraper(BaseScraper):
         except Exception as e:
             logger.debug(f"  WebSearch Google: {e}")
 
-        return results[:self.search_limit]
+        return results[: self.search_limit]
 
     def _search_bing(self, query: str) -> list[dict]:
         """Bing search — второй фоллбэк."""
@@ -170,11 +237,7 @@ class WebSearchScraper(BaseScraper):
 
                 if not url or not title:
                     continue
-                if "bing.com" in url or "microsoft.com" in url:
-                    continue
-
-                skip_domains = ["youtube.com", "wikipedia.org", "vk.com", "telegram.org"]
-                if any(d in url for d in skip_domains):
+                if self._is_skip_domain(url):
                     continue
 
                 results.append({"url": url, "title": title})
@@ -182,28 +245,43 @@ class WebSearchScraper(BaseScraper):
         except Exception as e:
             logger.debug(f"  WebSearch Bing: {e}")
 
-        return results[:self.search_limit]
+        return results[: self.search_limit]
 
     def _search(self, query: str) -> list[dict]:
         """Поиск через несколько поисковиков с фоллбэком."""
-        # 1. DuckDuckGo (scraper-friendly)
+        # 1. DuckDuckGo Lite (самый надёжный для скрапинга)
         results = self._search_duckduckgo(query)
         if results:
+            logger.debug(f"  WebSearch: DDG Lite — {len(results)} результатов")
             return results
 
-        logger.debug(f"  WebSearch: DDG пуст, пробуем Google")
+        logger.warning(f"  WebSearch: DDG Lite пуст, пробуем DDG HTML")
         adaptive_delay(min_sec=1.0, max_sec=2.0)
 
-        # 2. Google
+        # 2. DuckDuckGo HTML (альтернативный endpoint)
+        results = self._search_duckduckgo_html(query)
+        if results:
+            logger.debug(f"  WebSearch: DDG HTML — {len(results)} результатов")
+            return results
+
+        logger.warning(f"  WebSearch: DDG HTML пуст, пробуем Google")
+        adaptive_delay(min_sec=1.0, max_sec=2.0)
+
+        # 3. Google
         results = self._search_google(query)
         if results:
+            logger.debug(f"  WebSearch: Google — {len(results)} результатов")
             return results
 
-        logger.debug(f"  WebSearch: Google пуст, пробуем Bing")
+        logger.warning(f"  WebSearch: Google пуст, пробуем Bing")
         adaptive_delay(min_sec=1.0, max_sec=2.0)
 
-        # 3. Bing
+        # 4. Bing
         results = self._search_bing(query)
+        if results:
+            logger.debug(f"  WebSearch: Bing — {len(results)} результатов")
+        else:
+            logger.warning(f"  WebSearch: все поисковики вернули 0 результатов")
         return results
 
     def scrape(self) -> list[RawCompany]:
@@ -218,7 +296,6 @@ class WebSearchScraper(BaseScraper):
 
             web_results = self._search(search_query)
             if not web_results:
-                logger.debug(f"  WebSearch: 0 результатов для '{search_query}'")
                 continue
 
             for item in web_results:
