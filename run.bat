@@ -1,10 +1,10 @@
-﻿@echo off
+@echo off
 chcp 65001 >nul
 title Granite Workshops DB
 
-set CITY=Самара
+set CITY=Липецк
 
-:: set FORCE=--force
+set FORCE=--force
 :: set RE_ENRICH=--re-enrich
 
 echo ============================================

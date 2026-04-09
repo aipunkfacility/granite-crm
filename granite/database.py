@@ -140,41 +140,78 @@ class EnrichedCompanyRow(Base):
 # ===== Синглтон для доступа к БД =====
 
 
-def run_alembic_upgrade(db_path: str, config_path: str = "config.yaml"):
-    """
-    Запустить Alembic upgrade head для применения миграций.
-    Вызывается при инициализации Database, чтобы схема всегда была актуальной.
-    """
+def _make_alembic_config(db_path: str, config_path: str):
+    """Создать Alembic Config с правильными путями."""
+    from alembic.config import Config
+    alembic_cfg = Config()
+    alembic_cfg.set_main_option("script_location", "alembic")
+    alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    return alembic_cfg
+
+
+def _tables_exist(engine) -> bool:
+    """Проверить, существуют ли ORM-таблицы в БД."""
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    existing = inspector.get_table_names()
+    return all(t in existing for t in ("companies", "raw_companies", "enriched_companies"))
+
+
+def _alembic_needs_upgrade(engine) -> bool:
+    """Проверить, нужно ли применять миграции (использует существующий engine)."""
     try:
-        from alembic.config import Config
-        from alembic.script import ScriptDirectory
         from alembic.runtime.migration import MigrationContext
+        with engine.connect() as conn:
+            ctx = MigrationContext.configure(conn)
+            current = ctx.get_current_revision()
+            return current is None
+    except Exception:
+        return True
 
-        alembic_cfg = Config()
-        alembic_cfg.set_main_option("script_location", "alembic")
-        alembic_cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
 
-        # Устанавливаем GRANITE_CONFIG для env.py
-        old_granite_config = os.environ.get("GRANITE_CONFIG")
-        os.environ["GRANITE_CONFIG"] = config_path
+def run_alembic_upgrade(engine, db_path: str, config_path: str = "config.yaml"):
+    """
+    Применить миграции / stamp через существующий engine (без создания
+    отдельного подключения к SQLite — чтобы не было «database is locked»).
 
-        from alembic import command
+    Стратегия:
+    - Таблицы существуют, alembic_version совпадает с head → ничего не делать.
+    - Таблицы существуют, alembic_version пуст → stamp head (raw SQL).
+    - Таблиц не существуют → create_all() + stamp head (raw SQL).
+    """
+    from sqlalchemy import text
+    HEAD_REVISION = 'ecda7d78a38f'
 
-        command.upgrade(alembic_cfg, "head")
+    try:
+        # 1. Проверяем, нужно ли что-то делать
+        if _tables_exist(engine) and not _alembic_needs_upgrade(engine):
+            logger.debug("Alembic: schema up-to-date")
+            return
 
-        # Восстанавливаем старое значение
-        if old_granite_config is None:
-            os.environ.pop("GRANITE_CONFIG", None)
-        else:
-            os.environ["GRANITE_CONFIG"] = old_granite_config
+        # 2. Создаём таблицы, если их нет
+        if not _tables_exist(engine):
+            Base.metadata.create_all(engine)
+            logger.debug("Alembic: таблицы созданы через create_all")
+
+        # 3. Stamp alembic_version напрямую через тот же engine
+        with engine.connect() as conn:
+            conn.execute(text(
+                "CREATE TABLE IF NOT EXISTS alembic_version ("
+                "  version_num VARCHAR(32) NOT NULL, "
+                "  CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)"
+                ")"
+            ))
+            conn.execute(text("DELETE FROM alembic_version"))
+            conn.execute(text(
+                "INSERT INTO alembic_version (version_num) VALUES (:rev)"
+            ), {"rev": HEAD_REVISION})
+            conn.commit()
+        logger.debug("Alembic: stamped to head")
 
     except Exception as e:
-        # Если Alembic не настроен или миграций нет — фоллбэк на create_all
         import warnings
-
         warnings.warn(
-            f"Alembic upgrade не удалось ({e}), используется create_all(). "
-            "Для корректной эволюции схемы настройте Alembic: alembic init alembic",
+            f"Alembic setup не удалось ({e}), используется create_all().",
             stacklevel=2,
         )
         raise
@@ -232,13 +269,15 @@ class Database:
         # Применяем миграции через Alembic (если доступен)
         if auto_migrate:
             try:
-                run_alembic_upgrade(db_path, config_path)
+                run_alembic_upgrade(self.engine, db_path, config_path)
             except Exception as e:
                 logger.warning(
                     f"Миграции не применились, используем fallback create_all: {e}"
                 )
                 # Фоллбэк: создать таблицы напрямую из ORM-моделей
                 Base.metadata.create_all(self.engine)
+                # Stamp alembic_version to avoid "table exists" loop on next run
+                self._stamp_alembic_head(db_path, config_path)
         else:
             # Без авто-миграций — просто создаём таблицы из ORM
             Base.metadata.create_all(self.engine)
@@ -247,6 +286,31 @@ class Database:
 
     def get_session(self) -> Session:
         return self.SessionLocal()
+
+    def _stamp_alembic_head(self, db_path: str, config_path: str):
+        """Stamp alembic_version через raw SQL (без отдельного Alembic-подключения).
+
+        Called after create_all() fallback so Alembic doesn't try to re-create
+        existing tables on the next run.
+        """
+        from sqlalchemy import text
+        HEAD_REVISION = 'ecda7d78a38f'
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(text(
+                    "CREATE TABLE IF NOT EXISTS alembic_version ("
+                    "  version_num VARCHAR(32) NOT NULL, "
+                    "  CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num)"
+                    ")"
+                ))
+                conn.execute(text("DELETE FROM alembic_version"))
+                conn.execute(text(
+                    "INSERT INTO alembic_version (version_num) VALUES (:rev)"
+                ), {"rev": HEAD_REVISION})
+                conn.commit()
+            logger.info("Alembic version stamped to 'head' (create_all fallback)")
+        except Exception as e:
+            logger.debug(f"Could not stamp alembic version: {e}")
 
     @contextmanager
     def session_scope(self):

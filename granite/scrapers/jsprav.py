@@ -33,6 +33,7 @@ class JspravScraper(BaseScraper):
             self.categories = [JSPRAV_CATEGORY]
 
         self._city_lower = city.lower().strip()
+        self._declared_total = None  # для Playwright fallback: сколько всего компаний
 
     def _get_subdomain(self) -> str:
         if self._cached_subdomain:
@@ -195,6 +196,7 @@ class JspravScraper(BaseScraper):
             url = f"https://{subdomain}.jsprav.ru/{category}/"
             empty_streak = 0
             last_page_num = 1
+            max_pages = 5  # статическая пагинация jsprav отдаёт max ~5 страниц
 
             while url:
                 page_num = self._extract_page_num(url)
@@ -253,6 +255,7 @@ class JspravScraper(BaseScraper):
                     if declared_total is None:
                         declared_total = self._parse_total_from_summary(soup)
                         if declared_total is not None:
+                            self._declared_total = declared_total
                             logger.info(
                                 f"  JSprav: саммари — {declared_total} компаний в {self.city}"
                             )
@@ -283,6 +286,13 @@ class JspravScraper(BaseScraper):
                     else:
                         empty_streak = 0
 
+                    # Стоп после max_pages статической пагинации
+                    if page_num >= max_pages:
+                        logger.info(
+                            f"  JSprav: достигнут лимит статической пагинации ({max_pages} стр.)"
+                        )
+                        break
+
                     # Ищем ссылку на следующую страницу через кнопку "Показать ещё"
                     next_url = self._get_next_page_url(soup, url, page_num)
                     if not next_url:
@@ -299,14 +309,19 @@ class JspravScraper(BaseScraper):
                     logger.error(f"  JSprav error ({_sanitize_url_for_log(url)}): {e}")
                     continue  # не теряем набранные компании при ошибке страницы
 
-            # Предупреждение если не добрали до саммари
+            # Всегда помечаем что нужен Playwright fallback если есть declared_total
+            # и мы не добрали — scraping_phase.py запустит JspravPlaywrightScraper
             cat_count = len(companies) - companies_before
             if declared_total is not None and cat_count < declared_total:
+                self._needs_playwright = True
                 logger.warning(
                     f"  JSprav: получено {cat_count} из {declared_total} для {self.city}/{category}. "
-                    f"jsprav.ru отдаёт только {last_page_num} стр. через статическую пагинацию. "
-                    f"Остальные компании недоступны без JavaScript."
+                    f"Потрібен Playwright fallback для добора."
                 )
+            elif declared_total is None and cat_count > 0:
+                # declared_total не найден — тоже помечаем для PW на всякий случай
+                # (jsprav может скрывать summary на некоторых городах)
+                self._needs_playwright = True
 
         logger.info(f"  JSprav: итого {len(companies)} компаний для {self.city}")
         return companies

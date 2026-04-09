@@ -84,8 +84,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
     unique_streets = {s for s in streets if s}
 
     if len(unique_streets) > 1:
-        merged["needs_review"] = True
-        # Verify names are actually similar before labelling "same_name"
+        # Проверяем, действительно ли названия похожи — если нет, это разные компании
         names_raw = [r.get("name", "") for r in cluster_records]
         unique_names = list({n.strip().lower() for n in names_raw if n and n.strip()})
 
@@ -105,10 +104,15 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
                 if not names_similar:
                     break
 
-        if len(unique_names) <= 2 and names_similar:
-            merged["review_reason"] = "same_name_diff_address"
-        else:
-            merged["review_reason"] = "different_addresses"
+        # Если названия совсем разные (Jaccard < 0.3) и адреса разные —
+        # это точно разные компании, объединённые ошибочно по телефону
+        if len(unique_names) > 1 and not names_similar:
+            merged["needs_review"] = True
+            merged["review_reason"] = "different_names_different_addresses"
+        elif len(unique_names) <= 2 and names_similar:
+            # Названия похожие, но адреса разные — это НЕ конфликт
+            # (одна компания может быть на нескольких адресах)
+            pass
 
     # Проверка: разные города в кластере → конфликт
     cities = [r.get("city", "") for r in cluster_records if r.get("city")]

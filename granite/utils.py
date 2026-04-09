@@ -240,6 +240,22 @@ def fetch_page(url: str, timeout: int = 15) -> str:
             raise SiteNotFoundError(f"404: {url}")
         response.raise_for_status()
         return response.text
+    except requests.exceptions.SSLError as e:
+        # SSL verification failed (self-signed cert, hostname mismatch) —
+        # retry with verify=False as fallback
+        logger.debug(f"SSL error for {_sanitize_url_for_log(url)}, retrying with verify=False")
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            response = requests.get(url, headers=headers, timeout=timeout,
+                                   allow_redirects=True, verify=False)
+            if response.status_code == 404:
+                raise SiteNotFoundError(f"404: {url}")
+            response.raise_for_status()
+            return response.text
+        except requests.exceptions.RequestException as e2:
+            logger.warning(f"SSL fallback also failed: {_sanitize_url_for_log(url)} — {e2}")
+            raise NetworkError(f"SSL failed: {url}") from e2
     except requests.exceptions.ConnectionError as e:
         logger.warning(f"Connection error: {_sanitize_url_for_log(url)} — {e}")
         raise NetworkError(f"Connection failed: {url}") from e
@@ -267,6 +283,16 @@ def check_site_alive(url: str) -> int | None:
         headers = {"User-Agent": get_random_ua()}
         r = requests.head(url, headers=headers, timeout=10, allow_redirects=True)
         return r.status_code
+    except requests.exceptions.SSLError:
+        # SSL verification failed — retry with verify=False
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            headers = {"User-Agent": get_random_ua()}
+            r = requests.head(url, headers=headers, timeout=10, allow_redirects=True, verify=False)
+            return r.status_code
+        except Exception:
+            return None
     except Exception as e:
         logger.debug(f"check_site_alive failed for '{_sanitize_url_for_log(url, 60)}': {e}")
         return None

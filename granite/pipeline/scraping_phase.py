@@ -15,6 +15,7 @@ from granite.category_finder import discover_categories, get_categories, get_sub
 # Import Scrapers
 from granite.scrapers._playwright import playwright_session
 from granite.scrapers.jsprav import JspravScraper
+from granite.scrapers.jsprav_playwright import JspravPlaywrightScraper
 from granite.scrapers.dgis import DgisScraper
 from granite.scrapers.yell import YellScraper
 from granite.scrapers.firmsru import FirmsruScraper
@@ -125,32 +126,91 @@ class ScrapingPhase:
         firmsru_cats = get_categories(cat_cache, "firmsru", rc)
 
         # 1. Быстрые скреперы (без Playwright)
+        jsprav_needs_pw = False
         if self.region_resolver.is_source_enabled("jsprav"):
             jsprav = JspravScraper(
                 self.config, rc, categories=jsprav_cats, subdomain=jsprav_sub
             )
-            city_results.extend(jsprav.run())
+            jsprav_results = jsprav.run()
+            city_results.extend(jsprav_results)
+            # Проверяем, нужна ли дообработка через Playwright
+            if getattr(jsprav, '_needs_playwright', False):
+                jsprav_needs_pw = True
+                got = len(jsprav_results)
+                need = getattr(jsprav, '_declared_total', None) or "?"
+                logger.info(
+                    f"  JSprav собрал {got}/{need} для {rc}, "
+                    f"запускаю Playwright для добора"
+                )
 
         if self.region_resolver.is_source_enabled("web_search"):
             web_search = WebSearchScraper(self.config, rc)
             city_results.extend(web_search.run())
 
-        # 2. Playwright скреперы (NOT parallelizable — shared browser session)
+        # 2. Playwright скреперы
         pw_sources = ["dgis", "yell", "firmsru"]
-        if any(self.region_resolver.is_source_enabled(s) for s in pw_sources):
+        has_pw_sources = any(
+            self.region_resolver.is_source_enabled(s) for s in pw_sources
+        )
+        jsprav_pw_enabled = self.config.get("sources", {}).get(
+            "jsprav_playwright", {}
+        ).get("enabled", False)
+
+        if has_pw_sources or jsprav_needs_pw or jsprav_pw_enabled:
             with playwright_session(headless=True) as (browser, page):
                 if page:
-                    if self.region_resolver.is_source_enabled("dgis"):
-                        dgis = DgisScraper(self.config, rc, page)
-                        city_results.extend(dgis.run())
-                    if self.region_resolver.is_source_enabled("yell"):
-                        yell = YellScraper(self.config, rc, page, categories=yell_cats)
-                        city_results.extend(yell.run())
-                    if self.region_resolver.is_source_enabled("firmsru"):
-                        firmsru = FirmsruScraper(
-                            self.config, rc, page, categories=firmsru_cats
+                    # JSprav Playwright fallback — добор через «Показать ещё»
+                    if (jsprav_needs_pw or jsprav_pw_enabled) and jsprav_cats:
+                        pw_kwargs = dict(
+                            config=self.config,
+                            city=rc,
+                            playwright_page=page,
+                            categories=jsprav_cats,
+                            subdomain=jsprav_sub,
                         )
-                        city_results.extend(firmsru.run())
+                        # Совместимость: mode поддерживается только в новых версиях
+                        try:
+                            jsprav_pw = JspravPlaywrightScraper(**pw_kwargs, mode="click_more")
+                        except TypeError:
+                            jsprav_pw = JspravPlaywrightScraper(**pw_kwargs)
+                        pw_results = jsprav_pw.run()
+                        # Дедуплируем: исключаем компании, уже найденные JspravScraper
+                        # Используем URL и телефон для точного matching (а не только имя)
+                        seen_urls = {c.website for c in city_results if c.website}
+                        seen_phones = set()
+                        for c in city_results:
+                            for p in c.phones:
+                                seen_phones.add(p)
+                        new_results = []
+                        for c in pw_results:
+                            is_dup = False
+                            if c.website and c.website in seen_urls:
+                                is_dup = True
+                            if not is_dup:
+                                for p in c.phones:
+                                    if p in seen_phones:
+                                        is_dup = True
+                                        break
+                            if not is_dup:
+                                new_results.append(c)
+                        city_results.extend(new_results)
+                        if new_results:
+                            logger.info(
+                                f"  JSprav PW: добрано {len(new_results)} новых компаний для {rc}"
+                            )
+
+                    if has_pw_sources:
+                        if self.region_resolver.is_source_enabled("dgis"):
+                            dgis = DgisScraper(self.config, rc, page)
+                            city_results.extend(dgis.run())
+                        if self.region_resolver.is_source_enabled("yell"):
+                            yell = YellScraper(self.config, rc, page, categories=yell_cats)
+                            city_results.extend(yell.run())
+                        if self.region_resolver.is_source_enabled("firmsru"):
+                            firmsru = FirmsruScraper(
+                                self.config, rc, page, categories=firmsru_cats
+                            )
+                            city_results.extend(firmsru.run())
 
         return city_results
 

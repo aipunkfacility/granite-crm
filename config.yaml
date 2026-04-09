@@ -267,6 +267,37 @@ cities:
     status: "completed"
     geo_center: [46.3479, 48.0330]
 
+  # ── Малые города Омской области ──
+  - name: "Тара"
+    population: 26700
+    region: "Омская область"
+    status: "pending"
+    geo_center: [56.9114, 74.1542]
+
+  - name: "Исилькуль"
+    population: 22600
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.1075, 71.2778]
+
+  - name: "Калачинск"
+    population: 22000
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.0306, 74.5817]
+
+  - name: "Называевск"
+    population: 11900
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.9769, 72.5861]
+
+  - name: "Тюкалинск"
+    population: 11300
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.8658, 72.3453]
+
 # ===== Общие настройки скрапинга =====
 scraping:
   # ⚠️ These values are NOT yet used by all scrapers. Some have hardcoded timeouts.
@@ -306,6 +337,11 @@ sources:
       астрахань: "astrahan"
       москва: "moskva1"
       санкт-петербург: "sankt-peterburg1"
+      тара: "tara"
+      называевск: "nazyivaevsk"
+      исилькуль: "isilkul"
+      калачинск: "kalachinsk"
+      тюкалинск: "tyukalinsk"
 
   dgis:
     enabled: false
@@ -323,7 +359,7 @@ sources:
     base_path: "/{city}/izgotovlenie-pamyatnikov/"
 
   jsprav_playwright:
-    enabled: false
+    enabled: true  # авто-fallback: запускается если JspravScraper не добрал компании
 
   google_maps:
     enabled: false
