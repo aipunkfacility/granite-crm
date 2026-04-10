@@ -221,6 +221,14 @@ class EnrichmentPhase:
         else:
             logger.info("Обогащение прошло без ошибок")
 
+        # ПРОХОД 2: точечный поиск недостающих данных через веб
+        # (sync — использует self.web.search/scrape которые sync)
+        with self.db.session_scope() as session:
+            enriched_companies = session.query(EnrichedCompanyRow).filter_by(city=city).all()
+            self._run_deep_enrich_for(
+                session, enriched_companies, city, scanner, tech_ext, search_best_url=False
+            )
+
         return count
 
     async def _enrich_one_company_async(self, snapshot: dict, scanner, tech_ext) -> 'EnrichedCompanyRow':

@@ -378,6 +378,16 @@ sources:
     max_retries: 2
     category_path: "/uslugi/ritualnye_uslugi"
 
+# ===== Crawlee (session pool, proxy) =====
+# Общие настройки для Crawlee-based скраперов (2GIS, Yell).
+# Session pool управляет куками и ротацией сессий.
+# При 403/429/captcha сессия помечается как заблокированная и ротируется.
+# Proxy rotation включается при заданном proxy_url.
+crawlee:
+  use_session_pool: true       # включить управление сессиями (cookies, rotation)
+  max_session_rotations: 10    # макс. ротаций сессии перед остановкой
+  proxy_url: ""                # URL прокси (или из .env: CRAWLEE_PROXY_URL)
+
 # ===== Дедупликация =====
 dedup:
   name_similarity_threshold: 88

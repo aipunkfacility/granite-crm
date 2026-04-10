@@ -4,7 +4,9 @@
 Два режима:
 1. 2GIS API (приоритет) — httpx, если есть DGIS_API_KEY.
    Пагинация через параметр page, до max_pages.
-2. Crawlee BeautifulSoupCrawler — fallback, парсинг страниц поиска.
+2. Crawlee PlaywrightCrawler — fallback, парсинг страниц поиска.
+   2GIS — SPA на React, BeautifulSoupCrawler не видит карточки,
+   поэтому fallback использует PlaywrightCrawler для JS-рендеринга.
 
 Извлекает: название, телефоны, адрес, сайт, email, мессенджеры, гео, рейтинг.
 """
@@ -20,6 +22,7 @@ from loguru import logger
 
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
+from granite.scrapers.dgis_constants import get_dgis_region_id
 from granite.utils import (
     normalize_phones,
     extract_emails,
@@ -29,75 +32,32 @@ from granite.utils import (
 )
 
 
-# ===== 2GIS region_id mapping =====
-# Совпадает со словарём из reverse_lookup.py. В идеале — вынести в общую утилиту,
-# но для Phase 7 оставляем здесь для независимости модулей.
+def _build_crawlee_kwargs(config: dict) -> dict:
+    """Построить kwargs для Crawlee из конфигурации.
 
-DGIS_REGION_IDS: dict[str, int] = {
-    "москва": 32,
-    "санкт-петербург": 49,
-    "новосибирск": 131,
-    "екатеринбург": 81,
-    "казань": 72,
-    "нижний новгород": 115,
-    "красноярск": 54,
-    "челябинск": 143,
-    "уфа": 105,
-    "самара": 124,
-    "ростов-на-дону": 111,
-    "краснодар": 40,
-    "омск": 103,
-    "воронеж": 50,
-    "пермь": 109,
-    "волгоград": 48,
-    "саратов": 120,
-    "тюмень": 134,
-    "тольятти": 125,
-    "махачкала": 62,
-    "барнаул": 25,
-    "ижевск": 56,
-    "хабаровск": 147,
-    "ульяновск": 140,
-    "иркутск": 53,
-    "владивосток": 46,
-    "ярославль": 153,
-    "севастополь": 122,
-    "сочи": 121,
-    "кемерово": 67,
-    "томск": 130,
-    "ставрополь": 119,
-    "набережные челны": 96,
-    "тула": 136,
-    "оренбург": 104,
-    "новокузнецк": 100,
-    "балашиха": 20,
-    "рязань": 114,
-    "киров": 68,
-    "чебоксары": 144,
-    "калининград": 63,
-    "пенза": 107,
-    "липецк": 84,
-    "астрахань": 22,
-    # Малые города → region_id области
-    "тара": 131,
-    "исилькуль": 131,
-    "калачинск": 131,
-    "называевск": 131,
-    "тюкалинск": 131,
-}
-
-
-def _get_dgis_region_id(city: str) -> str:
-    """Получить 2GIS region_id для города.
-
-    Returns:
-        Строку с region_id или пустую строку (глобальный поиск).
+    Добавляет session_pool и proxy_configuration если настроены.
+    Поддерживает:
+    - crawlee.use_session_pool (bool, default: true)
+    - crawlee.max_session_rotations (int, default: 10)
+    - crawlee.proxy_url (str, из .env: CRAWLEE_PROXY_URL)
     """
-    city_lower = city.lower().strip()
-    rid = DGIS_REGION_IDS.get(city_lower)
-    if rid:
-        return str(rid)
-    return ""
+    crawlee_cfg = config.get("crawlee", {})
+    kwargs = {}
+
+    # Session pool (через параметры BasicCrawler)
+    if crawlee_cfg.get("use_session_pool", True):
+        kwargs["use_session_pool"] = True
+        kwargs["max_session_rotations"] = crawlee_cfg.get("max_session_rotations", 10)
+    else:
+        kwargs["use_session_pool"] = False
+
+    # Proxy configuration
+    proxy_url = crawlee_cfg.get("proxy_url", "") or os.environ.get("CRAWLEE_PROXY_URL", "")
+    if proxy_url:
+        from crawlee.proxy_configuration import ProxyConfiguration
+        kwargs["proxy_configuration"] = ProxyConfiguration(proxy_urls=[proxy_url])
+
+    return kwargs
 
 
 class DgisScraper(BaseScraper):
@@ -133,6 +93,9 @@ class DgisScraper(BaseScraper):
         if not self.api_key:
             self.api_key = os.environ.get("DGIS_API_KEY", "")
 
+        # Crawlee config (session pool, proxy)
+        self._crawlee_kwargs = _build_crawlee_kwargs(config)
+
     # ─────────────────────────────────────────────
     # Public API (BaseScraper)
     # ─────────────────────────────────────────────
@@ -157,7 +120,7 @@ class DgisScraper(BaseScraper):
             Список RawCompany.
         """
         companies: list[RawCompany] = []
-        region_id = _get_dgis_region_id(self.city)
+        region_id = get_dgis_region_id(self.city)
         page = 1
         total_fetched = 0
 
@@ -291,7 +254,7 @@ class DgisScraper(BaseScraper):
 
         # ── Source URL ──
         firm_id = item.get("id", "")
-        source_url = f"https://2gis.ru/{_get_dgis_region_id(self.city)}/firm/{firm_id}" if firm_id else ""
+        source_url = f"https://2gis.ru/{get_dgis_region_id(self.city)}/firm/{firm_id}" if firm_id else ""
 
         return RawCompany(
             source=Source.DGIS,
@@ -307,14 +270,15 @@ class DgisScraper(BaseScraper):
         )
 
     # ─────────────────────────────────────────────
-    # Strategy 2: Crawlee BeautifulSoupCrawler
+    # Strategy 2: Crawlee PlaywrightCrawler (fallback)
     # ─────────────────────────────────────────────
 
     def _scrape_crawlee(self) -> list[RawCompany]:
-        """Fallback: Crawlee BeautifulSoupCrawler для парсинга 2GIS.
+        """Fallback: Crawlee PlaywrightCrawler для парсинга 2GIS.
 
-        Используется когда нет API ключа. Парсит страницу результатов поиска
-        и извлекает данные из карточек организаций.
+        Используется когда нет API ключа. 2GIS — SPA на React,
+        BeautifulSoupCrawler не видит карточки организаций,
+        поэтому используется PlaywrightCrawler для JS-рендеринга.
 
         Returns:
             Список RawCompany.
@@ -331,23 +295,36 @@ class DgisScraper(BaseScraper):
             return []
 
     async def _async_crawlee_scrape(self, start_url: str) -> list[RawCompany]:
-        """Async Crawlee: парсинг результатов поиска 2GIS."""
-        from crawlee.crawlers import BeautifulSoupCrawler
+        """Async Crawlee: парсинг результатов поиска 2GIS (PlaywrightCrawler).
+
+        2GIS — SPA на React, поэтому нужен JS-рендеринг через Playwright.
+        BeautifulSoupCrawler не рендерит JS и не видит карточки организаций.
+        """
+        import random
+        from crawlee.crawlers import PlaywrightCrawler
 
         companies: list[RawCompany] = []
         seen_names: set[str] = set()  # дедупликация по имени
 
         async def handler(context):
-            soup = context.soup
-            if not soup:
+            page = context.page
+            if not page:
                 return
 
+            # Ждём загрузки SPA
+            await page.wait_for_load_state("domcontentloaded", timeout=20000)
+            # Дополнительно ждём появления карточек
+            try:
+                await page.wait_for_selector("a[href*='/firm/']", timeout=10000)
+            except Exception:
+                logger.debug("  2GIS: карточки /firm/ не появились за таймаут")
+
             # 2GIS React: карточки организаций содержат ссылки /firm/
-            cards = soup.find_all("a", href=re.compile(r"/firm/"))
+            cards = await page.query_selector_all("a[href*='/firm/']")
 
             for card in cards:
                 try:
-                    name = card.get_text(strip=True)
+                    name = (await card.inner_text()).strip()
                     if not name or len(name) < 3:
                         continue
 
@@ -357,33 +334,38 @@ class DgisScraper(BaseScraper):
                         continue
                     seen_names.add(name_lower)
 
-                    href = card.get("href", "")
+                    href = await card.get_attribute("href") or ""
                     source_url = urljoin("https://2gis.ru", href) if href else ""
 
                     # Родительский контейнер для адреса/телефона
-                    parent = card.find_parent()
-                    if not parent:
-                        parent = card
+                    parent = card.evaluate_handle("el => el.closest('[class*=\'searchCard\'], [class*=\'card\'], [class*=\'list__item\']') || el.parentElement")
+                    parent_text = await parent.evaluate("el => el?.textContent || ''") if parent else ""
 
-                    parent_text = parent.get_text(separator=" ")
                     phones = normalize_phones(extract_phones(parent_text))
                     emails = extract_emails(parent_text)
 
                     # Мессенджеры из ссылок
                     messengers: dict[str, str] = {}
-                    for a in parent.find_all("a", href=True):
-                        h = a["href"]
-                        if "vk.com" in h and "vk" not in messengers:
-                            messengers["vk"] = h
-                        elif "t.me" in h and "share" not in h and "telegram" not in messengers:
-                            messengers["telegram"] = h
-                        elif "instagram.com" in h and "instagram" not in messengers:
-                            messengers["instagram"] = h
+                    for a in parent_text.split():
+                        pass  # parent_text уже извлечён, мессенджеры из href ниже
+                    link_elems = await page.query_selector_all("a[href]")
+                    for link in link_elems[:50]:
+                        try:
+                            h = await link.get_attribute("href") or ""
+                            if "vk.com" in h and "vk" not in messengers:
+                                messengers["vk"] = h
+                            elif "t.me" in h and "share" not in h and "telegram" not in messengers:
+                                messengers["telegram"] = h
+                            elif "instagram.com" in h and "instagram" not in messengers:
+                                messengers["instagram"] = h
+                        except Exception:
+                            continue
 
                     # Адрес: ищем элемент с классом содержащим "address"
                     address = ""
-                    for elem in parent.find_all(class_=re.compile(r"address", re.I)):
-                        addr_text = elem.get_text(strip=True)
+                    addr_elems = await page.query_selector_all("[class*='address']")
+                    for elem in addr_elems[:5]:
+                        addr_text = (await elem.inner_text()).strip()
                         if addr_text and len(addr_text) > 10:
                             address = addr_text
                             break
@@ -404,9 +386,11 @@ class DgisScraper(BaseScraper):
                     logger.debug(f"  2GIS: пропущена карточка: {e}")
                     continue
 
-        crawler = BeautifulSoupCrawler(
+        crawler = PlaywrightCrawler(
             request_handler=handler,
             max_requests_per_crawl=1,
+            headless=True,
+            **self._crawlee_kwargs,
         )
         await crawler.run([start_url])
         return companies

@@ -4,7 +4,8 @@ import asyncio
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock, PropertyMock
 from granite.models import RawCompany, Source
-from granite.scrapers.dgis import DgisScraper, DGIS_REGION_IDS, _get_dgis_region_id
+from granite.scrapers.dgis import DgisScraper
+from granite.scrapers.dgis_constants import DGIS_REGION_IDS, get_dgis_region_id
 from granite.scrapers.yell import YellScraper
 
 
@@ -81,28 +82,28 @@ def yell_with_categories_config():
 class TestDgisRegionId:
 
     def test_moscow(self):
-        assert _get_dgis_region_id("Москва") == "32"
+        assert get_dgis_region_id("Москва") == "32"
 
     def test_saint_petersburg(self):
-        assert _get_dgis_region_id("Санкт-Петербург") == "49"
+        assert get_dgis_region_id("Санкт-Петербург") == "49"
 
     def test_novosibirsk(self):
-        assert _get_dgis_region_id("Новосибирск") == "131"
+        assert get_dgis_region_id("Новосибирск") == "131"
 
     def test_case_insensitive(self):
-        assert _get_dgis_region_id("москва") == "32"
-        assert _get_dgis_region_id("МОСКВА") == "32"
+        assert get_dgis_region_id("москва") == "32"
+        assert get_dgis_region_id("МОСКВА") == "32"
 
     def test_unknown_city(self):
-        assert _get_dgis_region_id("НеизвестныйГород") == ""
+        assert get_dgis_region_id("НеизвестныйГород") == ""
 
     def test_empty_city(self):
-        assert _get_dgis_region_id("") == ""
+        assert get_dgis_region_id("") == ""
 
     def test_small_city_fallback(self):
         """Малые города → region_id области."""
-        assert _get_dgis_region_id("Тара") == "131"
-        assert _get_dgis_region_id("Исилькуль") == "131"
+        assert get_dgis_region_id("Тара") == "131"
+        assert get_dgis_region_id("Исилькуль") == "131"
 
     def test_all_region_ids_are_integers(self):
         for city, rid in DGIS_REGION_IDS.items():

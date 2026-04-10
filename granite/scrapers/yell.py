@@ -16,6 +16,7 @@ from loguru import logger
 
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
+from granite.scrapers.dgis import _build_crawlee_kwargs
 from granite.utils import (
     normalize_phones,
     extract_emails,
@@ -50,6 +51,9 @@ class YellScraper(BaseScraper):
         self.base_path = self.source_config.get("base_path")
         self.max_pages = self.source_config.get("max_pages", 5)
         self._delay = self.source_config.get("delay", 2.0)
+
+        # Crawlee config (session pool, proxy)
+        self._crawlee_kwargs = _build_crawlee_kwargs(config)
 
     # ─────────────────────────────────────────────
     # Public API (BaseScraper)
@@ -182,6 +186,7 @@ class YellScraper(BaseScraper):
             request_handler=handler,
             max_requests_per_crawl=1,
             headless=True,
+            **self._crawlee_kwargs,
         )
 
         await crawler.run([start_url])
@@ -295,7 +300,7 @@ class YellScraper(BaseScraper):
 
                 companies.append(RawCompany(
                     source=Source.YELL,
-                    source_url=start_url if hasattr(self, '_current_url') else "",
+                    source_url=await card.evaluate("el => el.closest('a[href]')?.href || ''") or start_url,
                     name=name,
                     phones=phones,
                     address_raw=address,

@@ -22,74 +22,33 @@ from loguru import logger
 from granite.database import Database, EnrichedCompanyRow
 from granite.utils import normalize_phones, normalize_phone, extract_emails, extract_phones, slugify
 from granite.pipeline.status import print_status
+from granite.scrapers.dgis_constants import get_dgis_region_id, DGIS_REGION_IDS
 
 
-# ===== 2GIS region_id mapping =====
+def _run_async(coro):
+    """Безопасный запуск coroutine из sync-контекста.
 
-DGIS_REGION_IDS: dict[str, int] = {
-    "москва": 32,
-    "санкт-петербург": 49,
-    "новосибирск": 131,
-    "екатеринбург": 81,
-    "казань": 72,
-    "нижний новгород": 115,
-    "красноярск": 54,
-    "челябинск": 143,
-    "уфа": 105,
-    "самара": 124,
-    "ростов-на-дону": 111,
-    "краснодар": 40,
-    "омск": 103,
-    "воронеж": 50,
-    "пермь": 109,
-    "волгоград": 48,
-    "саратов": 120,
-    "тюмень": 134,
-    "тольятти": 125,
-    "махачкала": 62,
-    "барнаул": 25,
-    "ижевск": 56,
-    "хабаровск": 147,
-    "ульяновск": 140,
-    "иркутск": 53,
-    "владивосток": 46,
-    "ярославль": 153,
-    "севастополь": 122,
-    "сочи": 121,
-    "кемерово": 67,
-    "томск": 130,
-    "ставрополь": 119,
-    "набережные челны": 96,
-    "тула": 136,
-    "оренбург": 104,
-    "новокузнецк": 100,
-    "балашиха": 20,
-    "рязань": 114,
-    "киров": 68,
-    "чебоксары": 144,
-    "калининград": 63,
-    "пенза": 107,
-    "липецк": 84,
-    "астрахань": 22,
-    "тара": 131,    # Омская область — нет отдельного region_id
-    "исилькуль": 131,
-    "калачинск": 131,
-    "называевск": 131,
-    "тюкалинск": 131,
-}
+    Если уже есть запущенный event loop (например в ThreadPoolExecutor
+    внутри async enrichment), использует loop.run_until_complete().
+    Иначе — asyncio.run().
 
-
-def _get_dgis_region_id(city: str) -> str:
-    """Получить 2GIS region_id для города.
-
-    Returns:
-        Строку с region_id или пустую строку (глобальный поиск).
+    Предотвращает RuntimeError: 'This event loop is already running'
+    при вложенных вызовах.
     """
-    city_lower = city.lower().strip()
-    rid = DGIS_REGION_IDS.get(city_lower)
-    if rid:
-        return str(rid)
-    return ""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Создаём новый поток с собственным event loop
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result()
+    else:
+        return asyncio.run(coro)
+
 
 
 # ===== Reverse Lookup Enricher =====
@@ -274,7 +233,7 @@ class ReverseLookupEnricher:
         Returns:
             Словарь с найденными данными или None.
         """
-        region_id = _get_dgis_region_id(city)
+        region_id = get_dgis_region_id(city)
         url = "https://catalog.api.2gis.ru/3.0/items"
         params = {
             "q": query,
@@ -364,7 +323,7 @@ class ReverseLookupEnricher:
         url = f"https://2gis.ru/{city_slug}/search/{encoded_query}"
 
         try:
-            return asyncio.run(self._async_dgis_crawlee(url))
+            return _run_async(self._async_dgis_crawlee(url))
         except Exception as e:
             logger.debug(f"2GIS Crawlee error: {e}")
             return None
@@ -428,7 +387,7 @@ class ReverseLookupEnricher:
         url = f"https://www.yell.ru/search?text={encoded_query}"
 
         try:
-            return asyncio.run(self._async_yell_crawlee(url))
+            return _run_async(self._async_yell_crawlee(url))
         except Exception as e:
             logger.debug(f"Yell Crawlee error: {e}")
             return None

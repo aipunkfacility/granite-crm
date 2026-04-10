@@ -3,9 +3,8 @@ import pytest
 from unittest.mock import patch, MagicMock, PropertyMock
 from granite.enrichers.reverse_lookup import (
     ReverseLookupEnricher,
-    _get_dgis_region_id,
-    DGIS_REGION_IDS,
 )
+from granite.scrapers.dgis_constants import get_dgis_region_id, DGIS_REGION_IDS
 
 
 # ===== Fixtures =====
@@ -77,30 +76,30 @@ def _make_enriched_row(**kwargs):
 class TestDgisRegionId:
 
     def test_moscow(self):
-        assert _get_dgis_region_id("Москва") == "32"
+        assert get_dgis_region_id("Москва") == "32"
 
     def test_saint_petersburg(self):
-        assert _get_dgis_region_id("Санкт-Петербург") == "49"
+        assert get_dgis_region_id("Санкт-Петербург") == "49"
 
     def test_novosibirsk(self):
-        assert _get_dgis_region_id("Новосибирск") == "131"
+        assert get_dgis_region_id("Новосибирск") == "131"
 
     def test_case_insensitive(self):
-        assert _get_dgis_region_id("москва") == "32"
-        assert _get_dgis_region_id("МОСКВА") == "32"
+        assert get_dgis_region_id("москва") == "32"
+        assert get_dgis_region_id("МОСКВА") == "32"
 
     def test_unknown_city(self):
-        assert _get_dgis_region_id("НеизвестныйГород") == ""
+        assert get_dgis_region_id("НеизвестныйГород") == ""
 
     def test_empty_city(self):
-        assert _get_dgis_region_id("") == ""
+        assert get_dgis_region_id("") == ""
 
     def test_small_city(self):
         """Малые города Омской области fallback на region_id Омской области."""
-        assert _get_dgis_region_id("Тара") == "131"
+        assert get_dgis_region_id("Тара") == "131"
 
     def test_kazan(self):
-        assert _get_dgis_region_id("Казань") == "72"
+        assert get_dgis_region_id("Казань") == "72"
 
 
 # ===== Candidate Selection =====
@@ -517,7 +516,7 @@ class TestDgisCrawlee:
             "messengers": {"telegram": "https://t.me/test"},
         }
 
-        with patch("granite.enrichers.reverse_lookup.asyncio.run", return_value=test_data):
+        with patch("granite.enrichers.reverse_lookup._run_async", return_value=test_data):
             result = enricher._query_dgis_crawlee("Гранит Мастер", "Омск")
 
         assert result is not None
@@ -546,7 +545,7 @@ class TestYellCrawlee:
             "messengers": {"vk": "https://vk.com/granit"},
         }
 
-        with patch("granite.enrichers.reverse_lookup.asyncio.run", return_value=test_data):
+        with patch("granite.enrichers.reverse_lookup._run_async", return_value=test_data):
             result = enricher._query_yell_crawlee("Гранит Мастер Омск")
 
         assert result is not None
