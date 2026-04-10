@@ -379,6 +379,10 @@ enrichment:
   web_client:
     timeout: 60
     search_limit: 3
+    search_delay: 2.0  # секунд — задержка между Google SERP запросами (rate limiting)
+
+  # Параллелизация: кол-во потоков для обогащения (1 = последовательно)
+  max_concurrent: 3
 
   # Батч: flush каждые N enriched-записей в enrichment_phase
   batch_flush: 50

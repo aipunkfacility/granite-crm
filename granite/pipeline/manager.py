@@ -52,6 +52,7 @@ class PipelineManager:
         self.web = WebClient(
             timeout=wc_config.get("timeout", 60),
             search_limit=wc_config.get("search_limit", 3),
+            search_delay=wc_config.get("search_delay", 2.0),
         )
         self.scraping = ScrapingPhase(config, db, self.region)
         self.dedup = DedupPhase(db)

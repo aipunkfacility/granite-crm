@@ -5,6 +5,7 @@
 требующая отдельного тестирования и изоляции.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from granite.database import Database, CompanyRow, EnrichedCompanyRow
 from granite.pipeline.status import print_status
@@ -160,97 +161,120 @@ class EnrichmentPhase:
                 name_attr="name",
             )
 
+    def _enrich_one_company(self, c, scanner, tech_ext) -> 'EnrichedCompanyRow':
+        """Обогащение одной компании (без session operations).
+
+        Вызывается из ThreadPoolExecutor — не имеет доступа к сессии БД.
+        Все HTTP-запросы (scan_website, find_tg, check_tg_trust) выполняются здесь.
+        Атрибуты CompanyRow (name_best, phones, website и т.д.) — загружены
+        eagerly при запросе .all(), поэтому безопасны для чтения из других потоков.
+
+        Returns:
+            EnrichedCompanyRow (ready for session.merge).
+
+        Raises:
+            Exception: при ошибке обогащения (ловится вызывающим кодом).
+        """
+        erow = EnrichedCompanyRow(
+            id=c.id,
+            name=c.name_best,
+            phones=c.phones,
+            address_raw=c.address,
+            website=c.website,
+            emails=c.emails,
+            city=c.city,
+        )
+
+        messengers = dict(c.messengers) if c.messengers else {}
+
+        # 1. Сканирование сайта
+        if c.website:
+            valid_url, status = validate_website(c.website)
+            erow.website = valid_url
+            if valid_url and status == 200:
+                site_data = scanner.scan_website(valid_url)
+                # Мессенджеры
+                for k, v in site_data.items():
+                    if not k.startswith("_") and k not in messengers:
+                        messengers[k] = v
+
+                # Email из сайта
+                site_emails = site_data.get("_emails", [])
+                if site_emails:
+                    existing_emails = set(erow.emails or [])
+                    for em in site_emails:
+                        existing_emails.add(em)
+                    erow.emails = list(existing_emails)
+
+                # Телефоны из сайта
+                site_phones = site_data.get("_phones", [])
+                if site_phones:
+                    erow.phones = normalize_phones(
+                        (erow.phones or []) + site_phones
+                    )
+
+                tech = tech_ext.extract(valid_url)
+                erow.cms = tech.get("cms", "unknown")
+                erow.has_marquiz = tech.get("has_marquiz", False)
+
+        # 2. Поиск Telegram
+        if "telegram" not in messengers:
+            if c.phones:
+                tg = find_tg_by_phone(c.phones[0], self.config)
+                if tg:
+                    messengers["telegram"] = tg
+
+            if "telegram" not in messengers:
+                tg = find_tg_by_name(
+                    c.name_best, c.phones[0] if c.phones else None, self.config
+                )
+                if tg:
+                    messengers["telegram"] = tg
+
+        # 3. Анализ Telegram (Траст)
+        tg_trust = {}
+        if "telegram" in messengers:
+            tg_trust = check_tg_trust(messengers["telegram"], self.config)
+
+        erow.messengers = messengers
+        erow.tg_trust = tg_trust
+
+        return erow
+
     def _enrich_companies(self, session, companies: list, scanner, tech_ext) -> int:
         """Основной цикл обогащения: мессенджеры, Telegram, траст, CMS.
 
         Запускается внутри внешнего session_scope, поэтому не управляет сессией.
         Использует session.flush() вместо session.commit() для батчей —
         финальный commit делает session_scope при успешном выходе.
+
+        При max_concurrent > 1 компании обрабатываются параллельно через
+        ThreadPoolExecutor: HTTP-запросы в потоках, запись в БД на главном.
+        При max_concurrent <= 1 — последовательная обработка (без потоков).
         """
-        count = 0
         batch_flush = self.config.get("enrichment", {}).get("batch_flush", 50)
+        max_concurrent = self.config.get("enrichment", {}).get("max_concurrent", 3)
+
+        if max_concurrent <= 1 or len(companies) <= 1:
+            return self._enrich_companies_sequential(
+                session, companies, scanner, tech_ext, batch_flush
+            )
+
+        return self._enrich_companies_parallel(
+            session, companies, scanner, tech_ext, batch_flush, max_concurrent
+        )
+
+    def _enrich_companies_sequential(self, session, companies, scanner, tech_ext, batch_flush) -> int:
+        """Последовательное обогащение (max_concurrent <= 1)."""
+        count = 0
         for c in companies:
             try:
-                erow = EnrichedCompanyRow(
-                    id=c.id,
-                    name=c.name_best,
-                    phones=c.phones,
-                    address_raw=c.address,
-                    website=c.website,
-                    emails=c.emails,
-                    city=c.city,
-                )
-
-                messengers = dict(c.messengers) if c.messengers else {}
-
-                # 1. Сканирование сайта
-                if c.website:
-                    valid_url, status = validate_website(c.website)
-                    erow.website = valid_url
-                    if valid_url and status == 200:
-                        site_data = scanner.scan_website(valid_url)
-                        # Мессенджеры
-                        for k, v in site_data.items():
-                            if not k.startswith("_") and k not in messengers:
-                                messengers[k] = v
-
-                        # Email из сайта
-                        site_emails = site_data.get("_emails", [])
-                        if site_emails:
-                            existing_emails = set(erow.emails or [])
-                            for em in site_emails:
-                                existing_emails.add(em)
-                            erow.emails = list(existing_emails)
-
-                        # Телефоны из сайта
-                        site_phones = site_data.get("_phones", [])
-                        if site_phones:
-                            erow.phones = normalize_phones(
-                                (erow.phones or []) + site_phones
-                            )
-
-                        tech = tech_ext.extract(valid_url)
-                        erow.cms = tech.get("cms", "unknown")
-                        erow.has_marquiz = tech.get("has_marquiz", False)
-
-                # 2. Поиск Telegram
-                if "telegram" not in messengers:
-                    if c.phones:
-                        tg = find_tg_by_phone(c.phones[0], self.config)
-                        if tg:
-                            messengers["telegram"] = tg
-
-                    if "telegram" not in messengers:
-                        tg = find_tg_by_name(
-                            c.name_best, c.phones[0] if c.phones else None, self.config
-                        )
-                        if tg:
-                            messengers["telegram"] = tg
-
-                # 3. Анализ Telegram (Траст)
-                tg_trust = {}
-                if "telegram" in messengers:
-                    tg_trust = check_tg_trust(messengers["telegram"], self.config)
-
-                erow.messengers = messengers
-                erow.tg_trust = tg_trust
-
+                erow = self._enrich_one_company(c, scanner, tech_ext)
                 session.merge(erow)
                 if count % batch_flush == batch_flush - 1:
                     session.flush()
                 count += 1
-
-                parts = []
-                if erow.messengers:
-                    parts.append(f"мессенджеры: {', '.join(erow.messengers.keys())}")
-                if erow.emails:
-                    parts.append(f"email: {len(erow.emails)}")
-                if erow.cms:
-                    parts.append(f"cms: {erow.cms}")
-                detail = " | ".join(parts) if parts else "нет данных"
-                print_status(
-                    f"Обогащено: {count}/{len(companies)} — {c.name_best} ({detail})"
-                )
+                self._print_enriched_status(c.name_best, erow, count, len(companies))
             except Exception as e:
                 category = _classify_error(e)
                 logger.exception(
@@ -258,9 +282,59 @@ class EnrichmentPhase:
                 )
                 self._error_counts[category] += 1
 
-        # Flush оставшиеся записи; финальный commit — через session_scope
         session.flush()
         return count
+
+    def _enrich_companies_parallel(self, session, companies, scanner, tech_ext,
+                                    batch_flush, max_concurrent) -> int:
+        """Параллельное обогащение через ThreadPoolExecutor.
+
+        HTTP-запросы выполняются в потоках, результаты собираются
+        на главном потоке и записываются в БД через session.merge().
+        SQLite WAL позволяет параллельные чтения; запись — одна сессия.
+        """
+        count = 0
+        print_status(
+            f"Параллельное обогащение: {len(companies)} компаний, {max_concurrent} потоков",
+            "info",
+        )
+
+        with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+            future_to_company = {
+                executor.submit(self._enrich_one_company, c, scanner, tech_ext): c
+                for c in companies
+            }
+            for future in as_completed(future_to_company):
+                c = future_to_company[future]
+                try:
+                    erow = future.result()
+                    session.merge(erow)
+                    if count % batch_flush == batch_flush - 1:
+                        session.flush()
+                    count += 1
+                    self._print_enriched_status(c.name_best, erow, count, len(companies))
+                except Exception as e:
+                    category = _classify_error(e)
+                    logger.exception(
+                        f"[{category}] Ошибка обогащения {c.name_best}: {e}"
+                    )
+                    self._error_counts[category] += 1
+
+        session.flush()
+        return count
+
+    @staticmethod
+    def _print_enriched_status(name: str, erow, count: int, total: int) -> None:
+        """Логирование статуса обогащённой компании."""
+        parts = []
+        if erow.messengers:
+            parts.append(f"мессенджеры: {', '.join(erow.messengers.keys())}")
+        if erow.emails:
+            parts.append(f"email: {len(erow.emails)}")
+        if erow.cms:
+            parts.append(f"cms: {erow.cms}")
+        detail = " | ".join(parts) if parts else "нет данных"
+        print_status(f"Обогащено: {count}/{total} — {name} ({detail})")
 
     def _run_deep_enrich_for(
         self,

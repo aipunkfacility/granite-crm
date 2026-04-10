@@ -4,6 +4,8 @@
 Использует Google SERP для поиска и requests+BeautifulSoup для парсинга.
 """
 
+import threading
+import time
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -13,59 +15,80 @@ MIN_CONTENT_LENGTH = 100
 
 
 class WebClient:
-    """Обёртка для веб-поиска и скрапинга (search + scrape)."""
+    """Обёртка для веб-поиска и скрапинга (search + scrape).
+
+    Потокобезопасность: search() сериализован через threading.Lock для
+    rate limiting Google SERP. scrape() — без блокировки (разные домены).
+    """
 
     def __init__(
-        self, timeout: int = 60, search_limit: int = 3
+        self, timeout: int = 60, search_limit: int = 3,
+        search_delay: float = 2.0,
     ):
         self.timeout = timeout
         self.search_limit = search_limit
+        self.search_delay = search_delay
+        self._search_lock = threading.Lock()
+        self._last_search_time = 0.0
 
     def search(self, query: str) -> dict | None:
-        """Поиск через Google SERP.
+        """Поиск через Google SERP (с rate limiting).
+
+        Сериализован через Lock: при параллельном обогащении (ThreadPoolExecutor)
+        Google-запросы выполняются последовательно с задержкой search_delay
+        между ними. Это предотвращает HTTP 429 / CAPTCHA от Google.
 
         Returns:
             dict с ключом "data.web" — список результатов, или None.
         """
-        try:
-            search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={self.search_limit}&hl=ru"
-            html = fetch_page(search_url, timeout=15)
+        with self._search_lock:
+            # Rate limiting: минимальная задержка между Google-запросами
+            if self.search_delay > 0:
+                now = time.time()
+                wait = self.search_delay - (now - self._last_search_time)
+                if wait > 0:
+                    time.sleep(wait)
+            self._last_search_time = time.time()
 
-            if not html:
+            try:
+                search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={self.search_limit}&hl=ru"
+                html = fetch_page(search_url, timeout=15)
+
+                if not html:
+                    return None
+
+                soup = BeautifulSoup(html, "html.parser")
+                web_results = []
+
+                for g in soup.select("div.g"):
+                    anchor = g.find("a", href=True)
+                    title_el = g.find("h3")
+                    if not anchor or not title_el:
+                        continue
+
+                    url = anchor["href"]
+                    title = title_el.get_text(strip=True)
+
+                    if not url or not title:
+                        continue
+
+                    # Пропускаем не-URL результаты Google
+                    if url.startswith("/search") or url.startswith("#"):
+                        continue
+                    if "google.com" in url and "/search?" in url:
+                        continue
+
+                    web_results.append({"url": url, "title": title})
+
+                if web_results:
+                    return {"data": {"web": web_results}}
+
+                logger.debug(f"WebClient search: 0 результатов для '{query[:60]}'")
                 return None
 
-            soup = BeautifulSoup(html, "html.parser")
-            web_results = []
-
-            for g in soup.select("div.g"):
-                anchor = g.find("a", href=True)
-                title_el = g.find("h3")
-                if not anchor or not title_el:
-                    continue
-
-                url = anchor["href"]
-                title = title_el.get_text(strip=True)
-
-                if not url or not title:
-                    continue
-
-                # Пропускаем не-URL результаты Google
-                if url.startswith("/search") or url.startswith("#"):
-                    continue
-                if "google.com" in url and "/search?" in url:
-                    continue
-
-                web_results.append({"url": url, "title": title})
-
-            if web_results:
-                return {"data": {"web": web_results}}
-
-            logger.debug(f"WebClient search: 0 результатов для '{query[:60]}'")
-            return None
-
-        except Exception as e:
-            logger.debug(f"WebClient search ошибка: {e}")
-            return None
+            except Exception as e:
+                logger.debug(f"WebClient search ошибка: {e}")
+                return None
 
     def scrape(self, url: str) -> dict | None:
         """Скрапинг сайта через requests + BeautifulSoup.
