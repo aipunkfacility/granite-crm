@@ -131,10 +131,10 @@ class ScrapingPhase:
             jsprav_results = jsprav.run()
             city_results.extend(jsprav_results)
             # Проверяем, нужна ли дообработка через Playwright
-            if getattr(jsprav, '_needs_playwright', False):
+            if jsprav._needs_playwright:
                 jsprav_needs_pw = True
                 got = len(jsprav_results)
-                need = getattr(jsprav, '_declared_total', None) or "?"
+                need = jsprav._declared_total or "?"
                 logger.info(
                     f"  JSprav собрал {got}/{need} для {rc}, "
                     f"запускаю Playwright для добора"

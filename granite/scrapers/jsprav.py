@@ -34,6 +34,7 @@ class JspravScraper(BaseScraper):
 
         self._city_lower = city.lower().strip()
         self._declared_total = None  # для Playwright fallback: сколько всего компаний
+        self._needs_playwright = False  # устанавливается в scrape() если нужно добрать через PW
 
     def _get_subdomain(self) -> str:
         if self._cached_subdomain:

@@ -13,6 +13,7 @@ from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
 from granite.utils import (
     normalize_phones,
+    extract_phones,
     extract_emails,
     extract_domain,
     is_safe_url,
@@ -711,11 +712,7 @@ class WebSearchScraper(BaseScraper):
 
         # Также из текста страницы
         text = soup.get_text(separator=" ")
-        text_phones = re.findall(
-            r"(\+?7[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2})",
-            text,
-        )
-        for p in text_phones:
+        for p in extract_phones(text):
             if p not in data_out["phones"]:
                 data_out["phones"].append(p)
 

@@ -62,6 +62,8 @@ class DedupPhase:
                 d["emails"] = validate_emails(d.get("emails", []))
 
             # Алгоритмы кластеризации (только телефон и сайт — без name_matcher)
+            # TODO: подключить find_name_matches из granite.dedup.name_matcher
+            # для дедупликации по названиям (см. name_matcher.py)
             clusters_phone = cluster_by_phones(dicts)
             clusters_site = cluster_by_site(dicts)
 

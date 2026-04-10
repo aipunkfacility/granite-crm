@@ -2,7 +2,7 @@
 import re
 from urllib.parse import urljoin, urlparse
 from loguru import logger
-from granite.utils import fetch_page, adaptive_delay, is_safe_url, extract_emails
+from granite.utils import fetch_page, adaptive_delay, is_safe_url, extract_emails, extract_phones
 
 
 class MessengerScanner:
@@ -125,11 +125,7 @@ class MessengerScanner:
         # Текст страницы
         # Простой текст: убираем теги
         text = re.sub(r"<[^>]+>", " ", html)
-        text_phones = re.findall(
-            r"(\+?7[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2})",
-            text,
-        )
-        for p in text_phones:
+        for p in extract_phones(text):
             if p not in phones:
                 phones.append(p)
 

@@ -104,6 +104,23 @@ def normalize_phones(phones: list[str]) -> list[str]:
     return result
 
 
+def extract_phones(text: str) -> list[str]:
+    """Извлечение российских телефонных номеров из текста.
+
+    Ищет номера формата: +7(903)123-45-67, 8 903 123 45 67,
+    79031234567 и вариации с пробелами/дефисами/скобками.
+
+    Returns:
+        Список уникальных найденных телефонов (в оригинальном формате из текста).
+    """
+    if not text:
+        return []
+    return list(dict.fromkeys(re.findall(
+        r"(\+?7[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2})",
+        text,
+    )))
+
+
 def extract_emails(text: str) -> list[str]:
     """Извлечение email из текста."""
     if not text:

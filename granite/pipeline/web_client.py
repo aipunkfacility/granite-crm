@@ -4,11 +4,10 @@
 Использует Google SERP для поиска и requests+BeautifulSoup для парсинга.
 """
 
-import re
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup
 from loguru import logger
-from granite.utils import extract_emails, is_safe_url, _sanitize_url_for_log, fetch_page, adaptive_delay
+from granite.utils import extract_phones, extract_emails, is_safe_url, _sanitize_url_for_log, fetch_page, adaptive_delay
 
 MIN_CONTENT_LENGTH = 100
 
@@ -101,11 +100,7 @@ class WebClient:
 
             # Телефоны из текста страницы
             text = soup.get_text(separator=" ")
-            text_phones = re.findall(
-                r"(\+?7[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2})",
-                text,
-            )
-            for p in text_phones:
+            for p in extract_phones(text):
                 if p not in phones:
                     phones.append(p)
 

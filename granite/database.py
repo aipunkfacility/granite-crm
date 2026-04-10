@@ -215,13 +215,13 @@ class Database:
             except yaml.YAMLError as e:
                 raise ValueError(f"Invalid YAML in config file {config_path}: {e}")
 
-            # Validate config if _validate_config is available (from cli.py)
+            # Validate config (from separate module to avoid circular import)
             try:
-                from granite.cli import _validate_config
-                if not _validate_config(config):
+                from granite.config_validator import validate_config
+                if not validate_config(config):
                     logger.warning("Config validation failed, proceeding with defaults")
             except ImportError:
-                logger.debug("_validate_config not available, skipping config validation")
+                logger.debug("config_validator not available, skipping config validation")
 
             db_path = config.get("database", {}).get("path", "data/granite.db")
 

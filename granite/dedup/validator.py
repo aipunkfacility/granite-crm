@@ -2,45 +2,11 @@
 import re
 import ipaddress
 from urllib.parse import urlparse
-import requests
-from granite.utils import normalize_phone, check_site_alive, is_safe_url as _is_safe_url
+from granite.utils import normalize_phone, check_site_alive, is_safe_url
 from loguru import logger
-
-# Private/loopback IP ranges to block (SSRF protection)
-INTERNAL_HOSTS = frozenset(
-    [
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    ]
-)
 
 # Email validation regex (precompiled for performance)
 _EMAIL_PATTERN = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")
-BLOCKED_IP_RANGES = [
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("169.254.0.0/16"),  # AWS metadata
-    ipaddress.ip_network("0.0.0.0/8"),
-    ipaddress.ip_network("100.64.0.0/10"),
-    ipaddress.ip_network("192.0.0.0/24"),
-    ipaddress.ip_network("192.0.2.0/24"),
-    ipaddress.ip_network("198.51.100.0/24"),
-    ipaddress.ip_network("203.0.113.0/24"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("fe80::/10"),
-    ipaddress.ip_network("::1/128"),
-]
-
-
-def _is_internal_url(url: str) -> bool:
-    """Проверка что URL не указывает на internal/private сеть (SSRF protection).
-
-    Delegates to granite.utils.is_safe_url() — single source of truth for SSRF checks.
-    Returns True if URL is internal/blocked, False if safe.
-    """
-    return not _is_safe_url(url)
 
 
 def validate_phone(phone: str) -> bool:
@@ -78,13 +44,9 @@ def validate_website(url: str) -> tuple[str | None, int | None]:
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
 
-    # SSRF protection: block internal/private URLs
-    if _is_internal_url(url):
+    # SSRF protection: single check via is_safe_url (single source of truth)
+    if not is_safe_url(url):
         logger.debug(f"  SSRF blocked: {url}")
-        return None, None
-
-    if _is_safe_url(url) is False:
-        logger.debug(f"  SSRF blocked (is_safe_url): {url}")
         return None, None
 
     status = check_site_alive(url)
