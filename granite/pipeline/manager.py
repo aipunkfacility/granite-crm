@@ -58,9 +58,10 @@ class PipelineManager:
         self.dedup = DedupPhase(db)
         self.enrichment = EnrichmentPhase(config, db, self.web)
         self.export = ExportPhase(config, db)
-        # Lazy-loaded: ScoringPhase, NetworkDetector (тяжёлые зависимости)
+        # Lazy-loaded: ScoringPhase, NetworkDetector, ReverseLookup
         self._scoring = None
         self._network_detector = None
+        self._reverse_lookup = None
 
     @property
     def scoring(self):
@@ -76,6 +77,13 @@ class PipelineManager:
             from granite.enrichers.network_detector import NetworkDetector
             self._network_detector = NetworkDetector(self.db)
         return self._network_detector
+
+    @property
+    def reverse_lookup(self):
+        if self._reverse_lookup is None:
+            from granite.enrichers.reverse_lookup import ReverseLookupEnricher
+            self._reverse_lookup = ReverseLookupEnricher(self.config, self.db)
+        return self._reverse_lookup
 
     def run_city(self, city: str, force: bool = False,
                  run_scrapers: bool = True, re_enrich: bool = False):
@@ -108,6 +116,11 @@ class PipelineManager:
 
             if stage == "deduped":
                 self._run_phase("обогащение", lambda: self.enrichment.run(city))
+
+        # Reverse lookup enrichment (между обогащением и детектором сетей)
+        rl_config = self.config.get("enrichment", {}).get("reverse_lookup", {})
+        if rl_config.get("enabled", False):
+            self._run_phase("reverse lookup", lambda: self.reverse_lookup.run(city))
 
         # Пересчёт сетей только для текущего города/области
         print_status("Проверка филиальных сетей...", "info")

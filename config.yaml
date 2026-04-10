@@ -445,6 +445,20 @@ enrichment:
       - "weebly"
       - "wordpress.com"
 
+  # Reverse Lookup: поиск в 2GIS и Yell для компаний с мало данных
+  reverse_lookup:
+    enabled: false          # default off for testing
+    sources:
+      dgis:
+        enabled: true
+        api_key: ""         # from .env: DGIS_API_KEY
+        max_requests_per_day: 100
+      yell:
+        enabled: true
+        max_requests_per_day: 50
+    min_crm_score: 30
+    delay_between_requests: 2.0  # seconds
+
 # ===== Priority Score =====
 scoring:
   weights:
