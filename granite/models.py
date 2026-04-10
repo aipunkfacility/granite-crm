@@ -19,7 +19,7 @@ class Source(str, Enum):
     JSPRAV_PW = "jsprav_playwright"
     DGIS = "2gis"
     YELL = "yell"
-    FIRMSRU = "firmsru"
+
     GOOGLE_MAPS = "google_maps"
     AVITO = "avito"
 

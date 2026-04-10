@@ -18,7 +18,6 @@ from granite.scrapers.jsprav import JspravScraper
 from granite.scrapers.jsprav_playwright import JspravPlaywrightScraper
 from granite.scrapers.dgis import DgisScraper
 from granite.scrapers.yell import YellScraper
-from granite.scrapers.firmsru import FirmsruScraper
 from granite.scrapers.web_search import WebSearchScraper
 
 __all__ = ["ScrapingPhase"]
@@ -123,8 +122,6 @@ class ScrapingPhase:
         jsprav_cats = get_categories(cat_cache, "jsprav", rc)
         jsprav_sub = get_subdomain(cat_cache, "jsprav", rc, self.config)
         yell_cats = get_categories(cat_cache, "yell", rc)
-        firmsru_cats = get_categories(cat_cache, "firmsru", rc)
-
         # 1. Быстрые скреперы (без Playwright)
         jsprav_needs_pw = False
         if self.region_resolver.is_source_enabled("jsprav"):
@@ -148,7 +145,7 @@ class ScrapingPhase:
             city_results.extend(web_search.run())
 
         # 2. Playwright скреперы
-        pw_sources = ["dgis", "yell", "firmsru"]
+        pw_sources = ["dgis", "yell"]
         has_pw_sources = any(
             self.region_resolver.is_source_enabled(s) for s in pw_sources
         )
@@ -206,11 +203,6 @@ class ScrapingPhase:
                         if self.region_resolver.is_source_enabled("yell"):
                             yell = YellScraper(self.config, rc, page, categories=yell_cats)
                             city_results.extend(yell.run())
-                        if self.region_resolver.is_source_enabled("firmsru"):
-                            firmsru = FirmsruScraper(
-                                self.config, rc, page, categories=firmsru_cats
-                            )
-                            city_results.extend(firmsru.run())
 
         return city_results
 

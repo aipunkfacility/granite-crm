@@ -353,11 +353,6 @@ sources:
     max_retries: 3
     base_path: "/catalog/izgotovlenie_pamyatnikov/"
 
-  firmsru:
-    enabled: false
-    max_retries: 3
-    base_path: "/{city}/izgotovlenie-pamyatnikov/"
-
   jsprav_playwright:
     enabled: true  # авто-fallback: запускается если JspravScraper не добрал компании
 
