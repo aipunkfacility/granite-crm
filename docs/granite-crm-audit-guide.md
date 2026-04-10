@@ -134,8 +134,8 @@ for table_name, table in orm_tables.items():
 
 | Файл | На что смотреть |
 |---|---|
-| manager.py | Лишние eager-инстанциации, хрупкие checkpoint-переходы |
-| enrichment_phase.py | Размер (>150 строк = плохо), дублирование логики, ненужные `.commit()` |
+| manager.py | Ленивая загрузка ScoringPhase, NetworkDetector, ReverseLookup. Поддержка sync/async фаз через `iscoroutinefunction`. |
+| enrichment_phase.py | Два режима: sync (ThreadPoolExecutor) и async (asyncio.Semaphore + httpx). Async включается через `enrichment.async_enabled`. DB остаётся sync. |
 | web_client.py | WebClient (requests+BeautifulSoup), URL-валидация, поиск через DuckDuckGo |
 | dedup_phase.py | Передаются ли все поля из `merge_cluster()` в `CompanyRow()`? |
 | scoring_phase.py | `except Exception` — слишком широкий? |
@@ -159,8 +159,11 @@ for table_name, table in orm_tables.items():
 | classifier.py | `tg_trust.get(...)` — null check? `trust_score * multiplier` — тип? |
 | tg_finder.py | Хардкод "ritual"? `len(phone)` — phone может быть int? |
 | tg_trust.py | HTTP status code проверяется? Отрицательный trust_score? |
-| messenger_scanner.py | `contact_patterns` — dead code? Fragile regex HTML-парсинг? |
-| tech_extractor.py | `config` parameter — dead parameter? CMS substring match false positives? |
+| messenger_scanner.py | Имеет sync и async варианты (scan_website / scan_website_async). Async использует httpx.AsyncClient через `granite/http_client.py`. |
+| tech_extractor.py | Имеет sync и async варианты (extract / extract_async). `config` parameter — dead parameter? |
+| tg_finder.py | Имеет sync и async варианты (find_tg_by_phone/name и *_async). Async использует httpx.AsyncClient. |
+| tg_trust.py | Имеет sync и async варианты (check_tg_trust / check_tg_trust_async). |
+| reverse_lookup.py | Фаза 6. Использует httpx (sync) для 2GIS API, Crawlee (async via asyncio.run) для fallback и Yell. Не полностью async — вызывает `asyncio.run()` из sync-контекста. |
 
 ### scrapers/
 
@@ -169,7 +172,8 @@ for table_name, table in orm_tables.items():
 | Все | DRY-нарушение: вынести общие паттерны в BaseScraper |
 | web_search.py | DuckDuckGo поиск + скрапинг сайтов, заменил firecrawl |
 | jsprav.py | `rstrip("аеоуияью")` снимает символы, не подстроки. `requests.get` без retry |
-| dgis.py | Только 3 итерации скролла —.lazy-loaded карточки ниже не подгрузятся |
+| dgis.py | Переписан на Crawlee (Фаза 7): API mode + BeautifulSoupCrawler fallback. Пагинация только в API mode. `DGIS_REGION_IDS` дублирован в reverse_lookup.py (DRY). |
+| yell.py | Переписан на Crawlee PlaywrightCrawler (Фаза 7): пагинация через «Показать ещё». source_url не заполняется корректно (used undefined `start_url`). |
 | jsprav_playwright.py | `a[href*='http']` мачает CDN/tracking-пиксели |
 
 ### exporters/

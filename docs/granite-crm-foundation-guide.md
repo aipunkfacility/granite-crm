@@ -27,7 +27,17 @@ enriched_companies.id → companies.id (ON DELETE CASCADE, PK=company_id)
 - `foreign_keys=ON` — FK constraints активны
 - `busy_timeout=5000` — 5 сек ожидания блокировки
 - `pool_pre_ping=True` — лишний для SQLite (можно убрать)
-- `engine.dispose()` — не вызывается в cli.py (утечка соединений)
+- `engine.dispose()` — вызывается в cli.py при завершении работы
+
+### Стек HTTP-клиентов
+
+Проект использует два HTTP-клиента:
+
+1. **`requests`** — sync HTTP для скрапинга (jsprav, web_search) и обратной совместимости. Используется в `MessengerScanner.scan_website()`, `tg_finder.find_tg_by_phone()` и других sync-методах.
+
+2. **`httpx`** — async HTTP для enrichment. Используется через единый модуль `granite/http_client.py` (singleton `httpx.AsyncClient`). Подключается при `enrichment.async_enabled: true` в config.yaml. Асинхронные варианты: `scan_website_async`, `find_tg_by_phone_async`, `check_tg_trust_async`, `WebClient.search_async/scrape_async`.
+
+3. **`crawlee`** — управление браузером и парсингом для 2GIS и Yell скраперов. Предоставляет `BeautifulSoupCrawler` (для 2GIS fallback) и `PlaywrightCrawler` (для Yell и reverse lookup). Crawlee управляет собственным жизненным циклом браузера, независимым от Playwright-сессий проекта.
 
 ### Проблемы текущей схемы
 
@@ -36,6 +46,7 @@ enriched_companies.id → companies.id (ON DELETE CASCADE, PK=company_id)
 3. **messengers как JSON-dict** — нет схемы, нет валидации ключей
 4. **status как String** — нет enum, можно записать любой мусор
 5. **Нет __all__** — public API неявный
+6. **`DGIS_REGION_IDS` дублирован** — один и тот же словарь в `dgis.py` и `reverse_lookup.py` (нарушение DRY)
 
 ---
 
@@ -457,6 +468,66 @@ rules = [
 
 ---
 
+## 4.5. Реализованные расширения (Фазы 6–8)
+
+> Подробный план задач и критериев — в `docs/EXPANSION_PLAN.md`.
+
+### 4.5.1. Фаза 6: ReverseLookupEnricher
+
+**Файл:** `granite/enrichers/reverse_lookup.py`
+
+Обогащение компаний, для которых основное обогащение дало мало данных. Ищет компанию в 2GIS и Yell по имени и телефону, затем сливает найденные контакты с существующими (union, без перезаписи).
+
+**Критерии отбора кандидатов:**
+- Нет мессенджеров (TG, WA, VK)
+- Нет email
+- CRM-score ниже порога (`min_crm_score` из config, дефолт: 30)
+
+**Источники поиска:**
+- **2GIS API** (приоритет) — httpx sync-запросы к `catalog.api.2gis.ru/3.0/items`, нужен `DGIS_API_KEY`. Пагинация через параметр `page`, регион определяется через `DGIS_REGION_IDS`.
+- **2GIS Crawlee fallback** — `BeautifulSoupCrawler` для парсинга страниц поиска `2gis.ru/{city}/search/...`. Запускается через `asyncio.run()`, если API не дал результатов.
+- **Yell Crawlee** — `PlaywrightCrawler` для поиска на `yell.ru/search?text=...`. Запускается через `asyncio.run()`.
+
+**Интеграция в пайплайн:** `PipelineManager` вызывает `ReverseLookupEnricher.run(city)` после EnrichmentPhase и перед NetworkDetector. Lazy-loaded через `@property`.
+
+**Конфигурация:** `enrichment.reverse_lookup` в config.yaml.
+
+**Особенности реализации:**
+- Метод `run()` синхронный, но внутри использует `asyncio.run()` для Crawlee.
+- Rate limiting: `delay_between_requests` с jitter ±30%.
+- Лимит запросов: `max_requests_per_day` на источник.
+- `DGIS_REGION_IDS` дублирован в `dgis.py` и `reverse_lookup.py` (DRY-нарушение, см. проблемы текущей схемы).
+
+### 4.5.2. Фаза 7: Переписанные скраперы 2GIS и Yell
+
+**DgisScraper** (`granite/scrapers/dgis.py`): переписан на Crawlee + 2GIS API. Два режима:
+1. **API mode** (при наличии `DGIS_API_KEY`) — пагинация через `page`, escalating backoff при 403/429, извлечение всех контактов из `contact_groups`.
+2. **Crawlee fallback** (BeautifulSoupCrawler) — парсинг одной страницы результатов без пагинации.
+
+Управляет собственным браузером через Crawlee (НЕ внутри `playwright_session()` scraping_phase.py). Параметр `playwright_page` принимается для обратной совместимости, но игнорируется.
+
+**YellScraper** (`granite/scrapers/yell.py`): переписан на Crawlee `PlaywrightCrawler`. Пагинация через клик по кнопке «Показать ещё». Категории берутся из `category_finder` (приоритет) или `base_path` из config (fallback). Также управляет собственным браузером.
+
+### 4.5.3. Фаза 8: Частичная async-миграция
+
+**Файл:** `granite/http_client.py` — единый async HTTP-клиент (singleton `httpx.AsyncClient`). Предоставляет:
+- `async_fetch_page(url, timeout)` — async GET с retry при 502/503
+- `async_head(url, timeout)` — async HEAD для проверки доступности
+- `async_get(url, headers, timeout, max_retries)` — async GET с exponential backoff при 429
+- `async_adaptive_delay(min_sec, max_sec)` — async задержка (не блокирует event loop)
+- `run_async(coro)` — bridge для вызова корутин из sync-кода
+- SSRF protection через `is_safe_url()` и `_sanitize_url_for_log()`
+
+**EnrichmentPhase** теперь поддерживает два режима:
+- **sync** (дефолт, `enrichment.async_enabled: false`) — `ThreadPoolExecutor` с `max_concurrent` потоками.
+- **async** (`enrichment.async_enabled: true`) — `asyncio.Semaphore` с `max_concurrent` слотами. HTTP-запросы через `httpx.AsyncClient`. БД остаётся sync — запись батчами через `session.merge()`.
+
+Все enrichers имеют sync и async варианты: `scan_website` / `scan_website_async`, `find_tg_by_phone` / `find_tg_by_phone_async`, и т.д.
+
+**PipelineManager** автоматически определяет, нужно ли запускать фазу через `asyncio.run()` — через `asyncio.iscoroutinefunction()`.
+
+---
+
 ## 5. Phase 1.5: CRM-API (FastAPI)
 
 ### 5.1. Структура API
@@ -677,7 +748,7 @@ WHERE id NOT IN (SELECT company_id FROM crm_contacts);
 - [ ] SEED: шаблоны, auto_rules заполнены
 - [ ] SEED: crm_contacts заполнена для всех companies
 
-### Phase 1.5: CRM-API
+### Phase 1.5: CRM-API (план, не реализовано — см. раздел 1.5.0 для текущего состояния)
 
 - [ ] `uvicorn granite.api.app:app` — сервер запускается на :8000
 - [ ] `/docs` — Swagger UI доступен

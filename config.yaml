@@ -342,7 +342,10 @@ sources:
     enabled: false
     max_retries: 3
     search_category: "изготовление памятников"
-    # Phase 7: Crawlee + 2GIS API
+    # Phase 7: Переписан на Crawlee + 2GIS Catalog API.
+    # Два режима: API (при наличии DGIS_API_KEY) и Crawlee BeautifulSoupCrawler (fallback).
+    # API mode: пагинация через параметр page, anti-bot через escalating backoff при 403/429.
+    # Crawlee mode: парсинг страницы результатов, без пагинации (max_requests_per_crawl=1).
     api_key: ""                  # из .env: DGIS_API_KEY (приоритетнее env)
     max_pages: 5                 # страниц пагинации (API mode)
     delay: 1.5                   # секунд между запросами к API
@@ -351,7 +354,10 @@ sources:
     enabled: false
     max_retries: 3
     base_path: "/catalog/izgotovlenie_pamyatnikov/"
-    # Phase 7: Crawlee PlaywrightCrawler
+    # Phase 7: Переписан на Crawlee PlaywrightCrawler.
+    # Управляет собственным браузером (НЕ требует внешнего playwright_page).
+    # Пагинация через кнопку «Показать ещё», случайная задержка между кликами.
+    # Категории берутся из category_finder (приоритет) или base_path (fallback).
     max_pages: 5                 # страниц пагинации («Показать ещё»)
     delay: 2.0                   # секунд между действиями
 
@@ -457,19 +463,23 @@ enrichment:
       - "weebly"
       - "wordpress.com"
 
-  # Reverse Lookup: поиск в 2GIS и Yell для компаний с мало данных
+  # Reverse Lookup (Фаза 6): поиск в 2GIS и Yell для компаний с малым количеством данных.
+  # Запускается ПОСЛЕ основного обогащения, ПЕРЕД детекцией сетей.
+  # Кандидаты: нет мессенджеров, нет email, crm_score < min_crm_score.
+  # Данные сливаются с существующими (union, без перезаписи).
+  # По умолчанию выключен для тестирования.
   reverse_lookup:
     enabled: false          # default off for testing
     sources:
       dgis:
         enabled: true
-        api_key: ""         # from .env: DGIS_API_KEY
-        max_requests_per_day: 100
+        api_key: ""         # from .env: DGIS_API_KEY. Приоритет: config > env.
+        max_requests_per_day: 100  # бесплатный tier 2GIS: 1000/день, оставляем запас
       yell:
         enabled: true
-        max_requests_per_day: 50
-    min_crm_score: 30
-    delay_between_requests: 2.0  # seconds
+        max_requests_per_day: 50    # Yell не имеет API, запросы через Crawlee
+    min_crm_score: 30       # обогащать только компании с CRM-скором ниже порога
+    delay_between_requests: 2.0  # секунд между запросами (с jitter ±30%)
 
 # ===== Priority Score =====
 scoring:

@@ -428,3 +428,50 @@ time python cli.py run "Астрахань" --force  # после
 | 8 — Async | Среднее (скорость) | Высокая | P2 |
 
 Фазы 6 и 7 дают больше данных. Фаза 8 — быстрее обработку. Начать с 6 и 7.
+
+---
+
+## Статус выполнения
+
+> Обновлено: 2026-04-10. Статус по результатам анализа кода, а не по плану.
+
+| Фаза | Статус | Коммит | Что реализовано | Отклонения от плана |
+|------|--------|--------|-----------------|---------------------|
+| **6 — Crawlee + ReverseLookupEnricher** | ✅ Завершена | `9f8e6c4` | `granite/enrichers/reverse_lookup.py`: поиск в 2GIS API (httpx sync) и Crawlee fallback (BeautifulSoupCrawler), поиск в Yell (Crawlee PlaywrightCrawler). Интеграция в `PipelineManager` между enrichment и network detection. Конфигурация `enrichment.reverse_lookup` в config.yaml. Тесты: `tests/test_reverse_lookup.py`. 302 тестов проходят. | ReverseLookupEnricher не полностью async — использует sync httpx для API и `asyncio.run()` для Crawlee. Нет Crawlee session pool / proxy rotation (только adaptive delay + jitter). `DGIS_REGION_IDS` дублирован в `dgis.py` и `reverse_lookup.py` (нарушение DRY). |
+| **7 — 2GIS/Yell скраперы** | ✅ Код написан (тесты минимальны) | `7291590` | `granite/scrapers/dgis.py`: переписан на Crawlee + 2GIS API (два режима). API mode: пагинация, escalating backoff. Crawlee fallback: BeautifulSoupCrawler. Извлекает: название, телефоны, адрес, сайт, email, мессенджеры, гео. `granite/scrapers/yell.py`: переписан на Crawlee PlaywrightCrawler. Пагинация через «Показать ещё». Извлекает: название, телефоны, адрес, сайт, email, мессенджеры, категорию. Тесты: `tests/test_dgis_yell_scrapers.py`. | DgisScraper использует BeautifulSoupCrawler (не PlaywrightCrawler как рекомендовал план). Нет пагинации в Crawlee mode (max_requests_per_crawl=1). YellScraper: `source_url` не заполняется корректно (используется `start_url` из замыкания, но `_current_url` не определён). Нет Crawlee session pool, нет proxy rotation, нет anti-bot через отпечатки браузера — только adaptive delay. |
+| **8 — Частичная async-миграция** | ✅ Завершена | `58bacba` | `granite/http_client.py`: единый async HTTP-клиент (httpx.AsyncClient singleton), async_fetch_page, async_head, async_get с retry/backoff, async_adaptive_delay, run_async bridge. EnrichmentPhase: два режима — sync (ThreadPoolExecutor) и async (asyncio.Semaphore + httpx), переключение через `enrichment.async_enabled`. Async-варианты для: MessengerScanner.scan_website_async, find_tg_by_phone_async, find_tg_by_name_async, check_tg_trust_async, TechExtractor.extract_async, WebClient.search_async/scrape_async. PipelineManager: поддержка async фаз через `iscoroutinefunction`. БД остаётся sync. Тесты: `tests/test_async_enrichment.py`. | ReverseLookupEnricher не мигрирован на async (использует `asyncio.run()` для Crawlee). Точечный поиск (проход 2, `_run_deep_enrich_for`) остаётся sync. Нет бенчмарков для замера ускорения. |
+
+### Новые зависимости
+
+| Пакет | Версия в requirements.txt | Для чего |
+|-------|--------------------------|----------|
+| `crawlee` | `>=1.6.0` | 2GIS/Yell скраперы, reverse lookup (BeautifulSoupCrawler, PlaywrightCrawler) |
+| `httpx` | `>=0.28.0` | Async HTTP-клиент для enrichment (замена requests в async-контексте) |
+
+### Новые файлы
+
+| Файл | Назначение |
+|------|------------|
+| `granite/http_client.py` | Единый async HTTP-клиент на базе httpx.AsyncClient (singleton) |
+| `granite/enrichers/reverse_lookup.py` | ReverseLookupEnricher — поиск компаний в 2GIS/Yell по имени/телефону |
+| `tests/test_reverse_lookup.py` | Тесты ReverseLookupEnricher |
+| `tests/test_dgis_yell_scrapers.py` | Тесты Crawlee-скраперов |
+| `tests/test_async_enrichment.py` | Тесты async-обогащения |
+
+### Изменённые файлы
+
+| Файл | Изменения |
+|------|-----------|
+| `granite/scrapers/dgis.py` | Полностью переписан на Crawlee + 2GIS API |
+| `granite/scrapers/yell.py` | Полностью переписан на Crawlee PlaywrightCrawler |
+| `granite/pipeline/enrichment_phase.py` | Добавлен async-режим (run_async), async-варианты обогащения |
+| `granite/pipeline/manager.py` | Интеграция ReverseLookup, поддержка async фаз |
+| `granite/pipeline/scraping_phase.py` | DgisScraper и YellScraper запускаются вне playwright_session() |
+| `granite/pipeline/web_client.py` | Добавлены async-варианты (search_async, scrape_async) |
+| `granite/enrichers/messenger_scanner.py` | Добавлен scan_website_async |
+| `granite/enrichers/tg_finder.py` | Добавлены find_tg_by_phone_async, find_tg_by_name_async |
+| `granite/enrichers/tg_trust.py` | Добавлен check_tg_trust_async |
+| `granite/enrichers/tech_extractor.py` | Добавлен extract_async |
+| `config.yaml` | Новые секции: enrichment.reverse_lookup, sources.dgis (обновлён), sources.yell (обновлён), enrichment.async_enabled, enrichment.web_client, enrichment.batch_flush |
+| `.env.example` | Добавлен DGIS_API_KEY |
+| `requirements.txt` | Добавлены crawlee, httpx |
