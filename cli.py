@@ -5,7 +5,7 @@ import sys
 import os
 from loguru import logger
 from granite.database import Database
-from granite.pipeline.manager import PipelineManager
+from granite.pipeline.manager import PipelineManager, PipelineCriticalError
 from granite.exporters.csv import CsvExporter
 from granite.exporters.markdown import MarkdownExporter
 from granite.config_validator import validate_config as _validate_config
@@ -80,7 +80,11 @@ def run(
         target_cities = [city]
         
     for c in target_cities:
-        manager.run_city(c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich)
+        try:
+            manager.run_city(c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich)
+        except PipelineCriticalError:
+            print_status(f"Критическая ошибка для города {c}. Остановка.", "error")
+            raise typer.Exit(1)
     db.engine.dispose()
 
 @app.command()

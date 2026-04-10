@@ -10,7 +10,6 @@
   - pipeline/scoring_phase.py    — ScoringPhase (скоринг + сегментация)
   - pipeline/export_phase.py     — ExportPhase (CSV + пресеты)
 """
-import sys
 from loguru import logger
 from granite.database import Database
 from granite.pipeline.checkpoint import CheckpointManager
@@ -24,7 +23,16 @@ from granite.pipeline.enrichment_phase import EnrichmentPhase
 from granite.pipeline.scoring_phase import ScoringPhase
 from granite.pipeline.export_phase import ExportPhase
 
-__all__ = ["PipelineManager"]
+__all__ = ["PipelineManager", "PipelineCriticalError"]
+
+
+class PipelineCriticalError(Exception):
+    """Критическая ошибка пайплайна: фаза scraping или dedup не удалась.
+
+    Выбрасывается из PipelineManager._run_phase() вместо sys.exit(1),
+    чтобы вызывающий код (cli.py) мог решить, как обрабатывать ошибку.
+    """
+    pass
 
 
 class PipelineManager:
@@ -123,4 +131,4 @@ class PipelineManager:
             print_status(f"[ОШИБКА] Фаза '{name}' завершена с ошибкой: {e}", "warning")
             if name in self._CRITICAL_PHASES:
                 print_status(f"Критическая фаза '{name}' не удалась. Остановка.", "error")
-                sys.exit(1)
+                raise PipelineCriticalError(f"Критическая фаза '{name}' не удалась: {e}") from e

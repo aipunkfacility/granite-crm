@@ -14,28 +14,35 @@ def tg_request(url: str, headers: dict, timeout: int = 10,
     """HTTP GET с экспоненциальной выдержкой при HTTP 429 (Too Many Requests).
 
     Telegram блокирует IP при агрессивном парсинге. При получении 429 ждём
-    с экспоненциальной выдержкой (5, 10, 20, 40, 80 сек). После исчерпания
-    попыток — логируем warning и возвращаем None.
+    с экспоненциальной выдержкой (5, 10, 20, 40, 80 сек). Сетевые ошибки
+    (connection, timeout) также ретраятся с короткой выдержкой (2, 4, 8 сек).
+    После исчерпания попыток — логируем warning и возвращаем None.
     """
     if not is_safe_url(url):
         return None
-    backoff = initial_backoff
+    rate_limit_backoff = initial_backoff
+    conn_backoff = 2
     for attempt in range(max_retries):
         try:
             r = requests.get(url, headers=headers, timeout=timeout)
             if r.status_code == 429:
-                wait = backoff + random.uniform(0, 2)
+                wait = rate_limit_backoff + random.uniform(0, 2)
                 logger.warning(
                     f"TG rate limit (429) для {_sanitize_url_for_log(url, 60)}, "
                     f"повтор через {wait:.0f}с (попытка {attempt + 1}/{max_retries})"
                 )
                 time.sleep(wait)
-                backoff *= 2
+                rate_limit_backoff *= 2
                 continue
             return r
         except requests.RequestException as e:
-            logger.warning(f"TG request error ({_sanitize_url_for_log(url, 60)}): {e}")
-            return None
+            wait = conn_backoff + random.uniform(0, 1)
+            logger.warning(
+                f"TG request error ({_sanitize_url_for_log(url, 60)}): {e}, "
+                f"повтор через {wait:.0f}с (попытка {attempt + 1}/{max_retries})"
+            )
+            time.sleep(wait)
+            conn_backoff *= 2
     logger.warning(f"TG: исчерпано {max_retries} попыток для {_sanitize_url_for_log(url, 60)} — пропуск")
     return None
 

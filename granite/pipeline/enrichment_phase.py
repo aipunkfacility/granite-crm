@@ -12,6 +12,31 @@ from granite.pipeline.web_client import WebClient
 from granite.pipeline.region_resolver import RegionResolver
 from granite.utils import normalize_phone, normalize_phones
 
+
+# Категории ошибок для классификации
+_ERROR_NETWORK = "network"
+_ERROR_PARSING = "parsing"
+_ERROR_DATA = "data"
+
+
+def _classify_error(exc: Exception) -> str:
+    """Классифицировать ошибку обогащения по типу.
+
+    Returns:
+        Строковую категорию: 'network', 'parsing', 'data'.
+    """
+    exc_name = type(exc).__name__.lower()
+    exc_msg = str(exc).lower()
+    if any(k in exc_name or k in exc_msg for k in (
+        "timeout", "connection", "network", "ssl", "dns",
+    )):
+        return _ERROR_NETWORK
+    if any(k in exc_name or k in exc_msg for k in (
+        "403", "captcha", "blocked", "parse", "json",
+    )):
+        return _ERROR_PARSING
+    return _ERROR_DATA
+
 # Import Enrichers
 from granite.enrichers.messenger_scanner import MessengerScanner
 from granite.enrichers.tech_extractor import TechExtractor
@@ -34,6 +59,7 @@ class EnrichmentPhase:
         self.db = db
         self.web = web_client
         self._resolver = RegionResolver(config)
+        self._error_counts: dict[str, int] = {}
 
     def run(self, city: str, only_new: bool = False) -> int:
         """Основной проход обогащения для города.
@@ -46,6 +72,8 @@ class EnrichmentPhase:
             Количество обогащённых компаний.
         """
         print_status("ФАЗА 3: Обогащение данных (Enrichment)", "info")
+
+        self._error_counts = {}
 
         with self.db.session_scope() as session:
             if only_new:
@@ -73,6 +101,13 @@ class EnrichmentPhase:
 
             count = self._enrich_companies(session, companies, scanner, tech_ext)
             print_status(f"Обогащение завершено для {count} компаний", "success")
+
+            # Итоги по ошибкам
+            if self._error_counts:
+                parts = [f"{cat}: {cnt}" for cat, cnt in sorted(self._error_counts.items())]
+                logger.warning(f"Ошибки обогащения — {', '.join(parts)}")
+            else:
+                logger.info("Обогащение прошло без ошибок")
 
             # ПРОХОД 2: точечный поиск недостающих данных через веб
             self._run_deep_enrich_for(
@@ -217,7 +252,11 @@ class EnrichmentPhase:
                     f"Обогащено: {count}/{len(companies)} — {c.name_best} ({detail})"
                 )
             except Exception as e:
-                logger.error(f"Ошибка обогащения {c.name_best}: {e}")
+                category = _classify_error(e)
+                logger.exception(
+                    f"[{category}] Ошибка обогащения {c.name_best}: {e}"
+                )
+                self._error_counts[category] += 1
 
         # Flush оставшиеся записи; финальный commit — через session_scope
         session.flush()
@@ -310,9 +349,12 @@ class EnrichmentPhase:
 
                 session.flush()
             except Exception as e:
-                logger.error(
-                    f"Ошибка deep enrich для {getattr(record, name_attr, '?')}: {e}"
+                category = _classify_error(e)
+                logger.exception(
+                    f"[{category}] Ошибка deep enrich для "
+                    f"{getattr(record, name_attr, '?')}: {e}"
                 )
+                self._error_counts[category] += 1
 
         print_status(
             f"Точечный поиск: дополнено {found}/{len(needs_deep)} компаний", "success"
