@@ -162,7 +162,7 @@ def run_alembic_upgrade(engine, db_path: str, config_path: str = "config.yaml"):
     - Таблиц не существуют → create_all() + stamp head (raw SQL).
     """
     from sqlalchemy import text
-    HEAD_REVISION = 'ecda7d78a38f'
+    HEAD_REVISION = 'a3f1b2c4d5e6'
 
     try:
         # 1. Проверяем, нужно ли что-то делать
@@ -276,7 +276,7 @@ class Database:
         existing tables on the next run.
         """
         from sqlalchemy import text
-        HEAD_REVISION = 'ecda7d78a38f'
+        HEAD_REVISION = 'a3f1b2c4d5e6'
         try:
             with self.engine.connect() as conn:
                 conn.execute(text(
