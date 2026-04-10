@@ -1,7 +1,7 @@
 # tests/test_migrations.py — тесты для Alembic миграций
 """
 Проверяем:
-  1. Initial schema создаёт все 4 таблицы + индексы
+  1. Initial schema создаёт все 3 таблицы + индексы
   2. Downgrade полностью удаляет таблицы
   3. Re-upgrade после downgrade восстанавливает схему
   4. Database() автоматически применяет миграции
@@ -65,7 +65,6 @@ class TestInitialMigration:
         assert "companies" in tables
         assert "raw_companies" in tables
         assert "enriched_companies" in tables
-        assert "pipeline_runs" in tables
         assert "alembic_version" in tables
 
         # Проверяем индексы
@@ -73,7 +72,6 @@ class TestInitialMigration:
             "companies": ["ix_companies_city", "ix_companies_status"],
             "raw_companies": ["ix_raw_companies_city", "ix_raw_companies_source"],
             "enriched_companies": ["ix_enriched_companies_city", "ix_enriched_companies_crm_score", "ix_enriched_companies_segment"],
-            "pipeline_runs": ["ix_pipeline_runs_city"],
         }
         for table, idx_names in expected_indexes.items():
             actual = {idx["name"] for idx in insp.get_indexes(table)}
@@ -118,7 +116,6 @@ class TestInitialMigration:
         assert "companies" in tables
         assert "raw_companies" in tables
         assert "enriched_companies" in tables
-        assert "pipeline_runs" in tables
 
     def test_alembic_version_is_stamped(self, alembic_config, db_url):
         """После upgrade в alembic_version записана корректная ревизия."""
@@ -162,7 +159,6 @@ class TestDatabaseAutoMigrate:
         assert "companies" in tables
         assert "raw_companies" in tables
         assert "enriched_companies" in tables
-        assert "pipeline_runs" in tables
         assert "alembic_version" in tables
 
     def test_database_fallback_without_alembic(self, tmp_path):

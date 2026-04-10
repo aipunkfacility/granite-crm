@@ -322,11 +322,6 @@ sources:
       - "гранит памятники надгробия"
       - "изготовление памятников из гранита"
 
-  # LEGACY — firecrawl заменён на web_search (requests + BeautifulSoup)
-  # Секция оставлена для обратной совместимости, не используется
-  # firecrawl:
-  #   enabled: false
-
   jsprav:
     enabled: true
     max_retries: 3

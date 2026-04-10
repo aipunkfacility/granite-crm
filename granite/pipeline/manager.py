@@ -36,10 +36,7 @@ class PipelineManager:
         self.checkpoints = CheckpointManager(db)
 
         self.region = RegionResolver(config)
-        # Поддержка web_search (новый) и firecrawl (legacy) секций конфига
         wc_config = config.get("sources", {}).get("web_search", {})
-        if not wc_config:
-            wc_config = config.get("sources", {}).get("firecrawl", {})
         self.web = WebClient(
             timeout=wc_config.get("timeout", 60),
             search_limit=wc_config.get("search_limit", 3),

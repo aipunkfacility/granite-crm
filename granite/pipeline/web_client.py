@@ -1,7 +1,6 @@
 # pipeline/web_client.py
 """Клиент для поиска и скрапинга сайтов (requests + BeautifulSoup).
 
-Полная замена firecrawl_client.py — не требует внешних CLI или API-ключей.
 Использует Google SERP для поиска и requests+BeautifulSoup для парсинга.
 """
 
@@ -15,10 +14,7 @@ MIN_CONTENT_LENGTH = 100
 
 
 class WebClient:
-    """Обёртка для веб-поиска и скрапинга (search + scrape).
-
-    Совместим по интерфейсу с FirecrawlClient для безболезненной замены.
-    """
+    """Обёртка для веб-поиска и скрапинга (search + scrape)."""
 
     def __init__(
         self, timeout: int = 60, search_limit: int = 3
@@ -31,7 +27,6 @@ class WebClient:
 
         Returns:
             dict с ключом "data.web" — список результатов, или None.
-            Формат совместим с firecrawl search output.
         """
         try:
             search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={self.search_limit}&hl=ru"
@@ -78,7 +73,6 @@ class WebClient:
 
         Returns:
             {"phones": [...], "emails": [...]} или None.
-            Формат совместим с firecrawl scrape output.
         """
         if url and not url.startswith(("http://", "https://")):
             logger.warning(f"Skipping invalid URL: {_sanitize_url_for_log(url)}")

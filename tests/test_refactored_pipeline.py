@@ -16,7 +16,7 @@ from granite.database import Database, RawCompanyRow, CompanyRow, EnrichedCompan
 # ═══════════════════════════════════════════════════════════
 
 class TestWebClient:
-    """Тесты веб-клиента (замена firecrawl)."""
+    """Тесты веб-клиента."""
 
     def test_custom_timeout_and_limit(self):
         """Конфигурация timeout и search_limit."""
@@ -404,21 +404,21 @@ class TestPipelineManagerInit:
         assert pm.web.timeout == 120
         assert pm.web.search_limit == 5
 
-    def test_web_client_fallback_to_firecrawl_config(self, tmp_path):
-        """Если секция web_search отсутствует, берёт из firecrawl (legacy)."""
+    def test_web_client_empty_config(self, tmp_path):
+        """Если секция web_search пустая — используются дефолтные значения."""
         mock_db = MagicMock()
         config = {
             "cities": [],
-            "sources": {"firecrawl": {"timeout": 90, "search_limit": 7}},
+            "sources": {},
         }
 
         with patch("granite.pipeline.manager.CheckpointManager"), \
              patch("granite.enrichers.classifier.Classifier"):
             pm = PipelineManager(config, mock_db)
-            _ = pm.scoring
+            _ = pm.scoring  # trigger lazy init
 
-        assert pm.web.timeout == 90
-        assert pm.web.search_limit == 7
+        assert pm.web.timeout == 60
+        assert pm.web.search_limit == 3
 
 
 # ═══════════════════════════════════════════════════════════

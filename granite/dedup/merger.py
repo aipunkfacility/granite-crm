@@ -110,9 +110,9 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
             merged["needs_review"] = True
             merged["review_reason"] = "different_names_different_addresses"
         elif len(unique_names) <= 2 and names_similar:
-            # Названия похожие, но адреса разные — это НЕ конфликт
-            # (одна компания может быть на нескольких адресах)
-            pass
+            # Названия похожие, но адреса разные — помечаем для ручной проверки
+            merged["needs_review"] = True
+            merged["review_reason"] = "same_name_diff_address"
 
     # Проверка: разные города в кластере → конфликт
     cities = [r.get("city", "") for r in cluster_records if r.get("city")]

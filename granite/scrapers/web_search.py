@@ -1,5 +1,4 @@
 # scrapers/web_search.py — поиск компаний через duckduckgo-search + Yandex + Bing
-# Полная замена FirecrawlScraper без внешних CLI.
 #
 # ТРЕБОВАНИЕ: pip install duckduckgo-search
 import re
@@ -307,12 +306,7 @@ class WebSearchScraper(BaseScraper):
     def __init__(self, config: dict, city: str):
         super().__init__(config, city)
         self.source_config = config.get("sources", {}).get("web_search", {})
-        # Fallback: берём queries из firecrawl если web_search не настроен
-        if not self.source_config.get("queries"):
-            fc_config = config.get("sources", {}).get("firecrawl", {})
-            self.queries = fc_config.get("queries", [])
-        else:
-            self.queries = self.source_config.get("queries", [])
+        self.queries = self.source_config.get("queries", [])
         self.search_limit = self.source_config.get("search_limit", 10)
         # HTTP сессия для Yandex / Bing
         self._session = requests.Session()

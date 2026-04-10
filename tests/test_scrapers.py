@@ -34,7 +34,7 @@ class TestBaseScraper:
 
         class DummyScraper(BaseScraper):
             def scrape(self):
-                return [RawCompany(source=Source.FIRECRAWL, name="Test")]
+                return [RawCompany(source=Source.WEB_SEARCH, name="Test")]
 
         scraper = DummyScraper({}, "Test")
         results = scraper.run()
@@ -224,7 +224,7 @@ class TestModels:
     """Тесты Pydantic-моделей данных."""
 
     def test_raw_company_defaults(self):
-        rc = RawCompany(source=Source.FIRECRAWL, name="Test")
+        rc = RawCompany(source=Source.WEB_SEARCH, name="Test")
         assert rc.phones == []
         assert rc.emails == []
         assert rc.messengers == {}
@@ -237,11 +237,9 @@ class TestModels:
 
     def test_source_enum(self):
         assert Source.WEB_SEARCH == "web_search"
-        assert Source.FIRECRAWL == "firecrawl"  # LEGACY
         assert Source.JSPRAV == "jsprav"
         assert Source.DGIS == "2gis"
-
-    def test_company_status_enum(self):
-        from granite.models import CompanyStatus
-        assert CompanyStatus.RAW == "raw"
-        assert CompanyStatus.ENRICHED == "enriched"
+        assert Source.YELL == "yell"
+        assert Source.JSPRAV_PW == "jsprav_playwright"
+        assert Source.GOOGLE_MAPS == "google_maps"
+        assert Source.AVITO == "avito"
