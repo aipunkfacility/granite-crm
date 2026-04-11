@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import String
 
 from granite.api.deps import get_db
+from granite.api.schemas import CreateCampaignRequest
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
-    CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow,
+    CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow,
 )
 from loguru import logger
 
@@ -22,12 +23,12 @@ router = APIRouter()
 
 
 @router.post("/campaigns")
-def create_campaign(data: dict, db: Session = Depends(get_db)):
+def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}"""
     campaign = CrmEmailCampaignRow(
-        name=data.get("name", "Campaign"),
-        template_name=data.get("template_name", "cold_email_1"),
-        filters=json.dumps(data.get("filters", {})),
+        name=data.name,
+        template_name=data.template_name,
+        filters=json.dumps(data.filters),
     )
     db.add(campaign)
     db.flush()

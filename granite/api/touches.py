@@ -1,10 +1,10 @@
 """Touches API: лог касаний компании."""
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
+from granite.api.schemas import CreateTouchRequest
+from granite.api.stage_transitions import apply_outgoing_touch, apply_incoming_touch
 from granite.database import CrmTouchRow, CrmContactRow
 
 __all__ = ["router"]
@@ -13,18 +13,18 @@ router = APIRouter()
 
 
 @router.post("/companies/{company_id}/touches")
-def create_touch(company_id: int, data: dict, db: Session = Depends(get_db)):
+def create_touch(company_id: int, data: CreateTouchRequest, db: Session = Depends(get_db)):
     """Залогировать касание.
 
     Body: {channel: email|tg|wa|manual, direction: outgoing|incoming, body?: str, subject?: str}
     """
     touch = CrmTouchRow(
         company_id=company_id,
-        channel=data.get("channel", "manual"),
-        direction=data.get("direction", "outgoing"),
-        subject=data.get("subject", ""),
-        body=data.get("body", ""),
-        note=data.get("note", ""),
+        channel=data.channel,
+        direction=data.direction,
+        subject=data.subject,
+        body=data.body,
+        note=data.note,
     )
     db.add(touch)
 
@@ -33,36 +33,10 @@ def create_touch(company_id: int, data: dict, db: Session = Depends(get_db)):
         contact = CrmContactRow(company_id=company_id)
         db.add(contact)
 
-    now = datetime.now(timezone.utc)
-    channel = data.get("channel", "")
-    direction = data.get("direction", "outgoing")
-
-    contact.contact_count = (contact.contact_count or 0) + 1
-    contact.last_contact_at = now
-    contact.last_contact_channel = channel
-    if not contact.first_contact_at:
-        contact.first_contact_at = now
-
     if direction == "outgoing":
-        if channel == "email":
-            contact.email_sent_count = (contact.email_sent_count or 0) + 1
-            contact.last_email_sent_at = now
-            if contact.funnel_stage == "new":
-                contact.funnel_stage = "email_sent"
-        elif channel == "tg":
-            contact.tg_sent_count = (contact.tg_sent_count or 0) + 1
-            contact.last_tg_at = now
-            if contact.funnel_stage in ("new", "email_sent", "email_opened"):
-                contact.funnel_stage = "tg_sent"
-        elif channel == "wa":
-            contact.wa_sent_count = (contact.wa_sent_count or 0) + 1
-            contact.last_wa_at = now
-            if contact.funnel_stage not in ("replied", "interested", "not_interested"):
-                contact.funnel_stage = "wa_sent"
+        apply_outgoing_touch(contact, channel)
     elif direction == "incoming":
-        contact.stop_automation = 1
-        if contact.funnel_stage not in ("interested", "not_interested"):
-            contact.funnel_stage = "replied"
+        apply_incoming_touch(contact)
 
     db.flush()
     return {"ok": True, "touch_id": touch.id}

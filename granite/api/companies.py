@@ -4,9 +4,11 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+# TODO: заменить cast(String).contains() на json_extract() когда будет SQLAlchemy 2.x JSON type
 from sqlalchemy import String
 
 from granite.api.deps import get_db
+from granite.api.schemas import UpdateCompanyRequest
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
 )
@@ -120,16 +122,15 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/companies/{company_id}")
-def update_company(company_id: int, data: dict, db: Session = Depends(get_db)):
+def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = Depends(get_db)):
     """Обновить CRM-поля компании (funnel_stage, notes, stop_automation)."""
-    allowed = {"funnel_stage", "notes", "stop_automation"}
     contact = db.get(CrmContactRow, company_id)
     if not contact:
         contact = CrmContactRow(company_id=company_id)
         db.add(contact)
 
-    for key in allowed:
-        if key in data:
-            setattr(contact, key, data[key])
+    updates = data.model_dump(exclude_unset=True)
+    for key, value in updates.items():
+        setattr(contact, key, value)
     contact.updated_at = datetime.now(timezone.utc)
     return {"ok": True}

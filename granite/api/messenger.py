@@ -3,10 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
-from granite.database import (
-    CompanyRow, EnrichedCompanyRow, CrmContactRow,
-    CrmTemplateRow, CrmTouchRow, CrmTaskRow,
-)
+from granite.api.schemas import SendMessageRequest
+from granite.database import CompanyRow, EnrichedCompanyRow, CrmTemplateRow
 from granite.messenger.dispatcher import MessengerDispatcher
 
 __all__ = ["router"]
@@ -16,7 +14,7 @@ router = APIRouter()
 @router.post("/companies/{company_id}/send")
 def send_message(
     company_id: int,
-    data: dict,
+    data: SendMessageRequest,
     db: Session = Depends(get_db),
 ):
     """Отправить сообщение через мессенджер.
@@ -26,9 +24,7 @@ def send_message(
         template_name: имя шаблона (опционально, если передан text)
         text: текст сообщения (опционально, если передан template_name)
     """
-    channel = data.get("channel", "")
-    if channel not in ("tg", "wa"):
-        raise HTTPException(400, f"Invalid channel: {channel}. Use 'tg' or 'wa'.")
+    channel = data.channel
 
     company = db.get(CompanyRow, company_id)
     if not company:
@@ -48,22 +44,19 @@ def send_message(
             raise HTTPException(400, "No WhatsApp contact for this company")
 
     # Определяем текст
-    text = data.get("text", "")
-    template_name = data.get("template_name", "")
-
-    if not text and not template_name:
+    if not data.text and not data.template_name:
         raise HTTPException(400, "Provide 'text' or 'template_name'")
 
-    if template_name and not text:
-        template = db.query(CrmTemplateRow).filter_by(name=template_name).first()
+    if data.template_name and not data.text:
+        template = db.query(CrmTemplateRow).filter_by(name=data.template_name).first()
         if not template:
-            raise HTTPException(404, f"Template not found: {template_name}")
+            raise HTTPException(404, f"Template not found: {data.template_name}")
 
     disp = MessengerDispatcher()
 
     # Если template_name указан и text не передан — передаём template, dispatcher рендерит
     # Если text передан напрямую — передаём text
-    if template_name and not text:
+    if data.template_name and not data.text:
         result = disp.send(
             channel=channel,
             contact_id=contact_id,
@@ -77,7 +70,7 @@ def send_message(
         result = disp.send(
             channel=channel,
             contact_id=contact_id,
-            text=text,
+            text=data.text,
             db_session=db,
             company_id=company_id,
         )

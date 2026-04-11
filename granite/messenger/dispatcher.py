@@ -1,11 +1,11 @@
 """Messenger dispatcher: выбрать sender + шаблон/текст + залогировать touch."""
 import os
-from datetime import datetime, timezone
 from loguru import logger
 
 from granite.messenger.base import SendResult
 from granite.messenger.tg_sender import TgSender
 from granite.messenger.wa_sender import WaSender
+from granite.api.stage_transitions import apply_outgoing_touch
 from granite.database import CrmTemplateRow, CrmTouchRow, CrmContactRow
 
 
@@ -82,21 +82,6 @@ class MessengerDispatcher:
 
             contact = db_session.get(CrmContactRow, company_id)
             if contact:
-                now = datetime.now(timezone.utc)
-                contact.contact_count = (contact.contact_count or 0) + 1
-                contact.last_contact_at = now
-                contact.last_contact_channel = channel
-                if not contact.first_contact_at:
-                    contact.first_contact_at = now
-                if channel == "tg":
-                    contact.tg_sent_count = (contact.tg_sent_count or 0) + 1
-                    contact.last_tg_at = now
-                    if contact.funnel_stage in ("new", "email_sent", "email_opened"):
-                        contact.funnel_stage = "tg_sent"
-                elif channel == "wa":
-                    contact.wa_sent_count = (contact.wa_sent_count or 0) + 1
-                    contact.last_wa_at = now
-                    if contact.funnel_stage not in ("replied", "interested", "not_interested"):
-                        contact.funnel_stage = "wa_sent"
+                apply_outgoing_touch(contact, channel)
 
         return result

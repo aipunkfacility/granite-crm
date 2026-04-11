@@ -1,10 +1,9 @@
 """Follow-up очередь: кому нужно написать сегодня."""
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import String
 
 from granite.api.deps import get_db
 from granite.database import CompanyRow, EnrichedCompanyRow, CrmContactRow
