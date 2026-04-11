@@ -329,5 +329,25 @@ def db_check():
         raise typer.Exit(1)
 
 
+@app.command()
+def api(
+    port: int = typer.Option(8000, "--port", "-p", help="Порт API сервера"),
+    reload: bool = typer.Option(False, "--reload", help="Hot reload для разработки"),
+):
+    """Запустить CRM API сервер (FastAPI + uvicorn)."""
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+    import uvicorn
+    uvicorn.run(
+        "granite.api.app:app",
+        host="0.0.0.0",
+        port=port,
+        reload=reload,
+    )
+
+
 if __name__ == "__main__":
     app()

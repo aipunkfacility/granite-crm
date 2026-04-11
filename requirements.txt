@@ -36,3 +36,8 @@ duckduckgo-search
 # Crawlee (for reverse lookup enrichment)
 crawlee>=1.6.0
 httpx>=0.28.0
+
+# CRM API
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+python-dotenv>=1.0.0
