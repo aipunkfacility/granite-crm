@@ -1,7 +1,7 @@
 # 🏛️ Granite CRM — Правила агента
 
 > Этот файл загружается Antigravity автоматически при каждой сессии.
-> Приоритет: этот файл > GEMINI.md > AGENTS.md > AGENT_CAPABILITIES.md
+> Приоритет: .agents/rules.md > opencode.md > GEMINI.md > AGENTS.md > AGENT_CAPABILITIES.md
 
 ---
 
@@ -17,10 +17,18 @@
 
 ## 🤖 Алгоритм работы
 
-1. **Планирование:** Перед любой задачей сложнее «прочитай файл» — используй `sequentialthinking` MCP.
+1. **Планирование:** Перед любой задачей сложнее «прочитай файл» — используй встроенный `task` инструмент.
 2. **Skills:** Задачи по аудиту БД, мониторингу пайплайна, отладке скреперов — читай соответствующий `SKILL.md` в `.agents/skills/`.
-3. **Документация библиотек:** Всегда используй `context7` MCP для SQLAlchemy 2.x, FastAPI, Alembic, Playwright.
+3. **Документация библиотек:** Используй `codesearch` или `skill context7` для SQLAlchemy 2.x, FastAPI, Alembic, Playwright.
 4. **Пайплайн:** Перед изменениями — читай `data/logs/granite.log` (последние 200 строк).
+
+## 🔌 OpenCode — MCP серверы
+
+| MCP | Назначение |
+|-----|-----------|
+| **SQLite** | Прямые SQL-запросы к `data/granite.db` |
+| **Playwright** | Браузерная отладка, проверка HTML источников |
+| **Context7** | Актуальная документация библиотек |
 
 ---
 
