@@ -2,11 +2,301 @@
 # No schema validation — malformed config will fail at runtime
 
 # ===== Города =====
-# Список городов перенесён в data/regions.yaml (источник истины).
-# Команда `run <город>` — скрапинг одного города.
-# Команда `run <регион>` — скрапинг всех городов региона.
-# Команда `run all` — скрапинг всех 1098 городов (1093 уникальных,
-# 5 дублирующихся названий в разных регионах).
+cities:
+  - name: "Москва"
+    population: 13179670
+    region: "Москва"
+    status: "pending"
+    geo_center: [55.7558, 37.6173]
+
+  - name: "Санкт-Петербург"
+    population: 5664000
+    region: "Санкт-Петербург"
+    status: "pending"
+    geo_center: [59.9343, 30.3351]
+
+  - name: "Новосибирск"
+    population: 1630000
+    region: "Новосибирская область"
+    status: "pending"
+    geo_center: [54.9885, 82.9207]
+
+  - name: "Екатеринбург"
+    population: 1530000
+    region: "Свердловская область"
+    status: "pending"
+    geo_center: [56.8389, 60.6057]
+
+  - name: "Казань"
+    population: 1320000
+    region: "Республика Татарстан"
+    status: "pending"
+    geo_center: [55.7887, 49.1221]
+
+  - name: "Нижний Новгород"
+    population: 1210000
+    region: "Нижегородская область"
+    status: "pending"
+    geo_center: [56.2965, 43.9361]
+
+  - name: "Красноярск"
+    population: 1200000
+    region: "Красноярский край"
+    status: "pending"
+    geo_center: [56.0153, 92.8932]
+
+  - name: "Челябинск"
+    population: 1170000
+    region: "Челябинская область"
+    status: "pending"
+    geo_center: [55.1644, 61.4368]
+
+  - name: "Уфа"
+    population: 1160000
+    region: "Республика Башкортостан"
+    status: "pending"
+    geo_center: [54.7388, 55.9721]
+
+  - name: "Самара"
+    population: 1150000
+    region: "Самарская область"
+    status: "pending"
+    geo_center: [53.2001, 50.1500]
+
+  - name: "Ростов-на-Дону"
+    population: 1140000
+    region: "Ростовская область"
+    status: "pending"
+    geo_center: [47.2357, 39.7015]
+
+  - name: "Краснодар"
+    population: 1130000
+    region: "Краснодарский край"
+    status: "pending"
+    geo_center: [45.0448, 38.9760]
+
+  - name: "Омск"
+    population: 1100000
+    region: "Омская область"
+    status: "pending"
+    geo_center: [54.9885, 73.3242]
+
+  - name: "Воронеж"
+    population: 1050000
+    region: "Воронежская область"
+    status: "pending"
+    geo_center: [51.6720, 39.1843]
+
+  - name: "Пермь"
+    population: 1020000
+    region: "Пермский край"
+    status: "pending"
+    geo_center: [58.0092, 56.2502]
+
+  - name: "Волгоград"
+    population: 1010000
+    region: "Волгоградская область"
+    status: "completed"
+    geo_center: [48.7080, 44.5133]
+
+  - name: "Саратов"
+    population: 887000
+    region: "Саратовская область"
+    status: "completed"
+    geo_center: [51.5924, 46.0340]
+
+  - name: "Тюмень"
+    population: 861000
+    region: "Тюменская область"
+    status: "pending"
+    geo_center: [57.1522, 65.5272]
+
+  - name: "Тольятти"
+    population: 668000
+    region: "Самарская область"
+    status: "pending"
+    geo_center: [53.5303, 49.3461]
+
+  - name: "Махачкала"
+    population: 622000
+    region: "Республика Дагестан"
+    status: "pending"
+    geo_center: [42.9849, 47.5047]
+
+  - name: "Барнаул"
+    population: 620000
+    region: "Алтайский край"
+    status: "pending"
+    geo_center: [53.3481, 83.7798]
+
+  - name: "Ижевск"
+    population: 618000
+    region: "Республика Удмуртия"
+    status: "pending"
+    geo_center: [56.8527, 53.2114]
+
+  - name: "Хабаровск"
+    population: 615000
+    region: "Хабаровский край"
+    status: "pending"
+    geo_center: [48.4827, 135.0840]
+
+  - name: "Ульяновск"
+    population: 611000
+    region: "Ульяновская область"
+    status: "pending"
+    geo_center: [54.3282, 48.3866]
+
+  - name: "Иркутск"
+    population: 609000
+    region: "Иркутская область"
+    status: "pending"
+    geo_center: [52.2978, 104.2964]
+
+  - name: "Владивосток"
+    population: 591000
+    region: "Приморский край"
+    status: "pending"
+    geo_center: [43.1155, 131.8855]
+
+  - name: "Ярославль"
+    population: 567000
+    region: "Ярославская область"
+    status: "pending"
+    geo_center: [57.6261, 39.8845]
+
+  - name: "Севастополь"
+    population: 561000
+    region: "Севастополь"
+    status: "pending"
+    geo_center: [44.6166, 33.5254]
+
+  - name: "Сочи"
+    population: 561000
+    region: "Краснодарский край"
+    status: "pending"
+    geo_center: [43.5992, 39.7257]
+
+  - name: "Кемерово"
+    population: 556000
+    region: "Кемеровская область"
+    status: "pending"
+    geo_center: [55.3348, 86.0883]
+
+  - name: "Томск"
+    population: 550000
+    region: "Томская область"
+    status: "pending"
+    geo_center: [56.4977, 84.9744]
+
+  - name: "Ставрополь"
+    population: 550000
+    region: "Ставропольский край"
+    status: "pending"
+    geo_center: [45.0428, 41.9734]
+
+  - name: "Набережные Челны"
+    population: 545000
+    region: "Республика Татарстан"
+    status: "pending"
+    geo_center: [55.7261, 52.4048]
+
+  - name: "Тула"
+    population: 542000
+    region: "Тульская область"
+    status: "pending"
+    geo_center: [54.1961, 37.6182]
+
+  - name: "Оренбург"
+    population: 536000
+    region: "Оренбургская область"
+    status: "pending"
+    geo_center: [51.7727, 55.0988]
+
+  - name: "Новокузнецк"
+    population: 533000
+    region: "Кемеровская область"
+    status: "pending"
+    geo_center: [53.7557, 87.1099]
+
+  - name: "Балашиха"
+    population: 530000
+    region: "Московская область"
+    status: "pending"
+    geo_center: [55.7960, 37.9382]
+
+  - name: "Рязань"
+    population: 520000
+    region: "Рязанская область"
+    status: "pending"
+    geo_center: [54.6269, 39.6916]
+
+  - name: "Киров"
+    population: 502000
+    region: "Кировская область"
+    status: "pending"
+    geo_center: [58.6036, 49.6680]
+
+  - name: "Чебоксары"
+    population: 497000
+    region: "Республика Чувашия"
+    status: "pending"
+    geo_center: [56.1439, 47.2489]
+
+  - name: "Калининград"
+    population: 489000
+    region: "Калининградская область"
+    status: "pending"
+    geo_center: [54.7104, 20.4522]
+
+  - name: "Пенза"
+    population: 488000
+    region: "Пензенская область"
+    status: "pending"
+    geo_center: [53.1959, 45.0185]
+
+  - name: "Липецк"
+    population: 486000
+    region: "Липецкая область"
+    status: "pending"
+    geo_center: [52.6088, 39.5987]
+
+  - name: "Астрахань"
+    population: 468000
+    region: "Астраханская область"
+    status: "completed"
+    geo_center: [46.3479, 48.0330]
+
+  # ── Малые города Омской области ──
+  - name: "Тара"
+    population: 26700
+    region: "Омская область"
+    status: "pending"
+    geo_center: [56.9114, 74.1542]
+
+  - name: "Исилькуль"
+    population: 22600
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.1075, 71.2778]
+
+  - name: "Калачинск"
+    population: 22000
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.0306, 74.5817]
+
+  - name: "Называевск"
+    population: 11900
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.9769, 72.5861]
+
+  - name: "Тюкалинск"
+    population: 11300
+    region: "Омская область"
+    status: "pending"
+    geo_center: [55.8658, 72.3453]
 
 # ===== Общие настройки скрапинга =====
 scraping:
@@ -39,129 +329,14 @@ sources:
     categories:
       - "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
     subdomain_map:
-      # Автоматически сгенерировано из data/regions.yaml + проверка jsprav (2026-04)
-      # 121 город с нестандартным поддоменом на jsprav.ru
-      адыгейск: "adyigejsk"
-      агрыз: "agryiz"
-      алатырь: "alatyir"
-      анадырь: "anadyir"
-      апатиты: "apatityi"
-      бавлы: "bavlyi"
-      барыш: "baryish"
-      белый: "belyij"
-      благодарный: "blagodarnyij"
-      бронницы: "bronnitsyi"
-      верхняя пышма: "verhnyaya-pyishma"
-      высоковск: "vyisokovsk"
-      выборг: "vyiborg"
-      выкса: "vyiksa"
-      вытегра: "vyitegra"
-      вышний волочёк: "vyishnij-volochyok"
-      вуктыл: "vuktyil"
-      вятские поляны: "vyatskie-polyanyi"
-      голицыно: "golitsyino"
-      грозный: "groznyij"
-      гурьевск: "gurevsk1"
-      гусь-хрустальный: "gus-hrustalnyij"
-      дзержинск: "dzerzhinsk2"
-      долгопрудный: "dolgoprudnyij"
-      донецк: "donetsk1"
-      железногорск: "zheleznogorsk1"
-      заозёрный: "zaozyornyij"
-      заполярный: "zapolyarnyij"
-      заречный: "zarechnyij"
-      злынка: "zlyinka"
-      изобильный: "izobilnyij"
-      камызяк: "kamyizyak"
-      камышин: "kamyishin"
-      камышлов: "kamyishlov"
-      карталы: "kartalyi"
-      кедровый: "kedrovyij"
-      кимры: "kimryi"
-      кировск: "kirovsk1"
-      клинцы: "klintsyi"
-      ковылкино: "kovyilkino"
-      красноармейск: "krasnoarmejsk1"
-      краснознаменск: "krasnoznamensk1"
-      красный кут: "krasnyij-kut"
-      красный сулин: "krasnyij-sulin"
-      красный холм: "krasnyij-holm"
-      крымск: "kryimsk"
-      кувандык: "kuvandyik"
-      кудымкар: "kudyimkar"
-      куйбышев: "kujbyishev"
-      куртамыш: "kurtamyish"
-      кызыл: "kyizyil"
-      кыштым: "kyishtyim"
-      лабытнанги: "labyitnangi"
-      ливны: "livnyi"
-      луховицы: "luhovitsyi"
-      лысково: "lyiskovo"
-      лысьва: "lyisva"
-      лыткарино: "lyitkarino"
-      люберцы: "lyubertsyi"
-      малмыж: "malmyizh"
-      мамадыш: "mamadyish"
-      медынь: "medyin"
-      минеральные воды: "mineralnyie-vodyi"
-      мирный: "mirnyij"
-      михайловск: "mihajlovsk1"
+      астрахань: "astrahan"
       москва: "moskva1"
-      миски: "myiski"
-      мытищи: "myitischi"
-      мышкин: "myishkin"
-      набережные челны: "naberezhnyie-chelnyi"
-      называевск: "nazyivaevsk"
-      невинномысск: "nevinnomyissk"
-      новозыбков: "novozyibkov"
-      новокуйбышевск: "novokujbyishevsk"
-      новый оскол: "novyij-oskol"
-      новый уренгой: "novyij-urengoj"
-      нытва: "nyitva"
-      озёры: "ozyoryi"
-      отрадный: "otradnyij"
-      печоры: "pechoryi"
-      полысаево: "polyisaevo"
-      полярные зори: "polyarnyie-zori"
-      полярный: "polyarnyij"
-      прохладный: "prohladnyij"
-      пыталово: "pyitalovo"
-      радужный: "raduzhnyij"
-      рыбинск: "ryibinsk"
-      рыбное: "ryibnoe"
-      рыльск: "ryilsk"
       санкт-петербург: "sankt-peterburg1"
-      светлый: "svetlyij"
-      свободный: "svobodnyij"
-      севастополь: "sevastopol1"
-      сланцы: "slantsyi"
-      сольвычегодск: "solvyichegodsk"
-      сольцы: "soltsyi"
-      сосновый бор: "sosnovyij-bor"
-      среднеколымск: "srednekolyimsk"
-      старый оскол: "staryij-oskol"
-      сызрань: "syizran"
-      сыктывкар: "syiktyivkar"
-      сысерть: "syisert"
-      сычёвка: "syichyovka"
-      троицк: "troitsk1"
-      трёхгорный: "tryohgornyij"
-      туймазы: "tujmazyi"
-      тында: "tyinda"
-      тырныауз: "tyirnyiauz"
-      удачный: "udachnyij"
-      учалы: "uchalyi"
-      хадыженск: "hadyizhensk"
-      хвалынск: "hvalyinsk"
-      чаплыгин: "chaplyigin"
-      чебоксары: "cheboksaryi"
-      чердынь: "cherdyin"
-      чулым: "chulyim"
-      шарыпово: "sharyipovo"
-      шахты: "shahtyi"
-      шиханы: "shihanyi"
-      щигры: "schigryi"
-      ясный: "yasnyij"
+      тара: "tara"
+      называевск: "nazyivaevsk"
+      исилькуль: "isilkul"
+      калачинск: "kalachinsk"
+      тюкалинск: "tyukalinsk"
 
   dgis:
     enabled: false
@@ -216,6 +391,7 @@ crawlee:
 # ===== Дедупликация =====
 dedup:
   name_similarity_threshold: 88
+  max_cluster_size: 20
   phone_match_required: true
   auto_merge_same_phone: true
   auto_merge_same_site: true

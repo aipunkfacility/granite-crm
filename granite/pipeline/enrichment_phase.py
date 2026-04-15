@@ -713,18 +713,39 @@ class EnrichmentPhase:
 
         # Ищем наиболее релевантный URL
         best_url = None
+        best_match_score = 0  # FIX: отслеживаем качество совпадения
         if search_best_url:
+            name_words = company_name.lower().split()[:3]
             for wr in web_results:
                 wr_url = wr.get("url", "")
                 wr_title = wr.get("title", "").lower()
                 if wr_url:
-                    name_words = company_name.lower().split()[:3]
-                    if any(w in wr_title for w in name_words if len(w) > 2):
-                        best_url = wr_url
-                        break
-        # Фоллбэк: первый результат
+                    matched = sum(1 for w in name_words if len(w) > 2 and w in wr_title)
+                    if matched > 0:
+                        # FIX: берём результат с максимальным совпадением
+                        if matched > best_match_score:
+                            best_match_score = matched
+                            best_url = wr_url
+        # FIX: Фоллбэк — первый результат ТОЛЬКО если совпал хотя бы 1 символ
+        # из названия компании. Без совпадения — скорее всего чужой сайт.
         if not best_url:
-            best_url = web_results[0].get("url", "")
+            if best_match_score == 0 and search_best_url:
+                # FIX: Проверяем первый результат на минимальное совпадение
+                first_url = web_results[0].get("url", "")
+                first_title = web_results[0].get("title", "").lower()
+                name_words = company_name.lower().split()[:3]
+                has_any_match = any(
+                    w in first_title for w in name_words if len(w) > 2
+                )
+                if has_any_match:
+                    best_url = first_url
+                else:
+                    logger.debug(
+                        f"  Пропуск: первый результат не совпадает с "
+                        f"'{company_name}' → '{first_title[:60]}'"
+                    )
+            else:
+                best_url = web_results[0].get("url", "")
 
         if not best_url:
             return []

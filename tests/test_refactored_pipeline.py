@@ -106,9 +106,9 @@ class TestRegionResolver:
 
     def test_single_city_no_region(self):
         """Город без области → только он сам."""
-        config = self._make_config(cities=[{"name": "Москва"}])
+        config = self._make_config()
         resolver = RegionResolver(config)
-        assert resolver.get_region_cities("Москва") == ["Москва"]
+        assert resolver.get_region_cities("НесуществующийГород") == ["НесуществующийГород"]
 
     def test_city_not_in_config(self):
         """Город не найден в конфиге → только он сам."""
@@ -117,30 +117,31 @@ class TestRegionResolver:
 
     def test_region_from_regions_yaml(self, monkeypatch):
         """Область подтягивается из regions.yaml."""
-        def mock_get_region_cities(region):
-            if region == "Московская область":
-                return ["Москва", "Химки", "Мытищи"]
-            return []
+        # Подменяем _load_regions чтобы вернуть тестовые данные
+        mock_regions = {
+            "Московская область": ["Москва", "Химки", "Мытищи"],
+            "Ленинградская область": ["Санкт-Петербург"],
+        }
+        monkeypatch.setattr("granite.pipeline.region_resolver._load_regions", lambda path=None: mock_regions)
+        resolver = RegionResolver(self._make_config())
 
-        config = self._make_config(cities=[{"name": "Москва", "region": "Московская область"}])
-        monkeypatch.setattr("granite.pipeline.region_resolver.get_region_cities", mock_get_region_cities)
-        resolver = RegionResolver(config)
+        # Город из regions.yaml → только он сам
         cities = resolver.get_region_cities("Москва")
+        assert cities == ["Москва"]
+
+        # Регион из regions.yaml → все города региона
+        cities = resolver.get_region_cities("Московская область")
         assert "Москва" in cities
         assert "Химки" in cities
+        assert "Мытищи" in cities
 
     def test_fallback_to_config_cities(self):
-        """Фоллбэк: города из config.yaml с той же областью."""
-        config = self._make_config(cities=[
-            {"name": "ГородА", "region": "Область1"},
-            {"name": "ГородБ", "region": "Область1"},
-            {"name": "ГородВ", "region": "Область2"},
-        ])
-        resolver = RegionResolver(config)
-        # regions.yaml вернёт пустой список (мок по умолчанию)
-        with patch("granite.pipeline.region_resolver.get_region_cities", return_value=[]):
-            cities = resolver.get_region_cities("ГородА")
-        assert sorted(cities) == ["ГородА", "ГородБ"]
+        """Город/регион не найден в regions.yaml → fallback: [name]."""
+        config = self._make_config()
+        # _load_regions вернёт пустой словарь (нет файла)
+        resolver = RegionResolver(config, regions_path="/nonexistent/regions.yaml")
+        cities = resolver.get_region_cities("ЛюбойГород")
+        assert cities == ["ЛюбойГород"]
 
     def test_is_source_enabled_default(self):
         """Источник по умолчанию включён."""

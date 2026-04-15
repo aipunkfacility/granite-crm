@@ -42,18 +42,49 @@ class DedupPhase:
             # Перевод в dict для алгоритмов
             dicts = []
             for r in raw_records:
+                # JSON-поля из SQLite могут прийти как строки (не десериализовались)
+                phones = r.phones
+                if isinstance(phones, str):
+                    try:
+                        import json
+                        phones = json.loads(phones)
+                    except (json.JSONDecodeError, ValueError):
+                        phones = [phones]
+                if not isinstance(phones, list):
+                    phones = []
+
+                emails = r.emails
+                if isinstance(emails, str):
+                    try:
+                        import json
+                        emails = json.loads(emails)
+                    except (json.JSONDecodeError, ValueError):
+                        emails = [emails]
+                if not isinstance(emails, list):
+                    emails = []
+
+                messengers = r.messengers
+                if isinstance(messengers, str):
+                    try:
+                        import json
+                        messengers = json.loads(messengers)
+                    except (json.JSONDecodeError, ValueError):
+                        messengers = {}
+                if not isinstance(messengers, dict):
+                    messengers = {}
+
                 dicts.append(
                     {
                         "id": r.id,
                         "source": r.source,
                         "source_url": r.source_url or "",
                         "name": r.name,
-                        "phones": r.phones if isinstance(r.phones, list) else [r.phones] if isinstance(r.phones, str) else [],
+                        "phones": phones,
                         "address_raw": r.address_raw or "",
                         "website": r.website,
-                        "emails": r.emails or [],
+                        "emails": emails,
                         "geo": r.geo,
-                        "messengers": r.messengers or {},
+                        "messengers": messengers,
                         "city": r.city,
                     }
                 )

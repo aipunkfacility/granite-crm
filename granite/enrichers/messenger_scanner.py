@@ -92,7 +92,13 @@ class MessengerScanner:
         return found
 
     def _extract_emails(self, html: str, result: dict):
-        """Извлекает email из HTML: mailto: ссылки + текст."""
+        """Извлекает email из HTML: mailto: ссылки + текст.
+
+        FIX: Текст для extract_emails берётся только после удаления шумовых
+        тегов (script, style, svg, noscript, img, meta, link). Это исключает
+        появление email-подобных строк из src/data-src атрибутов изображений
+        и inline-стилей, которые были главной причиной мусора (~90%).
+        """
         if not html:
             return
 
@@ -104,14 +110,19 @@ class MessengerScanner:
             if email and email not in emails:
                 emails.append(email)
 
-        # Email из текста
-        text_emails = extract_emails(html)
+        # FIX: Email из текста — только из очищенного HTML (без шумовых тегов)
+        clean_html = self._strip_noisy_tags(html)
+        text_emails = extract_emails(clean_html)
         for em in text_emails:
             if em not in emails:
                 emails.append(em)
 
     def _extract_phones(self, html: str, result: dict):
-        """Извлекает телефоны из HTML: tel: ссылки + текст."""
+        """Извлекает телефоны из HTML: tel: ссылки + текст.
+
+        FIX: Текст для extract_phones берётся только после удаления шумовых
+        тегов — исключает телефоны из data-атрибутов, скриптов, мета-тегов.
+        """
         if not html:
             return
 
@@ -123,12 +134,42 @@ class MessengerScanner:
             if phone and phone not in phones:
                 phones.append(phone)
 
-        # Текст страницы
-        # Простой текст: убираем теги
-        text = re.sub(r"<[^>]+>", " ", html)
+        # FIX: Текст страницы — только из очищенного HTML
+        clean_html = self._strip_noisy_tags(html)
+        text = re.sub(r"<[^>]+>", " ", clean_html)
         for p in extract_phones(text):
             if p not in phones:
                 phones.append(p)
+
+    # FIX: Новый метод — удаление шумовых тегов перед экстракцией контактов
+    @staticmethod
+    def _strip_noisy_tags(html: str) -> str:
+        """Удаляет теги, которые часто содержат мусорные email/телефоны:
+
+        - <script>...</script>          — JS-код с data-атрибутами
+        - <style>...</style>            — CSS с URL-путями
+        - <svg>...</svg>                — inline SVG с image href
+        - <noscript>...</noscript>      — фоллбэк-контент
+        - <img ... />, <input ... />, <source ... />, <track ... />
+                                        — src/data-src атрибуты (photo@2x.png)
+        - <meta ... />, <link ... />    — URL-шаблоны, favicon
+        - Коментарии <!-- ... -->       — могут содержать email-шаблоны
+
+        НЕ удаляет: <a> (mailto: ссылки), обычный текст в <p>, <div>,
+        <span>, <header>, <footer>, <table> — там реальные контакты.
+        """
+        # Удаляем блочные теги с содержимым
+        html = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<svg[^>]*>.*?</svg>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        html = re.sub(r'<noscript[^>]*>.*?</noscript>', '', html, flags=re.DOTALL | re.IGNORECASE)
+        # Удаляем самозакрывающиеся/void теги (атрибуты часто содержат мусор)
+        html = re.sub(r'<(?:img|input|source|track|meta|link|br|hr)\b[^>]*/?\s*>', '', html, flags=re.IGNORECASE)
+        # FIX: Также убираем теги с data-src, data-image, srcset — там пути к картинкам
+        html = re.sub(r'<[^>]+(?:data-src|data-image|srcset|data-original)[^>]*>', '', html, flags=re.IGNORECASE)
+        # Удаляем HTML-комментарии
+        html = re.sub(r'<!--.*?-->', '', html, flags=re.DOTALL)
+        return html
 
     def _find_contacts_link(self, base_url: str, html: str) -> str | None:
         """Ищет ссылку на страницу контактов в HTML главной страницы."""

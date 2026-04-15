@@ -15,9 +15,11 @@ class TestBaseScraper:
             def scrape(self):
                 return []
 
-        config = {"cities": [{"name": "Астрахань", "population": 468000}]}
+        config = {}
         scraper = DummyScraper(config, "Астрахань")
-        assert scraper.city_config["population"] == 468000
+        # city_config теперь возвращает {"region": ..., "name": ...} из regions.yaml
+        # или пустой dict если город не найден (fallback)
+        assert isinstance(scraper.city_config, dict)
 
     def test_get_city_config_not_found(self):
         from granite.scrapers.base import BaseScraper

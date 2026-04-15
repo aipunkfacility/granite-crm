@@ -68,6 +68,29 @@ def adaptive_delay(min_sec: float = 1.0, max_sec: float = 3.5) -> float:
     return delay
 
 
+# FIX: TLD, которые НЕ являются email-доменами (файлы, изображения)
+_FAKE_EMAIL_TLDS = frozenset({
+    "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico", "tif", "tiff",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "zip", "rar", "7z",
+    "mp4", "avi", "mov", "mp3", "wav", "css", "js", "html", "htm", "xml",
+    "woff", "woff2", "ttf", "otf", "eot",
+})
+
+# FIX: Локальные части email, которые явно не являются адресами
+_FAKE_EMAIL_LOCALS = frozenset({
+    "photo", "image", "icon", "logo", "favicon", "banner", "bg", "background",
+    "thumbnail", "thumb", "avatar", "placeholder", "sample", "demo", "test",
+    "example", "email", "username", "user", "admin", "webmaster", "postmaster",
+    "noreply", "no-reply", "mailer-daemon", "abuse", "root",
+    "img", "src", "assets", "static", "media", "files", "upload", "uploads",
+})
+
+# FIX: DEF-коды, которые точно не могут быть мобильными/городскими РФ
+_INVALID_DEF_CODES = frozenset({"000"})
+# FIX: Подозрительные DEF-коды (бесплатный — не мастерская)
+_SUSPICIOUS_DEF_CODES = frozenset({"800"})
+
+
 def normalize_phone(phone: str) -> str | None:
     """Нормализация телефона к формату E.164: 7XXXXXXXXXX (без +).
 
@@ -83,11 +106,25 @@ def normalize_phone(phone: str) -> str | None:
     # Если начинается с 8 (российский формат) — заменяем на 7
     if digits.startswith("8") and len(digits) == 11:
         digits = "7" + digits[1:]
-    # Если 10 цифр — добавляем 7 (местный номер)
+    # FIX: Если 10 цифр — НЕ добавляем 7 автоматически.
+    # 10-значные числа могут быть ИНН, номерами счетов, id — не телефоны.
+    # Принимаем только если начинаются с 9 (DEF-код мобильного РФ).
     elif len(digits) == 10:
-        digits = "7" + digits
+        if digits.startswith("9"):
+            digits = "7" + digits
+        else:
+            return None
     # Проверяем валидность: 11 цифр, начинается с 7
     if digits.startswith("7") and len(digits) == 11:
+        # FIX: Проверяем DEF-код
+        def_code = digits[1:4]
+        if def_code in _INVALID_DEF_CODES:
+            return None
+        if def_code in _SUSPICIOUS_DEF_CODES:
+            return None
+        # FIX: Все цифры одинаковые / почти одинаковые
+        if len(set(digits)) <= 2:
+            return None
         return digits
     return None
 
@@ -110,25 +147,82 @@ def extract_phones(text: str) -> list[str]:
     Ищет номера формата: +7(903)123-45-67, 8 903 123 45 67,
     79031234567 и вариации с пробелами/дефисами/скобками.
 
+    FIX: Post-validation через normalize_phone отсекает мусор (000, 800,
+    одинаковые цифры).
+
     Returns:
-        Список уникальных найденных телефонов (в оригинальном формате из текста).
+        Список уникальных найденных телефонов (E.164).
     """
     if not text:
         return []
-    return list(dict.fromkeys(re.findall(
+    raw = list(dict.fromkeys(re.findall(
         r"(\+?7[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2})",
         text,
     )))
+    # FIX: Пропускаем через normalize_phone для отсева мусорных DEF-кодов
+    result = []
+    seen = set()
+    for p in raw:
+        norm = normalize_phone(p)
+        if norm and norm not in seen:
+            seen.add(norm)
+            result.append(norm)
+    return result
 
 
 def extract_emails(text: str) -> list[str]:
-    """Извлечение email из текста."""
+    """Извлечение email из текста.
+
+    FIX: Отсеиваем фейковые email:
+    - TLD — расширение файла (.jpg, .png, .gif, etc.)
+    - Локальная часть — явно не адрес (photo@, icon@, img@, etc.)
+    - Паттерны изображений (photo@2x.domain.com)
+    - Слишком короткие (< 3 символов локальная часть)
+    - Двойные точки, ведущие/замыкающие точки
+    """
     if not text:
         return []
-    return list(dict.fromkeys(re.findall(
+    raw = list(dict.fromkeys(re.findall(
         r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}",
         text, re.IGNORECASE
     )))
+    result = []
+    for em in raw:
+        em = em.strip().lower()
+        if not em or "@" not in em:
+            continue
+        local, domain = em.rsplit("@", 1)
+        if not local or not domain:
+            continue
+        # FIX: Локальная часть слишком короткая (но однобуквенные допустимы — a@b.com)
+        if len(local) < 1:
+            continue
+        # FIX: TLD — расширение файла?
+        tld = domain.rsplit(".", 1)[-1].lower()
+        if tld in _FAKE_EMAIL_TLDS:
+            continue
+        # FIX: Локальная часть — явно не адрес?
+        # Только если домен выглядит как мусорный (CDN, placeholder, no-reply)
+        local_base = local.split("+")[0]
+        if local_base in _FAKE_EMAIL_LOCALS and tld in ("png", "jpg", "gif", "svg", "webp", "ico", "example", "invalid", "test", "local", "localhost"):
+            continue
+        # FIX: Паттерны img@2x.example.com
+        if re.match(r'^[a-z]+@\d+x?\.', em):
+            continue
+        # FIX: Паттерны типа name@2x.domain.com (из src атрибутов)
+        if re.match(r'^.+@\d+x', em):
+            continue
+        # FIX: Двойные точки
+        if ".." in em:
+            continue
+        # FIX: Точка в начале/конце локальной части
+        if local.startswith(".") or local.endswith("."):
+            continue
+        # FIX: Нет точки в домене
+        if "." not in domain:
+            continue
+        result.append(em)
+    return result
 
 
 def extract_domain(url: str) -> str | None:

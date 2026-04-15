@@ -324,10 +324,93 @@ class WebSearchScraper(BaseScraper):
                 "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
             }
         )
+        # Фильтр по чужому городу: корни названий городов из ДРУГИХ регионов.
+        # Строится один раз при инициализации скрейпера.
+        # Используется в _is_relevant_url() чтобы отсеивать результаты
+        # вида "Гранитная мастерская в Москве" при скрапинге Абазы.
+        self._foreign_city_roots = self._build_foreign_city_roots()
 
     def _is_skip_domain(self, url: str) -> bool:
         """Проверяет, нужно ли пропустить URL (каталоги, соцсети, мусор)."""
         return any(d in url for d in self.SKIP_DOMAINS)
+
+    def _build_foreign_city_roots(self) -> list[str]:
+        """Построить список корней названий городов из ДРУГИХ регионов.
+
+        Для каждого города не из целевого региона генерируем:
+        1. Полное название (lowercase): "москва" → ловит "Москва" в title
+        2. Префикс длиной max(5, len-2): "москв" → ловит "Москве" (предложный падеж)
+
+        Список сортирован по длине (длинные первыми) — чтобы
+        "санкт-петербург" не был поглощён более коротким совпадением.
+        """
+        target_region = self.city_config.get("region", "")
+        if not target_region:
+            return []
+
+        try:
+            from granite.pipeline.region_resolver import _load_regions
+            regions = _load_regions()
+        except Exception:
+            return []
+
+        roots = set()
+        for region, cities in regions.items():
+            if region == target_region or not isinstance(cities, list):
+                continue
+            for city in cities:
+                name_lower = city.lower()
+                # Полное название (именительный падеж)
+                roots.add(name_lower)
+                # Префикс для предложного/других падежей
+                # "Москв" ловит "Москве", "Костром" ловит "Костроме"
+                if len(name_lower) >= 5:
+                    # len-1: "москва"(6)→"москв"(5) ловит "Москве"
+                    # max(5,...): "светлый"(7)→"светлы"(6) НЕ ловит "Светлана"
+                    prefix_len = max(5, len(name_lower) - 1)
+                    prefix = name_lower[:prefix_len]
+                    if prefix != name_lower:
+                        roots.add(prefix)
+                # Города на "ь": предложный падеж отбрасывает "ь"
+                # "Пермь" → "перм" ловит "в Перми"
+                if name_lower.endswith('ь') and len(name_lower) >= 5:
+                    roots.add(name_lower[:-1])
+
+        # Сортируем по длине (длинные первыми)
+        return sorted(roots, key=len, reverse=True)
+
+    def _title_mentions_foreign_city(self, title: str) -> bool:
+        """Проверяет, упоминает ли title город из другого региона.
+
+        Примеры:
+          "Гранитная мастерская в Москве" → True (Москва не в Хакасии)
+          "Гранитная мастерская в Абакане" → False (Абакан в Хакасии)
+          "Памятники из гранита" → False (нет упоминания города)
+        """
+        if not title or not self._foreign_city_roots:
+            return False
+
+        title_lower = title.lower()
+        title_len = len(title_lower)
+
+        for root in self._foreign_city_roots:
+            pos = 0
+            while True:
+                pos = title_lower.find(root, pos)
+                if pos == -1:
+                    break
+                # Проверяем только НАЧАЛЬНУЮ границу слова.
+                # Конечную границу НЕ проверяем — нужно ловить
+                # предложный падеж: "москв" в "в Москве" (е — буква, но это наш город).
+                # Без after-check ложных срабатываний минимум:
+                # "москв" не может появиться в середине другого слова
+                # если проверена начальная граница.
+                before_ok = (pos == 0 or not title_lower[pos - 1].isalpha())
+                if before_ok:
+                    return True
+                pos += 1
+
+        return False
 
     def _is_relevant_url(self, url: str, title: str = "") -> bool:
         """Фильтрация URL: оставляем только релевантные результаты.
@@ -335,8 +418,9 @@ class WebSearchScraper(BaseScraper):
         Стратегия:
         1. Блок-лист доменов (SKIP_DOMAINS)
         2. Блокируем зарубежные страны в title
-        3. Доверяем русским TLD (.ru, .by, .kz и т.д.)
-        4. Для остальных — требуем русские ключевые слова в title
+        3. Для .ru/.su: проверяем, что title не упоминает чужой город
+        4. Доверяем русским TLD (.by, .kz и т.д.) с проверкой ключевых слов
+        5. Для остальных — требуем русские ключевые слова в title
         """
         if not url:
             return False
@@ -363,10 +447,14 @@ class WebSearchScraper(BaseScraper):
             logger.debug(f"  WebSearch: ФИЛЬТР (мусорная тема): {title[:60]}")
             return False
 
-        # 3. Для .ru/.su — доверяем без доп. проверки title.
-        #    Поисковик уже отфильтровал по релевантности запросу.
-        #    _JUNK_KEYWORDS, _FOREIGN_COUNTRIES и SKIP_DOMAINS уже применены выше.
+        # 3. Для .ru/.su — доверяем, но проверяем что title
+        #    не упоминает город из ДРУГОГО региона.
+        #    Без этой проверки "Гранитная мастерская в Москве" проходила
+        #    бы как результат для Абазы.
         if domain.endswith((".ru", ".su")):
+            if title and self._title_mentions_foreign_city(title):
+                logger.debug(f"  WebSearch: ФИЛЬТР (чужой город): {title[:60]}")
+                return False
             return True
 
         # 3.5. Для других доверенных TLD (.by, .kz и т.д.) — проверяем title
@@ -568,18 +656,6 @@ class WebSearchScraper(BaseScraper):
     def scrape(self) -> list[RawCompany]:
         companies = []
         region_name = self.city_config.get("region", self.city)
-
-        # Для малых городов без config: пытаемся получить область из regions.py
-        if not self.city_config:
-            try:
-                from granite.regions import _load_regions
-                regions = _load_regions()
-                for region_name_val, region_cities in regions.items():
-                    if isinstance(region_cities, list) and self.city in region_cities:
-                        region_name = region_name_val
-                        break
-            except Exception:
-                pass
 
         seen_urls = set()
 

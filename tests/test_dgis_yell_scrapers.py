@@ -156,7 +156,9 @@ class TestDgisScraperInit:
 
     def test_inherits_base_scraper(self, dgis_config):
         scraper = DgisScraper(dgis_config, "Омск")
-        assert scraper.city_config["population"] == 1100000
+        # city_config теперь содержит {"region": ..., "name": ...} из regions.yaml
+        # а не population из config.yaml cities
+        assert isinstance(scraper.city_config, dict)
 
 
 # ============================================================

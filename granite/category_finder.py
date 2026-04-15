@@ -69,11 +69,15 @@ def _get_jsprav_session() -> requests.Session | None:
     return _jsprav_local.session
 
 
-def _search_city(city: str) -> dict | None:
+def _search_city(city: str, region_hint: str | None = None) -> dict | None:
     """POST /api/cities/ → поиск города по названию.
 
     Возвращает {"name": "Камышин", "region": "Волгоградская область", "url": "http://kamyishin.jsprav.ru"}
     или None.
+
+    Args:
+        city: название города.
+        region_hint: если указан — фильтрует результаты по региону (для городов-дубликатов).
     """
     session = _get_jsprav_session()
     if session is None:
@@ -93,18 +97,30 @@ def _search_city(city: str) -> dict | None:
         if not results:
             return None
 
-        # Ищем точное совпадение по названию
+        # Ищем точное совпадение по названию + региону (если есть hint)
         for item in results:
             name = item.get("name", "").strip()
-            if name == city:
-                return item
+            if name != city:
+                continue
+            if region_hint:
+                item_region = item.get("region", "")
+                if region_hint.lower() in item_region.lower():
+                    return item
+                continue
+            return item
 
-        # Если нет точного — берём первый с похожим названием (не менее 6 символов совпадения)
+        # Если есть region_hint но не нашли точное — пробуем по региону
+        if region_hint:
+            for item in results:
+                item_region = item.get("region", "")
+                if region_hint.lower() in item_region.lower():
+                    return item
+
+        # Если нет точного — берём первый с похожим названием
         first = results[0]
         city_lower = city.lower()
         first_name_lower = first.get("name", "").lower()
         if len(city_lower) >= 6 and len(first_name_lower) >= 6:
-            # Проверяем минимум 6 общих символов или начало
             if city_lower[:6] == first_name_lower[:6]:
                 return first
         elif len(first_name_lower) >= 3 and (city_lower.startswith(first_name_lower) or first_name_lower.startswith(
@@ -138,23 +154,35 @@ def _check_head(url: str, timeout: int = 8) -> bool:
         return False
 
 
-def find_jsprav(city: str, config: dict) -> dict:
+def find_jsprav(city: str, config: dict, region: str | None = None) -> dict:
     """Найти поддомен и проверить категорию.
 
-    1. Ищем через API /api/cities/
-    2. Проверяем категорию HEAD-запросом
+    1. Если передан region — ищем через API с фильтром по региону (для городов-дубликатов)
+    2. Иначе — config subdomain_map (для нестандартных транслитераций)
+    3. Фоллбэк — API /api/cities/
+    4. Проверяем категорию HEAD-запросом
     """
-    # Сначала config subdomain_map (для нестандартных)
-    subdomain_map = config.get("sources", {}).get("jsprav", {}).get("subdomain_map", {})
-    subdomain = subdomain_map.get(city.lower())
+    subdomain = None
 
+    # Приоритет: API с фильтром по региону (дубликаты городов)
+    if region:
+        result = _search_city(city, region_hint=region)
+        if result:
+            subdomain = _extract_subdomain(result["url"])
+            logger.info(f"    jsprav {city}: найден через API ({region})")
+
+    # Фоллбэк: subdomain_map (нестандартные транслитерации)
     if not subdomain:
-        # Поиск через API
+        subdomain_map = config.get("sources", {}).get("jsprav", {}).get("subdomain_map", {})
+        subdomain = subdomain_map.get(city.lower())
+
+    # Фоллбэк: API без региона
+    if not subdomain:
         result = _search_city(city)
         if result:
             subdomain = _extract_subdomain(result["url"])
-            region = result.get("region", "")
-            logger.info(f"    jsprav {city}: найден через API ({region})")
+            found_region = result.get("region", "")
+            logger.info(f"    jsprav {city}: найден через API ({found_region})")
         else:
             logger.info(f"    jsprav {city}: не найден")
             return {}
@@ -186,8 +214,14 @@ def _save_cache(cache: dict):
 _cache_lock = threading.Lock()
 
 
-def discover_categories(cities: list[str], config: dict) -> dict:
-    """Поиск поддоменов и категорий для городов области."""
+def discover_categories(cities: list[str], config: dict, region: str | None = None) -> dict:
+    """Поиск поддоменов и категорий для городов области.
+
+    Args:
+        cities: список названий городов.
+        config: словарь конфигурации.
+        region: название региона (для разрешения дубликатов городов).
+    """
     with _cache_lock:
         cache = _load_cache()
         found_any = False
@@ -201,7 +235,7 @@ def discover_categories(cities: list[str], config: dict) -> dict:
                 continue
 
             try:
-                result = find_jsprav(city, config)
+                result = find_jsprav(city, config, region=region)
             except Exception as e:
                 logger.warning(f"  Пропуск {city}: jsprav недоступен — {e}")
                 continue

@@ -75,10 +75,14 @@ def run(
     
     target_cities = []
     if city.lower() == "all":
-        target_cities = [c["name"] for c in config.get("cities", []) if "name" in c]
+        # Все города из data/regions.yaml
+        from granite.pipeline.region_resolver import RegionResolver
+        resolver = RegionResolver(config)
+        target_cities = resolver.get_all_cities()
+        print_status(f"Всего городов в regions.yaml: {len(target_cities)}", "info")
     else:
         target_cities = [city]
-        
+
     for c in target_cities:
         try:
             manager.run_city(c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich)
@@ -96,10 +100,12 @@ def export(
     config = load_config()
     setup_logging(config)
     db = Database(config_path=_config_path)
-    
+
     target_cities = []
     if city.lower() == "all":
-        target_cities = [c["name"] for c in config.get("cities", []) if "name" in c]
+        from granite.pipeline.region_resolver import RegionResolver
+        resolver = RegionResolver(config)
+        target_cities = resolver.get_all_cities()
     else:
         target_cities = [city]
 
@@ -141,7 +147,9 @@ def export_preset(
 
     target_cities = []
     if city.lower() == "all":
-        target_cities = [c["name"] for c in config.get("cities", []) if "name" in c]
+        from granite.pipeline.region_resolver import RegionResolver
+        resolver = RegionResolver(config)
+        target_cities = resolver.get_all_cities()
     else:
         target_cities = [city]
 

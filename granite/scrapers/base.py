@@ -15,11 +15,28 @@ class BaseScraper(ABC):
         self.last_error: str | None = None
 
     def _get_city_config(self) -> dict:
-        """Получить конфиг города из config.yaml."""
+        """Получить конфиг города.
+
+        Источник истины — data/regions.yaml.
+        Возвращает {'region': 'Регион'} для использования в web_search и т.д.
+        Fallback на config.yaml cities (для обратной совместимости).
+        """
+        # 1. Проверяем regions.yaml
+        try:
+            from granite.pipeline.region_resolver import _load_regions
+            regions = _load_regions()
+            for region_name, region_cities in regions.items():
+                if isinstance(region_cities, list) and self.city in region_cities:
+                    return {"region": region_name, "name": self.city}
+        except Exception:
+            pass
+
+        # 2. Fallback на config.yaml cities (обратная совместимость)
         for c in self.config.get("cities", []):
             if c.get("name") == self.city:
                 return c
-        logger.warning(f"City '{self.city}' not found in config, returning empty defaults")
+
+        logger.warning(f"City '{self.city}' not found in regions.yaml, returning empty defaults")
         return {}
 
     @abstractmethod

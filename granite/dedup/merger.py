@@ -3,6 +3,19 @@ from granite.utils import pick_best_value, extract_street, normalize_phone, sani
 from loguru import logger
 import os
 
+# FIX: Лимиты контактов при слиянии кластеров.
+# Мастерская в нише редко имеет >4 email и >6 телефонов.
+# Превышение = признак ложного слияния разных компаний.
+MAX_MERGE_EMAILS = 4
+MAX_MERGE_PHONES = 6
+
+# FIX: Свободные email-провайдеры — приоритет ниже, чем email на домене компании
+_FREE_EMAIL_DOMAINS = frozenset({
+    "mail.ru", "inbox.ru", "bk.ru", "list.ru", "yandex.ru", "ya.ru",
+    "gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com",
+    "rambler.ru", "yahoo.com", "protonmail.com", "zoho.com", "mail.com",
+})
+
 
 def _label(index: int) -> str:
     """A, B, ..., Z, AA, AB, ..."""
@@ -20,10 +33,10 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
 
     Правила:
     - name_best: самое длинное название
-    - phones: объединение уникальных
+    - phones: объединение уникальных (FIX: с лимитом MAX_MERGE_PHONES)
     - address: самое длинное значение
     - website: самое длинное значение
-    - emails: объединение уникальных
+    - emails: объединение уникальных (FIX: с лимитом MAX_MERGE_EMAILS, с приоритетом company-domain)
     - merged_from: список id исходных записей
 
     Args:
@@ -51,6 +64,64 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
                 seen_phones.add(norm)
                 all_phones.append(norm)
 
+    # Объединяем email с дедупликацией
+    all_emails: list[str] = []
+    seen_emails: set[str] = set()
+    for r in cluster_records:
+        for e in r.get("emails", []):
+            if e and isinstance(e, str) and e.strip():
+                e_clean = e.strip().lower()
+                if e_clean not in seen_emails:
+                    seen_emails.add(e_clean)
+                    all_emails.append(e_clean)
+
+    # FIX: Сортируем email по приоритету:
+    # 1) Email на домене компании (если website известен)
+    # 2) На прочих доменах
+    # 3) На free-провайдерах
+    # Определяем домен компании из website (берём из первой записи с website)
+    company_domain = None
+    for r in cluster_records:
+        ws = r.get("website", "") or ""
+        if ws:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(ws if "://" in ws else f"https://{ws}")
+                dom = parsed.netloc.lower()
+                if dom.startswith("www."):
+                    dom = dom[4:]
+                if dom and "." in dom:
+                    company_domain = dom
+                    break
+            except Exception:
+                continue
+
+    if company_domain:
+        def _email_priority(em: str) -> int:
+            em_dom = em.rsplit("@", 1)[-1].lower()
+            if em_dom == company_domain or em_dom.endswith("." + company_domain):
+                return 0  # свой домен — высший приоритет
+            if em_dom in _FREE_EMAIL_DOMAINS:
+                return 2  # free-провайдер — низкий приоритет
+            return 1
+        all_emails.sort(key=_email_priority)
+
+    # FIX: Применяем лимиты
+    phones_before_limit = len(all_phones)
+    emails_before_limit = len(all_emails)
+    if len(all_phones) > MAX_MERGE_PHONES:
+        logger.warning(
+            f"merge_cluster: обрезка телефонов {len(all_phones)} → {MAX_MERGE_PHONES} "
+            f"(вероятно ложное слияние)"
+        )
+        all_phones = all_phones[:MAX_MERGE_PHONES]
+    if len(all_emails) > MAX_MERGE_EMAILS:
+        logger.warning(
+            f"merge_cluster: обрезка email {len(all_emails)} → {MAX_MERGE_EMAILS} "
+            f"(вероятно ложное слияние)"
+        )
+        all_emails = all_emails[:MAX_MERGE_EMAILS]
+
     merged = {
         "merged_from": [r.get("id") for r in cluster_records if r.get("id") is not None],
         "name_best": pick_best_value(*(r.get("name", "") for r in cluster_records)),
@@ -61,14 +132,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
         "website": pick_best_value(
             *(r.get("website", "") or "" for r in cluster_records)
         ),
-        "emails": list(
-            dict.fromkeys(
-                e
-                for r in cluster_records
-                for e in r.get("emails", [])
-                if e  # skip None/empty
-            )
-        ),
+        "emails": all_emails,
         "messengers": merged_messengers,
         "city": cluster_records[0].get("city", ""),
         "needs_review": False,
@@ -78,6 +142,15 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
     # Очищаем пустые website
     if not merged["website"]:
         merged["website"] = None
+
+    # FIX: Если контактов было обрезано — это признак ложного слияния.
+    # Помечаем needs_review даже если названия похожи.
+    if phones_before_limit > MAX_MERGE_PHONES or emails_before_limit > MAX_MERGE_EMAILS:
+        merged["needs_review"] = True
+        if merged["review_reason"]:
+            merged["review_reason"] += " contacts_over_limit"
+        else:
+            merged["review_reason"] = "contacts_over_limit"
 
     # Проверка: одинаковые названия, но разные адреса → конфликт
     streets = [extract_street(r.get("address_raw", "")) for r in cluster_records]
@@ -108,11 +181,17 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
         # это точно разные компании, объединённые ошибочно по телефону
         if len(unique_names) > 1 and not names_similar:
             merged["needs_review"] = True
-            merged["review_reason"] = "different_names_different_addresses"
+            if merged["review_reason"]:
+                merged["review_reason"] += " different_names_different_addresses"
+            else:
+                merged["review_reason"] = "different_names_different_addresses"
         elif len(unique_names) <= 2 and names_similar:
             # Названия похожие, но адреса разные — помечаем для ручной проверки
             merged["needs_review"] = True
-            merged["review_reason"] = "same_name_diff_address"
+            if merged["review_reason"]:
+                merged["review_reason"] += " same_name_diff_address"
+            else:
+                merged["review_reason"] = "same_name_diff_address"
 
     # Проверка: разные города в кластере → конфликт
     cities = [r.get("city", "") for r in cluster_records if r.get("city")]

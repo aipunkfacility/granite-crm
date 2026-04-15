@@ -88,7 +88,13 @@ class PipelineManager:
 
     def run_city(self, city: str, force: bool = False,
                  run_scrapers: bool = True, re_enrich: bool = False):
-        """Запуск полного цикла для города (и всех городов этой же области)."""
+        """Запуск полного цикла для города (или всех городов региона).
+
+        city может быть:
+          - названием города (скрапинг одного города)
+          - названием региона (скрапинг всех городов региона)
+          - 'all' (все города)
+        """
         print_status(f"Запуск конвейера для: {city}", "bold")
 
         region_cities = self.region.get_region_cities(city)
@@ -154,7 +160,7 @@ class PipelineManager:
             else:
                 fn()
         except Exception as e:
-            logger.error(f"Ошибка фазы '{name}': {e}")
+            logger.exception(f"Ошибка фазы '{name}': {e}")
             print_status(f"[ОШИБКА] Фаза '{name}' завершена с ошибкой: {e}", "warning")
             if name in self._CRITICAL_PHASES:
                 print_status(f"Критическая фаза '{name}' не удалась. Остановка.", "error")

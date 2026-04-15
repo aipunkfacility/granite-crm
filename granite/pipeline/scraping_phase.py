@@ -57,7 +57,7 @@ class ScrapingPhase:
         # ФАЗА 0: Поиск рабочих категорий в справочниках
         if self.region_resolver.is_source_enabled("jsprav"):
             print_status("Поиск категорий в справочниках...", "info")
-            cat_cache = discover_categories(region_cities, self.config)
+            cat_cache = discover_categories(region_cities, self.config, region=city)
         else:
             cat_cache = {}
 
@@ -108,10 +108,7 @@ class ScrapingPhase:
                     logger.error(f"  {rc}: ошибка парсинга — {e}")
                     print_status(f"  {rc}: ошибка — {e}", "warning")
 
-        # Все результаты сохраняем под одним city — вся область вместе
-        for r in raw_results:
-            r.city = city
-
+        # Каждый результат сохраняется под своим фактическим городом (из скрепера)
         return raw_results
 
     def _scrape_single_city(self, rc: str, city: str, cat_cache: dict) -> list:

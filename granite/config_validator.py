@@ -3,6 +3,8 @@
 
 Вынесен из cli.py, чтобы избежать циклического импорта database.py ↔ cli.py.
 Database.__init__() использует _validate_config(), но не должен зависеть от cli.py.
+
+Список городов перенесён в data/regions.yaml — секция cities больше не требуется.
 """
 
 from granite.pipeline.status import print_status
@@ -20,22 +22,6 @@ def validate_config(config: dict) -> bool:
 
     errors = []
 
-    # cities — обязательная секция
-    cities = config.get("cities")
-    if cities is None:
-        errors.append("Отсутствует секция 'cities'")
-    elif not isinstance(cities, list):
-        errors.append("'cities' должен быть списком")
-    elif len(cities) == 0:
-        errors.append("'cities' пуст — нет городов для обработки")
-    else:
-        for i, c in enumerate(cities):
-            if not isinstance(c, dict):
-                errors.append(f"cities[{i}] = {c!r} — ожидается словарь с полями name, region")
-                continue
-            if "name" not in c or not c["name"]:
-                errors.append(f"cities[{i}] — отсутствует или пустое поле 'name'")
-
     # scoring.weights — если есть, все значения должны быть числами
     weights = config.get("scoring", {}).get("weights", {})
     if isinstance(weights, dict):
@@ -50,7 +36,7 @@ def validate_config(config: dict) -> bool:
             if not isinstance(val, (int, float)):
                 errors.append(f"scoring.levels.{key} = {val!r} — ожидается число")
 
-    # database.path — если есть, должна быть строка
+    # database.path — если есть, должна быть строкой
     db_cfg = config.get("database", {})
     if isinstance(db_cfg, dict):
         db_path = db_cfg.get("path")
