@@ -11,12 +11,16 @@ from loguru import logger
 
 # ===== User-Agent =====
 _USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36 Edg/125.0.0.0",
-    "Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0",
+    # Chrome 135 (Windows + macOS)
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+    # Firefox 137
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.4; rv:137.0) Gecko/20100101 Firefox/137.0",
+    # Edge 135
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
+    # Safari 17.4 (macOS)
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
 ]
 
 
@@ -410,18 +414,23 @@ def check_site_alive(url: str) -> int | None:
 
 
 def sanitize_filename(name: str) -> str:
-    """Санитизация имени файла: убираем path traversal и небезопасные символы.
+    """Санитизация имени файла: транслитерация кириллицы + очистка.
 
     Используется в экспортерах и дедуп-модулях для безопасного создания файлов
     из пользовательских данных (названия городов, компаний).
+    Кириллица транслитерируется через TRANSLIT_MAP вместо замены на '_'.
     """
     if not name:
         return "unnamed"
-    name = name.lower().strip()
-    name = re.sub(r"[^a-z0-9_-]", "_", name)
-    name = re.sub(r"_+", "_", name)
-    name = name.strip("_")
-    return name[:100]
+    # Транслитерация кириллицы (без полной очистки slugify, которая убивает спецсимволы)
+    name_lower = name.lower().strip()
+    for cyr, lat in TRANSLIT_MAP:
+        name_lower = name_lower.replace(cyr, lat)
+    # Очистка от небезопасных символов
+    name_slug = re.sub(r'[^a-z0-9_-]', '_', name_lower)
+    name_slug = re.sub(r'_+', '_', name_slug)
+    name_slug = name_slug.strip('_-')
+    return name_slug[:100] if name_slug else "unnamed"
 
 
 def pick_best_value(*values: str) -> str:
@@ -529,3 +538,30 @@ def is_safe_link_url(url: str) -> bool:
     except Exception:
         return False
     return parsed.scheme in ("http", "https") and bool(parsed.hostname)
+
+
+# ===== Error classification =====
+
+# Категории ошибок для классификации
+ERROR_NETWORK = "network"
+ERROR_PARSING = "parsing"
+ERROR_DATA = "data"
+
+
+def classify_error(exc: Exception) -> str:
+    """Классифицировать ошибку по типу.
+
+    Returns:
+        Строковую категорию: 'network', 'parsing', 'data'.
+    """
+    exc_name = type(exc).__name__.lower()
+    exc_msg = str(exc).lower()
+    if any(k in exc_name or k in exc_msg for k in (
+        "timeout", "connection", "network", "ssl", "dns",
+    )):
+        return ERROR_NETWORK
+    if any(k in exc_name or k in exc_msg for k in (
+        "403", "captcha", "blocked", "parse", "json",
+    )):
+        return ERROR_PARSING
+    return ERROR_DATA

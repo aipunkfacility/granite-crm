@@ -29,6 +29,7 @@ from granite.utils import (
     extract_phones,
     slugify,
     adaptive_delay,
+    get_random_ua,
 )
 
 
@@ -119,6 +120,8 @@ class DgisScraper(BaseScraper):
         Returns:
             Список RawCompany.
         """
+        import random as _random
+
         companies: list[RawCompany] = []
         region_id = get_dgis_region_id(self.city)
         page = 1
@@ -137,27 +140,44 @@ class DgisScraper(BaseScraper):
         if region_id:
             base_params["region_id"] = region_id
 
-        while page <= self.max_pages:
-            params = {**base_params, "page": page}
-            logger.info(f"  2GIS API: страница {page}/{self.max_pages}")
+        retry_count = 0
+        MAX_RETRIES = 3
 
-            try:
-                with httpx.Client(timeout=20) as client:
+        timeout_cfg = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
+        headers = {
+            "User-Agent": get_random_ua(),
+            "Accept": "application/json",
+            "Referer": "https://2gis.ru/",
+        }
+
+        with httpx.Client(timeout=timeout_cfg, headers=headers) as client:
+            while page <= self.max_pages:
+                params = {**base_params, "page": page}
+                logger.info(f"  2GIS API: страница {page}/{self.max_pages}")
+
+                try:
                     resp = client.get(url, params=params)
                     status = resp.status_code
 
-                    # Anti-bot: при 403/429 — пауза и retry
                     if status in (403, 429):
-                        wait = 30 + (page - 1) * 10  # escalating backoff
+                        retry_count += 1
+                        if retry_count > MAX_RETRIES:
+                            logger.warning(
+                                f"  2GIS API: {MAX_RETRIES} ретраев при {status}, прекращаем"
+                            )
+                            break
+                        wait = 5 * (2 ** retry_count) + _random.uniform(0, 5)
                         logger.warning(
-                            f"  2GIS API: {status}, ждём {wait}с..."
+                            f"  2GIS API: {status}, ждём {wait:.0f}с (попытка {retry_count})"
                         )
                         time.sleep(wait)
-                        continue
+                        continue  # повторяем ту же страницу
 
                     if status != 200:
                         logger.warning(f"  2GIS API: ошибка {status}")
                         break
+
+                    retry_count = 0  # сброс при успехе
 
                     data = resp.json()
                     result = data.get("result", {})
@@ -182,15 +202,14 @@ class DgisScraper(BaseScraper):
                         break
 
                     page += 1
-                    # Адаптивная задержка между страницами
                     adaptive_delay(self._delay, self._delay * 1.5)
 
-            except httpx.TimeoutException:
-                logger.warning("  2GIS API: таймаут, пробуем следующую страницу")
-                page += 1
-            except Exception as e:
-                logger.error(f"  2GIS API ошибка: {e}")
-                break
+                except httpx.TimeoutException:
+                    logger.warning("  2GIS API: таймаут, пробуем следующую страницу")
+                    page += 1
+                except Exception as e:
+                    logger.error(f"  2GIS API ошибка: {e}")
+                    break
 
         logger.info(f"  2GIS: всего {len(companies)} компаний")
         return companies

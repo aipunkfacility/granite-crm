@@ -277,6 +277,24 @@ class TestSanitizeFilename:
     def test_leading_trailing_underscores_stripped(self):
         assert sanitize_filename("__test__") == "test"
 
+    def test_cyrillic_city_with_dash(self):
+        """Транслитерация кириллицы: 'Ак-Довурак' → 'ak-dovurak'."""
+        assert sanitize_filename("Ак-Довурак") == "ak-dovurak"
+
+    def test_cyrillic_city_saint_petersburg(self):
+        """Транслитерация: 'Санкт-Петербург' → 'sankt-peterburg'."""
+        assert sanitize_filename("Санкт-Петербург") == "sankt-peterburg"
+
+    def test_cyrillic_city_moscow(self):
+        """Транслитерация: 'Москва' → 'moskva'."""
+        assert sanitize_filename("Москва") == "moskva"
+
+    def test_path_traversal_blocked(self):
+        """Path traversal: '../../../etc/passwd' не содержит / или .."""
+        result = sanitize_filename("../../../etc/passwd")
+        assert "/" not in result
+        assert ".." not in result
+
 
 class TestIsSafeLinkUrl:
     """Tests for is_safe_link_url() — markdown/href safety."""

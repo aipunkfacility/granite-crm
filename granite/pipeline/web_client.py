@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from granite.utils import extract_phones, extract_emails, is_safe_url, _sanitize_url_for_log, fetch_page, adaptive_delay
 from granite.http_client import async_fetch_page, async_adaptive_delay
+from granite.scrapers.web_search import is_domain_failed, mark_domain_failed
 
 MIN_CONTENT_LENGTH = 100
 
@@ -60,7 +61,7 @@ class WebClient:
 
             try:
                 search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={self.search_limit}&hl=ru"
-                html = fetch_page(search_url, timeout=15)
+                html = fetch_page(search_url, timeout=min(self.timeout, 30))
 
                 # Google OK — сбрасываем задержку к базовому значению
                 self._on_search_success()
@@ -130,9 +131,19 @@ class WebClient:
             return None
 
         try:
-            html = fetch_page(url, timeout=15)
+            from urllib.parse import urlparse
+            domain = None
+            if url:
+                domain = urlparse(url).hostname
+            if domain and is_domain_failed(domain):
+                logger.debug(f"WebClient scrape: пропуск {domain} (ранее недоступен)")
+                return None
+
+            html = fetch_page(url, timeout=min(self.timeout, 30))
 
             if not html or len(html) < MIN_CONTENT_LENGTH:
+                if domain:
+                    mark_domain_failed(domain)
                 return None
 
             soup = BeautifulSoup(html, "html.parser")
@@ -163,6 +174,10 @@ class WebClient:
             return {"phones": phones, "emails": emails}
 
         except Exception as e:
+            err_str = str(e).lower()
+            if any(kw in err_str for kw in ("timeout", "connection", "403", "429", "503", "ssl")):
+                if domain:
+                    mark_domain_failed(domain)
             logger.debug(f"WebClient scrape ошибка: {e}")
             return None
 
@@ -187,7 +202,7 @@ class WebClient:
                     f"https://www.google.com/search?q={quote_plus(query)}"
                     f"&num={self.search_limit}&hl=ru"
                 )
-                html = await async_fetch_page(search_url, timeout=15)
+                html = await async_fetch_page(search_url, timeout=min(self.timeout, 30))
 
                 # Google OK — сбрасываем задержку
                 self._on_search_success()
@@ -249,9 +264,19 @@ class WebClient:
             return None
 
         try:
-            html = await async_fetch_page(url, timeout=15)
+            from urllib.parse import urlparse
+            domain = None
+            if url:
+                domain = urlparse(url).hostname
+            if domain and is_domain_failed(domain):
+                logger.debug(f"WebClient scrape_async: пропуск {domain} (ранее недоступен)")
+                return None
+
+            html = await async_fetch_page(url, timeout=min(self.timeout, 30))
 
             if not html or len(html) < MIN_CONTENT_LENGTH:
+                if domain:
+                    mark_domain_failed(domain)
                 return None
 
             soup = BeautifulSoup(html, "html.parser")
@@ -279,5 +304,9 @@ class WebClient:
             return {"phones": phones, "emails": emails}
 
         except Exception as e:
+            err_str = str(e).lower()
+            if any(kw in err_str for kw in ("timeout", "connection", "403", "429", "503", "ssl")):
+                if domain:
+                    mark_domain_failed(domain)
             logger.debug(f"WebClient scrape_async ошибка: {e}")
             return None

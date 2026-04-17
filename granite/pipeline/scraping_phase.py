@@ -11,6 +11,7 @@ from granite.database import Database, RawCompanyRow
 from granite.pipeline.status import print_status
 from granite.pipeline.region_resolver import STANDARD_SOURCES
 from granite.category_finder import discover_categories, get_categories, get_subdomain
+from granite.utils import extract_domain
 
 # Import Scrapers
 from granite.scrapers._playwright import playwright_session
@@ -128,7 +129,7 @@ class ScrapingPhase:
 
         # ── 1. Быстрые скреперы (без браузера) ──
         jsprav_needs_pw = False
-        if self.region_resolver.is_source_enabled("jsprav"):
+        if self.region_resolver.is_source_enabled("jsprav") and jsprav_cats is not None:
             jsprav = JspravScraper(
                 self.config, rc, categories=jsprav_cats, subdomain=jsprav_sub
             )
@@ -171,16 +172,20 @@ class ScrapingPhase:
                     pw_results = jsprav_pw.run()
                     # Дедуплируем: исключаем компании, уже найденные JspravScraper
                     # Используем URL и телефон для точного matching (а не только имя)
-                    seen_urls = {c.website for c in city_results if c.website}
+                    seen_domains = set()
                     seen_phones = set()
                     for c in city_results:
+                        if c.website:
+                            seen_domains.add(extract_domain(c.website))
                         for p in c.phones:
                             seen_phones.add(p)
                     new_results = []
                     for c in pw_results:
                         is_dup = False
-                        if c.website and c.website in seen_urls:
-                            is_dup = True
+                        if c.website:
+                            pw_domain = extract_domain(c.website)
+                            if pw_domain and pw_domain in seen_domains:
+                                is_dup = True
                         if not is_dup:
                             for p in c.phones:
                                 if p in seen_phones:

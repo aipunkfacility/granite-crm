@@ -12,6 +12,16 @@ except ImportError:
                    "Установите: pip install playwright && playwright install chromium")
 
 
+# Массив популярных viewport'ов для рандомизации
+_VIEWPORTS = [
+    {"width": 1920, "height": 1080},
+    {"width": 1536, "height": 864},
+    {"width": 1440, "height": 900},
+    {"width": 1366, "height": 768},
+    {"width": 1280, "height": 720},
+]
+
+
 def _get_random_desktop_ua() -> str:
     """Случайный User-Agent из популярных десктопных браузеров.
 
@@ -19,16 +29,16 @@ def _get_random_desktop_ua() -> str:
     которые сами по себе являются сигнатурой ботов.
     """
     uas = [
-        # Chrome 134 на Windows
+        # Chrome 135 на Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-        # Chrome 134 на macOS
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36",
-        # Firefox 135 на Windows
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0",
-        # Edge 134 на Windows
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0",
+        # Chrome 135 на macOS
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
+        # Firefox 137 на Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:137.0) Gecko/20100101 Firefox/137.0",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0",
+        # Edge 135 на Windows
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0",
     ]
     return random.choice(uas)
 
@@ -74,9 +84,10 @@ if PLAYWRIGHT_AVAILABLE:
             )
             try:
                 context = browser.new_context(
-                    viewport={"width": 1920, "height": 1080},
+                    viewport=random.choice(_VIEWPORTS),
                     user_agent=_get_random_desktop_ua(),
                 )
+                context.set_default_timeout(30000)  # 30s — защитный дефолт
                 try:
                     page = context.new_page()
                     if _stealth_apply:

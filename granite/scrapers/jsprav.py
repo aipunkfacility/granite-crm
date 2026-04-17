@@ -28,7 +28,7 @@ class JspravScraper(BaseScraper):
         self.source_config = config.get("sources", {}).get("jsprav", {})
         self.subdomain_map = self.source_config.get("subdomain_map", {})
         self._cached_subdomain = subdomain
-        if categories:
+        if categories is not None:
             self.categories = categories
         else:
             self.categories = [JSPRAV_CATEGORY]

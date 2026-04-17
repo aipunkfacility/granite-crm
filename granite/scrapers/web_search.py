@@ -47,12 +47,12 @@ _FAILED_DOMAINS_LOCK = threading.Lock()
 _FAILED_DOMAINS_TTL_DEFAULT = 600  # 10 минут
 
 
-def _get_failed_domain_ttl(config: dict) -> int:
+def get_failed_domain_ttl(config: dict) -> int:
     """Извлечь TTL кэша недоступных доменов из конфига."""
     return config.get("scraping", {}).get("failed_domain_cache_ttl", _FAILED_DOMAINS_TTL_DEFAULT)
 
 
-def _is_domain_failed(domain: str, ttl: int = _FAILED_DOMAINS_TTL_DEFAULT) -> bool:
+def is_domain_failed(domain: str, ttl: int = _FAILED_DOMAINS_TTL_DEFAULT) -> bool:
     """Проверить, был ли домен недавно недоступен."""
     with _FAILED_DOMAINS_LOCK:
         ts = _FAILED_DOMAINS.get(domain)
@@ -61,7 +61,7 @@ def _is_domain_failed(domain: str, ttl: int = _FAILED_DOMAINS_TTL_DEFAULT) -> bo
         return False
 
 
-def _mark_domain_failed(domain: str):
+def mark_domain_failed(domain: str):
     """Запомнить домен как недоступный."""
     with _FAILED_DOMAINS_LOCK:
         _FAILED_DOMAINS[domain] = time.time()
@@ -337,7 +337,7 @@ class WebSearchScraper(BaseScraper):
         self.source_config = config.get("sources", {}).get("web_search", {})
         self.queries = self.source_config.get("queries", [])
         self.search_limit = self.source_config.get("search_limit", 10)
-        self._failed_domain_ttl = _get_failed_domain_ttl(config)
+        self._failed_domain_ttl = get_failed_domain_ttl(config)
         # HTTP сессия для Yandex / Bing
         self._session = requests.Session()
         self._session.headers.update(
@@ -753,7 +753,7 @@ class WebSearchScraper(BaseScraper):
             return None
 
         domain = extract_domain(url)
-        if domain and _is_domain_failed(domain, self._failed_domain_ttl):
+        if domain and is_domain_failed(domain, self._failed_domain_ttl):
             logger.debug(f"  WebSearch: пропуск {domain} (ранее недоступен)")
             return None
 
@@ -762,7 +762,7 @@ class WebSearchScraper(BaseScraper):
             if not html:
                 # fetch_page вернул None — домен скорее всего мёртв
                 if domain:
-                    _mark_domain_failed(domain)
+                    mark_domain_failed(domain)
                 return None
             if len(html) < 100:
                 return None
@@ -771,7 +771,7 @@ class WebSearchScraper(BaseScraper):
             err_str = str(e).lower()
             if any(kw in err_str for kw in ("timeout", "connection", "403", "429", "503", "502", "ssl", "resolve")):
                 if domain:
-                    _mark_domain_failed(domain)
+                    mark_domain_failed(domain)
             logger.debug(f"  WebSearch: не удалось загрузить {url}: {e}")
             return None
 

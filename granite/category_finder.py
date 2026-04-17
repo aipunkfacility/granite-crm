@@ -28,20 +28,27 @@ JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
 
 # Thread-safe: session stored per-thread via threading.local()
 _jsprav_local = threading.local()
+_jsprav_init_lock = threading.Lock()
 
 
 def _get_jsprav_session() -> requests.Session | None:
     """Создать сессию с CSRF-токеном для jsprav.ru (thread-safe).
 
     При таймаутах делает до 3 повторных попыток с паузой 5 сек.
-    Возвращает None если все попытки провалились.
+    Инициализации сериализованы через Lock (не DDoS-им jsprav.ru).
+    Каждый поток создаёт свою сессию (requests.Session не thread-safe).
     """
-    if not hasattr(_jsprav_local, "session") or _jsprav_local.session is None:
+    if hasattr(_jsprav_local, "session") and _jsprav_local.session is not None:
+        return _jsprav_local.session
+
+    with _jsprav_init_lock:
+        # Double-check после захвата lock
+        if hasattr(_jsprav_local, "session") and _jsprav_local.session is not None:
+            return _jsprav_local.session
+
         session = requests.Session()
         session.headers.update(DEFAULT_HEADERS)
 
-        # Получаем главную — там CSRF-токен в JS и cookie
-        # Ретраи при таймаутах
         for attempt in range(3):
             try:
                 r = session.get("https://jsprav.ru/", timeout=20)

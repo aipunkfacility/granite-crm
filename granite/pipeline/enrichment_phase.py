@@ -16,33 +16,9 @@ from granite.database import Database, CompanyRow, EnrichedCompanyRow
 from granite.pipeline.status import print_status
 from granite.pipeline.web_client import WebClient
 from granite.pipeline.region_resolver import RegionResolver
-from granite.utils import normalize_phone, normalize_phones
+from granite.utils import normalize_phone, normalize_phones, classify_error
 from granite.pipeline.region_resolver import detect_city, lookup_region
 
-
-# Категории ошибок для классификации
-_ERROR_NETWORK = "network"
-_ERROR_PARSING = "parsing"
-_ERROR_DATA = "data"
-
-
-def _classify_error(exc: Exception) -> str:
-    """Классифицировать ошибку обогащения по типу.
-
-    Returns:
-        Строковую категорию: 'network', 'parsing', 'data'.
-    """
-    exc_name = type(exc).__name__.lower()
-    exc_msg = str(exc).lower()
-    if any(k in exc_name or k in exc_msg for k in (
-        "timeout", "connection", "network", "ssl", "dns",
-    )):
-        return _ERROR_NETWORK
-    if any(k in exc_name or k in exc_msg for k in (
-        "403", "captcha", "blocked", "parse", "json",
-    )):
-        return _ERROR_PARSING
-    return _ERROR_DATA
 
 # Import Enrichers
 from granite.enrichers.messenger_scanner import MessengerScanner
@@ -341,7 +317,7 @@ class EnrichmentPhase:
                 erow = await self._enrich_one_company_async(snap, scanner, tech_ext)
                 results.append(erow)
             except Exception as e:
-                category = _classify_error(e)
+                category = classify_error(e)
                 logger.exception(
                     f"[{category}] Async ошибка обогащения {snap.get('name_best', '?')}: {e}"
                 )
@@ -373,7 +349,7 @@ class EnrichmentPhase:
         results = []
         for snap, result in zip(snapshots, raw_results):
             if isinstance(result, Exception):
-                category = _classify_error(result)
+                category = classify_error(result)
                 logger.exception(
                     f"[{category}] Async ошибка обогащения {snap.get('name_best', '?')}: {result}"
                 )
@@ -543,7 +519,7 @@ class EnrichmentPhase:
                 count += 1
                 self._print_enriched_status(c.name_best, erow, count, len(companies))
             except Exception as e:
-                category = _classify_error(e)
+                category = classify_error(e)
                 logger.exception(
                     f"[{category}] Ошибка обогащения {c.name_best}: {e}"
                 )
@@ -581,7 +557,7 @@ class EnrichmentPhase:
                     count += 1
                     self._print_enriched_status(c.name_best, erow, count, len(companies))
                 except Exception as e:
-                    category = _classify_error(e)
+                    category = classify_error(e)
                     logger.exception(
                         f"[{category}] Ошибка обогащения {c.name_best}: {e}"
                     )
@@ -665,6 +641,14 @@ class EnrichmentPhase:
 
                 reassigned += 1
                 logger.info(f"  Переназначен: {erow.name} — {city} → {real_city}")
+                # Запись в лог-файл для аудита
+                import os as _os
+                from datetime import datetime as _dt
+                _log_path = _os.path.join("data", "reassign_log.txt")
+                _os.makedirs("data", exist_ok=True)
+                with open(_log_path, "a", encoding="utf-8") as _f:
+                    _f.write(f"{_dt.now().isoformat()} | {erow.id} | {erow.name} | "
+                            f"{city} → {real_city} | {erow.address_raw}\n")
 
             # Flush внутри session_scope — auto-commit при exit
 
@@ -783,7 +767,7 @@ class EnrichmentPhase:
 
                 session.flush()
             except Exception as e:
-                category = _classify_error(e)
+                category = classify_error(e)
                 logger.exception(
                     f"[{category}] Ошибка deep enrich для "
                     f"{getattr(record, name_attr, '?')}: {e}"

@@ -349,6 +349,7 @@ dependencies = [
     { name = "rapidfuzz" },
     { name = "requests" },
     { name = "rich" },
+    { name = "setuptools" },
     { name = "sqlalchemy" },
     { name = "tenacity" },
     { name = "typer" },
@@ -381,6 +382,7 @@ requires-dist = [
     { name = "rapidfuzz", specifier = ">=3.0,<4.0" },
     { name = "requests", specifier = ">=2.31.0,<3.0" },
     { name = "rich", specifier = ">=13.0.0,<14.0" },
+    { name = "setuptools", specifier = ">=77.0,<78" },
     { name = "sqlalchemy", specifier = ">=2.0,<3.0" },
     { name = "tenacity", specifier = ">=8.2.0,<9.0" },
     { name = "typer", specifier = ">=0.9.0,<1.0" },
@@ -1403,6 +1405,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ab/3a/0316b28d0761c6734d6bc14e770d85506c986c85ffb239e688eeaab2c2bc/rich-13.9.4.tar.gz", hash = "sha256:439594978a49a09530cff7ebc4b5c7103ef57baf48d5ea3184f21d9a2befa098", size = 223149, upload-time = "2024-11-01T16:43:57.873Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/19/71/39c7c0d87f8d4e6c020a393182060eaefeeae6c01dab6a84ec346f2567df/rich-13.9.4-py3-none-any.whl", hash = "sha256:6049d5e6ec054bf2779ab3358186963bac2ea89175919d699e378b99738c2a90", size = 242424, upload-time = "2024-11-01T16:43:55.817Z" },
+]
+
+[[package]]
+name = "setuptools"
+version = "77.0.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/ed/7101d53811fd359333583330ff976e5177c5e871ca8b909d1d6c30553aa3/setuptools-77.0.3.tar.gz", hash = "sha256:583b361c8da8de57403743e756609670de6fb2345920e36dc5c2d914c319c945", size = 1367236, upload-time = "2025-03-20T14:38:08.777Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a9/07/99f2cefae815c66eb23148f15d79ec055429c38fa8986edcc712ab5f3223/setuptools-77.0.3-py3-none-any.whl", hash = "sha256:67122e78221da5cf550ddd04cf8742c8fe12094483749a792d56cd669d6cf58c", size = 1255678, upload-time = "2025-03-20T14:38:06.621Z" },
 ]
 
 [[package]]
