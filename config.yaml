@@ -307,11 +307,11 @@ enrichment:
     enabled: false          # default off for testing
     sources:
       dgis:
-        enabled: true
+        enabled: false
         api_key: ""         # from .env: DGIS_API_KEY. Приоритет: config > env.
         max_requests_per_day: 100  # бесплатный tier 2GIS: 1000/день, оставляем запас
       yell:
-        enabled: true
+        enabled: false
         max_requests_per_day: 50    # Yell не имеет API, запросы через Crawlee
     min_crm_score: 30       # обогащать только компании с CRM-скором ниже порога
     delay_between_requests: 2.0  # секунд между запросами (с jitter ±30%)

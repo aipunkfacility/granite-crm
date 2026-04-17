@@ -177,7 +177,7 @@ class TestDetectCity:
         # "Абаканский завод" — корень "абака" в слове "абаканский"
         # Проверяем что _match_score даёт 0 (внутри слова)
         from granite.pipeline.region_resolver import _match_score
-        assert _match_score("абаканский", 0) == 0  # начало слова, но после идёт буква
+        assert _match_score("абаканский", 0, 6) == 0  # начало слова, но после идёт буква
         assert detect_city("Абаканский завод") is None
 
 

@@ -145,8 +145,13 @@ def build_city_lookup() -> tuple[dict[str, str | None], list[str]]:
     return _CITY_LOOKUP_CACHE
 
 
-def _match_score(text: str, pos: int) -> int:
+def _match_score(text: str, pos: int, match_len: int = 0) -> int:
     """Вычислить score совпадения по контексту вокруг позиции.
+
+    Args:
+        text: текст в нижнем регистре
+        pos: позиция начала совпадения
+        match_len: длина совпавшей подстроки (для проверки границы справа)
 
     Returns:
         3 — после предлога ("в Абакане", "из Москвы")
@@ -155,7 +160,21 @@ def _match_score(text: str, pos: int) -> int:
         0 — не совпадает (внутри другого слова)
     """
     if pos > 0 and text[pos - 1].isalpha():
-        return 0  # внутри другого слова
+        return 0  # внутри другого слова (слева)
+
+    # Граница справа: "абаканский" содержит "абакан" — не совпадение.
+    # Но "абакане" (склонение) тоже содержит "абакан" + "е" — это ОК.
+    # Порог: >2 символов после совпадения = прилагательное/другое слово.
+    if match_len > 0:
+        end = pos + match_len
+        trailing_alpha = 0
+        for i in range(end, len(text)):
+            if text[i].isalpha():
+                trailing_alpha += 1
+            else:
+                break
+        if trailing_alpha > 2:
+            return 0
 
     if pos == 0:
         return 1
@@ -218,7 +237,7 @@ def detect_city(
             if pos == -1:
                 break
 
-            score = _match_score(text_lower, pos)
+            score = _match_score(text_lower, pos, len(root))
             if score > 0:
                 if score > best_score or (score == best_score and len(root) > best_len):
                     best_match = canonical

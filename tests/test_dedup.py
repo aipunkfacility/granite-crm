@@ -113,15 +113,13 @@ class TestMerger:
              "city": "Новосибирск"},
         ]
         result = merge_cluster(records)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        merged = result[0]
-        assert "Гранит-Мастер" in merged["name_best"]
-        assert "79031111111" in merged["phones"]
-        assert "79032222222" in merged["phones"]
-        assert "info@site.ru" in merged["emails"]
-        assert merged["messengers"].get("telegram") == "t.me/granite"
-        assert set(merged["merged_from"]) == {1, 2}
+        assert isinstance(result, dict)
+        assert "Гранит-Мастер" in result["name_best"]
+        assert "79031111111" in result["phones"]
+        assert "79032222222" in result["phones"]
+        assert "info@site.ru" in result["emails"]
+        assert result["messengers"].get("telegram") == "t.me/granite"
+        assert set(result["merged_from"]) == {1, 2}
 
     def test_address_conflict_sets_review(self):
         records = [
@@ -132,18 +130,21 @@ class TestMerger:
              "address_raw": "ул. Маркса, 10", "website": None,
              "emails": [], "messengers": {}, "city": "Новосибирск"},
         ]
-        result = merge_cluster(records)       # <-- теперь list[dict]
-        assert len(result) == 1               # <-- слито (одинаковое название)
-        merged = result[0]
-        assert merged["needs_review"] is True
-        assert "address" in merged["review_reason"]
+        result = merge_cluster(records)
+        assert isinstance(result, dict)
+        assert result["needs_review"] is True
+        assert "address" in result["review_reason"]
 
 
 class TestMergerSplit:
-    """Тесты для нового поведения: не сливать при разных названиях+адресах."""
+    """Тесты для поведения merge_cluster при разных названиях/адресах.
 
-    def test_different_names_different_addresses_returns_list(self):
-        """Разные названия + разные адреса = НЕ сливать, вернуть список."""
+    merge_cluster всегда возвращает dict (одно сливание).
+    При разных названиях+адресах устанавливается needs_review=True.
+    """
+
+    def test_different_names_different_addresses_sets_review(self):
+        """Разные названия + разные адреса = слить + needs_review."""
         records = [
             {"id": 1, "name": "Гранит-Мастер",
              "phones": ["79031111111"],
@@ -157,11 +158,9 @@ class TestMergerSplit:
              "city": "Новосибирск"},
         ]
         result = merge_cluster(records)
-        assert isinstance(result, list)
-        assert len(result) == 2  # НЕ слилось!
-        assert result[0]["name_best"] == "Гранит-Мастер"
-        assert result[1]["name_best"] == "Мир Памятников"
-        assert result[0]["needs_review"] is False
+        assert isinstance(result, dict)
+        assert result["needs_review"] is True
+        assert "different_names_different_addresses" in result["review_reason"]
 
     def test_same_name_different_address_still_sets_review(self):
         """Одинаковое название + разные адреса = слить + needs_review."""
@@ -178,13 +177,12 @@ class TestMergerSplit:
              "city": "Новосибирск"},
         ]
         result = merge_cluster(records)
-        assert isinstance(result, list)
-        assert len(result) == 1  # Слилось (одинаковое название)
-        assert result[0]["needs_review"] is True
-        assert "address" in result[0]["review_reason"]
+        assert isinstance(result, dict)
+        assert result["needs_review"] is True
+        assert "address" in result["review_reason"]
 
-    def test_single_record_returns_list(self):
-        """Одна запись = вернуть список из одного элемента."""
+    def test_single_record_returns_dict(self):
+        """Одна запись = вернуть dict."""
         records = [
             {"id": 1, "name": "Гранит",
              "phones": ["79031111111"],
@@ -193,13 +191,12 @@ class TestMergerSplit:
              "emails": [], "messengers": {}, "city": "Москва"},
         ]
         result = merge_cluster(records)
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert result[0]["name_best"] == "Гранит"
+        assert isinstance(result, dict)
+        assert result["name_best"] == "Гранит"
 
-    def test_empty_returns_empty_list(self):
+    def test_empty_returns_empty_dict(self):
         result = merge_cluster([])
-        assert result == []
+        assert result == {}
 
 
 class TestWebSearchDomainDedup:
@@ -238,43 +235,47 @@ class TestWebSearchDomainDedup:
 
 
 class TestSplitLargeClusters:
-    """Тесты для разбивки больших суперкластеров."""
+    """Тесты для разбивки больших суперкластеров.
 
-    def _make_dedup_phase(self, config=None):
-        from granite.pipeline.dedup_phase import DedupPhase
-        from granite.database import Database
-        db = Database(db_path=":memory:", auto_migrate=False)
-        phase = DedupPhase(db, config=config or {})
-        return phase
+    NOTE: _split_large_clusters был удалён из DedupPhase.
+    Кластеры теперь всегда сливаются через merge_cluster с needs_review-флагами.
+    Эти тесты проверяют, что needs_review корректно выставляется при
+    признаках ложного слияния.
+    """
 
-    def test_small_cluster_unchanged(self):
-        phase = self._make_dedup_phase({"dedup": {"max_cluster_size": 5}})
-        dicts_by_id = {
-            1: {"id": 1, "website": "https://a.ru", "city": "Москва"},
-            2: {"id": 2, "website": "https://b.ru", "city": "Москва"},
-        }
-        result = phase._split_large_clusters([[1, 2]], dicts_by_id)
-        assert len(result) == 1
-        assert set(result[0]) == {1, 2}
+    def test_contacts_over_limit_sets_review(self):
+        """Превышение лимита телефонов/emails → needs_review."""
+        records = [
+            {"id": i, "name": f"Компания{i}",
+             "phones": [f"7903111111{i}"],
+             "address_raw": f"ул. {i}, Москва",
+             "website": None, "emails": [f"info{i}@site{i}.ru"],
+             "messengers": {}, "city": "Москва"}
+            for i in range(8)  # 8 телефонов > MAX_MERGE_PHONES (6)
+        ]
+        result = merge_cluster(records)
+        assert isinstance(result, dict)
+        assert result["needs_review"] is True
+        assert "contacts_over_limit" in result["review_reason"]
 
-    def test_large_cluster_split_by_domain(self):
-        phase = self._make_dedup_phase({"dedup": {"max_cluster_size": 3}})
-        dicts_by_id = {
-            i: {"id": i, "website": f"https://domain{i % 3}.ru",
-                "city": "Москва"}
-            for i in range(10)
-        }
-        result = phase._split_large_clusters([list(range(10))], dicts_by_id)
-        assert len(result) > 1  # Разбилось
-
-    def test_different_cities_split(self):
-        phase = self._make_dedup_phase({"dedup": {"max_cluster_size": 100}})
-        dicts_by_id = {
-            1: {"id": 1, "website": "https://a.ru", "city": "Москва"},
-            2: {"id": 2, "website": "https://b.ru", "city": "СПб"},
-        }
-        result = phase._split_large_clusters([[1, 2]], dicts_by_id)
-        assert len(result) == 2  # Разные города — разбили
+    def test_different_cities_sets_review(self):
+        """Разные города в кластере → needs_review."""
+        records = [
+            {"id": 1, "name": "Гранит",
+             "phones": ["79031111111"],
+             "address_raw": "ул. Ленина, 1",
+             "website": None, "emails": [], "messengers": {},
+             "city": "Москва"},
+            {"id": 2, "name": "Гранит",
+             "phones": ["79031111111"],
+             "address_raw": "ул. Ленина, 1",
+             "website": None, "emails": [], "messengers": {},
+             "city": "СПб"},
+        ]
+        result = merge_cluster(records)
+        assert isinstance(result, dict)
+        assert result["needs_review"] is True
+        assert "different_cities" in result["review_reason"]
 
 
 class TestValidator:

@@ -40,7 +40,7 @@ class TestExporter:
         mock_session = MagicMock()
 
         row = self._make_enriched_row()
-        mock_session.query.return_value.filter_by.return_value.all.return_value = [row]
+        mock_session.query.return_value.filter.return_value.all.return_value = [row]
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -62,7 +62,7 @@ class TestExporter:
         """Нет данных — файл не создаётся."""
         mock_db = MagicMock()
         mock_session = MagicMock()
-        mock_session.query.return_value.filter_by.return_value.all.return_value = []
+        mock_session.query.return_value.filter.return_value.all.return_value = []
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -83,7 +83,7 @@ class TestExporter:
         row_b = self._make_enriched_row(id=2, name="CompanyB", crm_score=80)
         row_c = self._make_enriched_row(id=3, name="CompanyC", crm_score=50)
         # Возвращаем в произвольном порядке
-        mock_session.query.return_value.filter_by.return_value.all.return_value = [row_a, row_b, row_c]
+        mock_session.query.return_value.filter.return_value.all.return_value = [row_a, row_b, row_c]
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)
@@ -106,7 +106,7 @@ class TestExporter:
         mock_session = MagicMock()
 
         row = self._make_enriched_row()
-        mock_session.query.return_value.filter_by.return_value.all.return_value = [row]
+        mock_session.query.return_value.filter.return_value.all.return_value = [row]
         mock_session.__enter__ = MagicMock(return_value=mock_session)
         mock_session.__exit__ = MagicMock(return_value=False)
         mock_db.session_scope.return_value.__enter__ = MagicMock(return_value=mock_session)

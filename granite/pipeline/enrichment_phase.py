@@ -115,6 +115,9 @@ class EnrichmentPhase:
             count = self._enrich_companies(session, companies, scanner, tech_ext)
             print_status(f"Обогащение завершено для {count} компаний", "success")
 
+            # Отмечаем город как обработанный в cities_ref
+            self._mark_city_populated(city, session)
+
             # Итоги по ошибкам
             if self._error_counts:
                 parts = [f"{cat}: {cnt}" for cat, cnt in sorted(self._error_counts.items())]
@@ -222,6 +225,10 @@ class EnrichmentPhase:
             session.flush()
 
         print_status(f"Обогащение (async) завершено для {count} компаний", "success")
+
+        # Отмечаем город как обработанный
+        with self.db.session_scope() as session:
+            self._mark_city_populated(city, session)
 
         if self._error_counts:
             parts = [f"{cat}: {cnt}" for cat, cnt in sorted(self._error_counts.items())]
@@ -583,6 +590,16 @@ class EnrichmentPhase:
         session.flush()
         return count
 
+    @staticmethod
+    def _mark_city_populated(city: str, session) -> None:
+        """Отметить город как обработанный в cities_ref."""
+        from granite.database import CityRefRow
+
+        city_ref = session.get(CityRefRow, city)
+        if city_ref and not city_ref.is_populated:
+            city_ref.is_populated = True
+            logger.info(f"  cities_ref: {city} помечен как is_populated=True")
+
     def _reassign_cities(self, city: str) -> int:
         """Переназначение города по обогащённым данным.
 
@@ -603,8 +620,21 @@ class EnrichmentPhase:
             enriched_rows = session.query(EnrichedCompanyRow).filter_by(city=city).all()
 
             for erow in enriched_rows:
-                text = f"{erow.name or ''} {erow.address_raw or ''}".strip()
-                if not text or len(text) < 5:
+                # Используем ТОЛЬКО адрес для определения города, а не name+address.
+                # SEO-имена содержат мусорные упоминания городов, что приводит
+                # к ложным переназначениям.
+                text = (erow.address_raw or "").strip()
+                if not text or len(text) < 10:
+                    continue
+
+                # Требуем признак улицы в адресе для уверенности
+                _street_words = ("ул.", "улица", "проспект", "пр.", "пер.", "д.", "дом", "шоссе", "бульвар")
+                if not any(w in text.lower() for w in _street_words):
+                    continue
+
+                # Не переназначать если URL содержит текущий город
+                # (агрегаторы используют URL типа tsargranit.ru/abaza.html)
+                if erow.website and city.lower() in (erow.website or "").lower():
                     continue
 
                 real_city = detect_city(text, exclude_city=city)
@@ -626,6 +656,7 @@ class EnrichmentPhase:
                 if company:
                     company.city = real_city
                     company.region = real_region
+                    company.review_reason = f"city_reassigned_from_{city}"
 
                 # Отмечаем город как populated
                 city_ref = session.get(CityRefRow, real_city)

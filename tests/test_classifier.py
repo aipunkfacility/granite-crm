@@ -33,9 +33,9 @@ def test_classifier_empty_company(classifier):
     company = {}
     score = classifier.calculate_score(company)
     segment = classifier.determine_segment(score)
-    
+
     assert score == 0
-    assert segment == "D"
+    assert segment == "spam"  # score=0 → сегмент spam
 
 
 def test_classifier_max_score(classifier):

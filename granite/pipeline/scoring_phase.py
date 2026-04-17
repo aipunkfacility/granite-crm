@@ -58,6 +58,10 @@ class ScoringPhase:
                     parent = session.get(CompanyRow, c.id)
                     if parent is not None:
                         parent.segment = segment
+                        if segment == "spam":
+                            parent.status = "spam"
+                            parent.needs_review = True
+                            parent.review_reason = "score_zero_no_digital_footprint"
                 except (KeyError, TypeError, ValueError) as e:
                     logger.warning(
                         f"Ошибка скоринга для компании {c.id} ({c.name}): {e}"

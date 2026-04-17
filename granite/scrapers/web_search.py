@@ -1,6 +1,7 @@
 # scrapers/web_search.py — поиск компаний через duckduckgo-search + Yandex + Bing
 #
 # ТРЕБОВАНИЕ: pip install duckduckgo-search
+import json
 import re
 import threading
 import time
@@ -66,12 +67,13 @@ def _mark_domain_failed(domain: str):
         _FAILED_DOMAINS[domain] = time.time()
 
 # ── Русские TLD, которым доверяем без дополнительных проверок ──────────
-_TRUSTED_TLDS = {".ru", ".su", ".by", ".kz", ".kg", ".uz"}
+_TRUSTED_TLDS = {".ru", ".su"}
 
 # ── Зарубежные TLD — блокируем результаты с этих доменов ───────────────
 _BLOCKED_TLDS = {".ee", ".lv", ".lt", ".ge", ".md", ".am", ".az", ".tm",
                  ".tr", ".cn", ".il", ".pl", ".fi", ".cz", ".it", ".es",
-                 ".de", ".fr", ".uk", ".us", ".jp"}
+                 ".de", ".fr", ".uk", ".us", ".jp",
+                 ".kz", ".by", ".kg", ".uz"}
 
 # ── Зарубежные страны — блокируем результаты с упоминанием этих стран ──
 _FOREIGN_COUNTRIES = re.compile(
@@ -90,6 +92,27 @@ _RU_KEYWORDS = re.compile(
     r"изготовлен|установк|ритуаль|похорон|гробов|венки|крест|обелиск)",
     re.IGNORECASE,
 )
+
+# ── SEO-title детектор: фильтруем маркетинговые заголовки ──────────────────
+_SEO_TITLE = re.compile(
+    r"(?:купить|цен[аыуе]|недорог|заказать|от производитель|"
+    r"с установк|на могил|доставк|скидк|"
+    r"памятник[аиы]?\s+(?:из|в|на|от)|"
+    r"изготовлен.*(?:памятник|надгробие|гранит))",
+    re.IGNORECASE,
+)
+
+
+def _is_seo_title(name: str) -> bool:
+    """Проверяет, выглядит ли имя как SEO-заголовок, а не название компании."""
+    if not name:
+        return True
+    if len(name) > 60:
+        return True
+    if _SEO_TITLE.search(name):
+        return True
+    return False
+
 
 # ── Негатив-фильтр: мусорные темы в title ────────────────────────────────
 _JUNK_KEYWORDS = re.compile(
@@ -432,19 +455,17 @@ class WebSearchScraper(BaseScraper):
                 return False
             return True
 
-        # 3.5. Для других доверенных TLD (.by, .kz и т.д.) — проверяем title
-        for tld in _TRUSTED_TLDS:
-            if domain.endswith(tld):
-                if title and not _RU_KEYWORDS.search(title):
-                    region_name = self.city_config.get("region", self.city)
-                    city_or_region = (self.city.lower() in title.lower()
-                                     or region_name.lower() in title.lower())
-                    if not city_or_region:
-                        logger.debug(f"  WebSearch: ФИЛЬТР ({tld} без ключевых слов): {title[:60]}")
-                        return False
-                return True
+        # 4. Для generic TLD (.com, .net, .org и т.д.) — требуем
+        #    русские ключевые слова И явное упоминание искомого города
+        if domain.endswith((".com", ".net", ".org", ".io", ".info", ".biz")):
+            if title and _RU_KEYWORDS.search(title):
+                city_mentioned = self.city.lower() in title.lower()
+                if city_mentioned:
+                    return True
+            logger.debug(f"  WebSearch: ФИЛЬТР (generic TLD без города): {url}")
+            return False
 
-        # 4. Для не-русских TLD: проверяем title на русские ключевые слова
+        # 5. Для остальных не-русских TLD: проверяем title на русские ключевые слова
         if title and _RU_KEYWORDS.search(title):
             return True
 
@@ -688,6 +709,9 @@ class WebSearchScraper(BaseScraper):
                 company.emails = list(set(company.emails + details.get("emails", [])))
                 if not company.address_raw and details.get("addresses"):
                     company.address_raw = details["addresses"][0]
+                # Обновляем имя если текущее — SEO-заголовок, а из страницы извлечено реальное название
+                if details.get("company_name") and _is_seo_title(company.name):
+                    company.name = details["company_name"]
                 enriched += 1
 
             adaptive_delay(min_sec=1.0, max_sec=2.5)
@@ -704,8 +728,8 @@ class WebSearchScraper(BaseScraper):
                     p.startswith("7") and len(p) == 11
                     for p in c.phones
                 )
-                if has_ru_phone or not c.phones:
-                    # Есть российский телефон ИЛИ телефон ещё не извлечён — оставляем
+                if has_ru_phone:
+                    # Есть российский телефон — оставляем
                     filtered.append(c)
                 else:
                     logger.debug(
@@ -757,7 +781,44 @@ class WebSearchScraper(BaseScraper):
         """Извлечение контактов из HTML."""
         soup = BeautifulSoup(html, "html.parser")
 
-        data_out: dict = {"phones": [], "emails": [], "addresses": []}
+        data_out: dict = {"phones": [], "emails": [], "addresses": [], "company_name": None}
+
+        # 0. Извлечение названия компании (приоритет: JSON-LD > og:site_name > h1)
+        _seo_words = ("купить", "цен", "недорог", "заказать", "от производителя",
+                      "с установк", "на могил", "доставк", "скидк")
+
+        # JSON-LD: Organization / LocalBusiness
+        for script in soup.select("script[type='application/ld+json']"):
+            try:
+                data = json.loads(script.string)
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if isinstance(item, dict) and item.get("@type") in ("Organization", "LocalBusiness", "Brand"):
+                        name = item.get("name") or item.get("legalName")
+                        if name and 3 < len(name.strip()) < 80:
+                            data_out["company_name"] = name.strip()
+                            break
+                if data_out["company_name"]:
+                    break
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+
+        # og:site_name
+        if not data_out["company_name"]:
+            og = soup.find("meta", attrs={"property": "og:site_name"})
+            if og and og.get("content"):
+                name = og["content"].strip()
+                if 3 < len(name) < 80 and not any(w in name.lower() for w in _seo_words):
+                    data_out["company_name"] = name
+
+        # <h1> — короткий, без SEO-паттернов
+        if not data_out["company_name"]:
+            h1 = soup.find("h1")
+            if h1:
+                name = h1.get_text(strip=True)
+                if (3 < len(name) < 60
+                        and not any(w in name.lower() for w in _seo_words)):
+                    data_out["company_name"] = name
 
         # 1. Телефоны из tel: ссылок
         for tel_link in soup.select('a[href^="tel:"]'):

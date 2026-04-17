@@ -74,7 +74,10 @@ class MarkdownExporter:
 
     def export_city(self, city: str):
         with self.db.session_scope() as session:
-            records = session.query(EnrichedCompanyRow).filter_by(city=city).all()
+            records = session.query(EnrichedCompanyRow).filter(
+                EnrichedCompanyRow.city == city,
+                EnrichedCompanyRow.crm_score > 0,
+            ).all()
             if not records:
                 return
 

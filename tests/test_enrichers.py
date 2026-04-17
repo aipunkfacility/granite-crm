@@ -64,10 +64,11 @@ class TestClassifierExtended:
 
     def test_negative_tg_trust(self, classifier):
         company = {
+            "website": "http://site.ru",
             "messengers": {"telegram": "t.me/x"},
             "tg_trust": {"trust_score": -2}  # -2 * 5 = -10
         }
-        assert classifier.calculate_score(company) == 5  # 15 tg - 10 trust
+        assert classifier.calculate_score(company) == 15  # 10 web + 15 tg - 10 trust = 15
 
     def test_single_phone_no_bonus(self, classifier):
         company = {"phones": ["79031234567"]}

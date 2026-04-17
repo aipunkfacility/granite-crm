@@ -94,7 +94,8 @@ class TestInitialMigration:
             ))
             remaining = [row[0] for row in result]
 
-        assert remaining == [], f"Tables remain after downgrade: {remaining}"
+        non_system = [t for t in remaining if t != "sqlite_sequence"]
+        assert non_system == [], f"Tables remain after downgrade: {non_system}"
 
     def test_upgrade_after_downgrade(self, alembic_config, db_url):
         """Повторный upgrade после downgrade восстанавливает схему."""
