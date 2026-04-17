@@ -46,22 +46,24 @@ if PLAYWRIGHT_AVAILABLE:
                 results_yell = yell.run()
         """
         _stealth_apply = None
-        # playwright-stealth >= 1.0: Stealth().apply(page)
-        # playwright-stealth < 1.0: stealth_sync(page) или stealth(page)
+        # playwright-stealth 1.0.x: экспортирует stealth_sync / stealth_async / StealthConfig
+        # playwright-stealth < 1.0: экспортирует stealth / stealth_sync
+        # Все варианты требуют setuptools (pkg_resources). Без него — ImportError.
         try:
-            from playwright_stealth import Stealth
-            _stealth_apply = lambda page: Stealth().apply(page)
-        except ImportError:
+            from playwright_stealth import stealth_sync
+            _stealth_apply = stealth_sync
+        except ImportError as e:
+            # Отличаем «модуль не установлен» от «модуль сломался при импорте»
+            # (например, нет pkg_resources/setuptools)
             try:
-                from playwright_stealth import stealth_sync
-                _stealth_apply = stealth_sync
+                import playwright_stealth  # noqa: F401
+                logger.warning(
+                    f"playwright-stealth установлен, но не импортируется: {e}. "
+                    f"Возможно не хватает setuptools: pip install setuptools"
+                )
             except ImportError:
-                try:
-                    from playwright_stealth import stealth
-                    _stealth_apply = stealth
-                except ImportError:
-                    logger.warning("playwright-stealth не установлен, продолжаем без него "
-                                   "(pip install playwright-stealth)")
+                logger.warning("playwright-stealth не установлен, продолжаем без него "
+                               "(pip install playwright-stealth)")
         _has_stealth = _stealth_apply is not None
 
         pw = sync_playwright().start()
