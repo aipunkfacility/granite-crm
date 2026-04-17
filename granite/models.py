@@ -53,3 +53,4 @@ class RawCompany(BaseModel):
     messengers: dict[str, str] = Field(default_factory=dict)  # {"telegram": "...", "vk": "...", "whatsapp": "..."}
     scraped_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     city: str = ""
+    region: str = ""

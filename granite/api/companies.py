@@ -29,6 +29,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
         "website": company.website,
         "emails": company.emails or [],
         "city": company.city,
+        "region": getattr(company, "region", ""),
         "messengers": messengers,
         "telegram": messengers.get("telegram"),
         "whatsapp": messengers.get("whatsapp"),
@@ -54,6 +55,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
 def list_companies(
     db: Session = Depends(get_db),
     city: Optional[str] = None,
+    region: Optional[str] = None,
     segment: Optional[str] = None,
     funnel_stage: Optional[str] = None,
     has_telegram: Optional[int] = None,
@@ -74,6 +76,8 @@ def list_companies(
 
     if city:
         q = q.filter(CompanyRow.city == city)
+    if region:
+        q = q.filter(CompanyRow.region == region)
     if segment:
         q = q.filter(EnrichedCompanyRow.segment == segment)
     if funnel_stage:

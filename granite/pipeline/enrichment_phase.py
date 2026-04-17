@@ -17,6 +17,7 @@ from granite.pipeline.status import print_status
 from granite.pipeline.web_client import WebClient
 from granite.pipeline.region_resolver import RegionResolver
 from granite.utils import normalize_phone, normalize_phones
+from granite.pipeline.region_resolver import detect_city, lookup_region
 
 
 # Категории ошибок для классификации
@@ -126,7 +127,14 @@ class EnrichmentPhase:
                 session, companies, city, scanner, tech_ext, search_best_url=False
             )
 
-            return count
+        # ПРОХОД 3: переназначение города — ОТДЕЛЬНЫЙ session_scope
+        # Вызывается ПОСЛЕ выхода из session_scope основного обогащения,
+        # чтобы избежать конфликтов с отслеживаемыми объектами.
+        reassigned = self._reassign_cities(city)
+        if reassigned:
+            print_status(f"Переназначено {reassigned} компаний в другие города", "info")
+
+        return count
 
     async def run_async(self, city: str, only_new: bool = False) -> int:
         """Async версия run() — обогащение через asyncio + httpx.AsyncClient.
@@ -228,6 +236,12 @@ class EnrichmentPhase:
             self._run_deep_enrich_for(
                 session, enriched_companies, city, scanner, tech_ext, search_best_url=False
             )
+        # session_scope закрыт здесь
+
+        # ПРОХОД 3: переназначение города — ОТДЕЛЬНЫЙ session_scope
+        reassigned = self._reassign_cities(city)
+        if reassigned:
+            print_status(f"Переназначено {reassigned} компаний в другие города", "info")
 
         return count
 
@@ -569,9 +583,78 @@ class EnrichmentPhase:
         session.flush()
         return count
 
+    def _reassign_cities(self, city: str) -> int:
+        """Переназначение города по обогащённым данным.
+
+        ВАЖНО: вызывается в ОТДЕЛЬНОМ session_scope после основного
+        обогащения. Загружает свежие EnrichedCompanyRow из БД,
+        обновляет city + region, коммитит отдельно.
+
+        Returns:
+            Количество переназначенных компаний.
+        """
+        import time as _time
+        from granite.database import CityRefRow, UnmatchedCityRow
+
+        t0 = _time.monotonic()
+        reassigned = 0
+        with self.db.session_scope() as session:
+            # Загружаем enriched-записи (свежие, после commit основного обогащения)
+            enriched_rows = session.query(EnrichedCompanyRow).filter_by(city=city).all()
+
+            for erow in enriched_rows:
+                text = f"{erow.name or ''} {erow.address_raw or ''}".strip()
+                if not text or len(text) < 5:
+                    continue
+
+                real_city = detect_city(text, exclude_city=city)
+                if not real_city:
+                    continue
+
+                real_region = lookup_region(real_city)
+                if not real_region:
+                    # Город не из справочника → unmatched_cities
+                    self._record_unmatched(session, real_city, erow.name or "")
+                    continue
+
+                # Обновляем enriched
+                erow.city = real_city
+                erow.region = real_region
+
+                # Обновляем company
+                company = session.get(CompanyRow, erow.id)
+                if company:
+                    company.city = real_city
+                    company.region = real_region
+
+                # Отмечаем город как populated
+                city_ref = session.get(CityRefRow, real_city)
+                if city_ref:
+                    city_ref.is_populated = True
+
+                reassigned += 1
+                logger.info(f"  Переназначен: {erow.name} — {city} → {real_city}")
+
+            # Flush внутри session_scope — auto-commit при exit
+
+        elapsed = _time.monotonic() - t0
+        logger.info(f"_reassign_cities({city}): {reassigned} переназначено за {elapsed:.2f}s")
+        return reassigned
+
+    @staticmethod
+    def _record_unmatched(session, city_name: str, context: str) -> None:
+        """Записать неизвестный город в unmatched_cities."""
+        from granite.database import UnmatchedCityRow
+        existing = session.query(UnmatchedCityRow).filter_by(name=city_name).first()
+        if not existing:
+            session.add(UnmatchedCityRow(
+                name=city_name,
+                detected_from="enrichment",
+                context=context,
+            ))
+
     @staticmethod
     def _print_enriched_status(name: str, erow, count: int, total: int) -> None:
-        """Логирование статуса обогащённой компании."""
         parts = []
         if erow.messengers:
             parts.append(f"мессенджеры: {', '.join(erow.messengers.keys())}")

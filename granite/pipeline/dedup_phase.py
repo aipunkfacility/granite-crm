@@ -10,6 +10,7 @@ from typing import Any
 from granite.database import Database, RawCompanyRow, CompanyRow
 from loguru import logger
 from granite.pipeline.status import print_status
+from granite.pipeline.region_resolver import lookup_region
 
 # Import Dedup
 from granite.dedup.phone_cluster import cluster_by_phones
@@ -115,13 +116,17 @@ class DedupPhase:
                 cluster_dicts = [dicts_by_id[cid] for cid in cl]
                 merged = merge_cluster(cluster_dicts)
 
+                city_name = merged["city"]
+                region_name = lookup_region(city_name)
+
                 row = CompanyRow(
                     name_best=merged["name_best"],
                     phones=merged["phones"],
                     address=merged["address"],
                     website=merged["website"],
                     emails=merged["emails"],
-                    city=merged["city"],
+                    city=city_name,
+                    region=region_name,
                     status="raw",
                     merged_from=merged.get("merged_from", []),
                     messengers=merged.get("messengers", {}),
@@ -129,6 +134,17 @@ class DedupPhase:
                     review_reason=merged.get("review_reason", ""),
                 )
                 session.add(row)
+
+                # Если регион не найден — записать в unmatched
+                if not region_name:
+                    from granite.database import UnmatchedCityRow
+                    existing = session.query(UnmatchedCityRow).filter_by(name=city_name).first()
+                    if not existing:
+                        session.add(UnmatchedCityRow(
+                            name=city_name,
+                            detected_from="dedup",
+                            context=merged["name_best"],
+                        ))
 
                 if merged["needs_review"]:
                     conflicts.append(

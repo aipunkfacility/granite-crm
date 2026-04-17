@@ -335,49 +335,24 @@ class WebSearchScraper(BaseScraper):
         return any(d in url for d in self.SKIP_DOMAINS)
 
     def _build_foreign_city_roots(self) -> list[str]:
-        """Построить список корней названий городов из ДРУГИХ регионов.
+        """Строит список корней городов из ДРУГИХ регионов.
 
-        Для каждого города не из целевого региона генерируем:
-        1. Полное название (lowercase): "москва" → ловит "Москва" в title
-        2. Префикс длиной max(5, len-2): "москв" → ловит "Москве" (предложный падеж)
-
-        Список сортирован по длине (длинные первыми) — чтобы
-        "санкт-петербург" не был поглощён более коротким совпадением.
+        Использует build_city_lookup() из region_resolver
+        вместо собственного кода генерации падежей.
         """
+        from granite.pipeline.region_resolver import build_city_lookup, _load_regions
         target_region = self.city_config.get("region", "")
         if not target_region:
             return []
 
-        try:
-            from granite.pipeline.region_resolver import _load_regions
-            regions = _load_regions()
-        except Exception:
-            return []
+        regions = _load_regions()
+        target_cities = set(regions.get(target_region, []) or [])
 
-        roots = set()
-        for region, cities in regions.items():
-            if region == target_region or not isinstance(cities, list):
-                continue
-            for city in cities:
-                name_lower = city.lower()
-                # Полное название (именительный падеж)
-                roots.add(name_lower)
-                # Префикс для предложного/других падежей
-                # "Москв" ловит "Москве", "Костром" ловит "Костроме"
-                if len(name_lower) >= 5:
-                    # len-1: "москва"(6)→"москв"(5) ловит "Москве"
-                    # max(5,...): "светлый"(7)→"светлы"(6) НЕ ловит "Светлана"
-                    prefix_len = max(5, len(name_lower) - 1)
-                    prefix = name_lower[:prefix_len]
-                    if prefix != name_lower:
-                        roots.add(prefix)
-                # Города на "ь": предложный падеж отбрасывает "ь"
-                # "Пермь" → "перм" ловит "в Перми"
-                if name_lower.endswith('ь') and len(name_lower) >= 5:
-                    roots.add(name_lower[:-1])
-
-        # Сортируем по длине (длинные первыми)
-        return sorted(roots, key=len, reverse=True)
+        city_lookup, sorted_roots = build_city_lookup()
+        return [
+            root for root in sorted_roots
+            if city_lookup.get(root) and city_lookup[root] not in target_cities
+        ]
 
     def _title_mentions_foreign_city(self, title: str) -> bool:
         """Проверяет, упоминает ли title город из другого региона.
@@ -655,12 +630,10 @@ class WebSearchScraper(BaseScraper):
 
     def scrape(self) -> list[RawCompany]:
         companies = []
-        region_name = self.city_config.get("region", self.city)
-
         seen_urls = set()
 
         for query in self.queries:
-            search_query = f"{query} {region_name}"
+            search_query = f"{query} {self.city}"
             logger.info(f"  WebSearch: {search_query}")
 
             web_results = self._search(search_query)
@@ -687,6 +660,7 @@ class WebSearchScraper(BaseScraper):
                         website=url,
                         emails=[],
                         city=self.city,
+                        region=self.city_config.get("region", ""),
                     )
                 )
 

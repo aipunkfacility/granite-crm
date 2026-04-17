@@ -357,5 +357,97 @@ def api(
     )
 
 
+@app.command()
+def seed_cities():
+    """Заполнить справочник городов из regions.yaml."""
+    config = load_config()
+    setup_logging(config)
+    db = Database(config_path=_config_path)
+    from granite.pipeline.region_resolver import seed_cities_table
+    count = seed_cities_table(db)
+    if count > 0:
+        print_status(f"Заполнено {count} городов в справочник", "success")
+    else:
+        print_status("Справочник уже заполнен", "info")
+    db.engine.dispose()
+
+
+@app.command()
+def unmatched():
+    """Показать неразрешённые города (не из regions.yaml)."""
+    config = load_config()
+    setup_logging(config)
+    db = Database(config_path=_config_path)
+    from granite.database import UnmatchedCityRow
+    with db.session_scope() as session:
+        results = session.query(UnmatchedCityRow).filter_by(resolved=False).all()
+    if not results:
+        print_status("Нет неразрешённых городов", "success")
+    else:
+        print_status(f"Неразрешённых городов: {len(results)}", "warning")
+        for r in results:
+            print(f"  [{r.detected_from}] {r.name} — {(r.context or '')[:60]}")
+    db.engine.dispose()
+
+
+@app.command()
+def cities_status():
+    """Показать статус обработки городов."""
+    from collections import defaultdict
+    config = load_config()
+    setup_logging(config)
+    db = Database(config_path=_config_path)
+    from granite.database import CityRefRow, RawCompanyRow, CompanyRow, EnrichedCompanyRow
+    from sqlalchemy import func
+
+    with db.session_scope() as session:
+        cities = session.query(CityRefRow).all()
+        if not cities:
+            print_status("Справочник городов пуст. Запустите seed-cities.", "warning")
+            db.engine.dispose()
+            return
+
+        # GROUP BY — 3 запроса вместо 3×N
+        raw_counts = dict(
+            session.query(RawCompanyRow.city, func.count(RawCompanyRow.id))
+            .group_by(RawCompanyRow.city).all()
+        )
+        comp_counts = dict(
+            session.query(CompanyRow.city, func.count(CompanyRow.id))
+            .group_by(CompanyRow.city).all()
+        )
+        enriched_counts = dict(
+            session.query(EnrichedCompanyRow.city, func.count(EnrichedCompanyRow.id))
+            .group_by(EnrichedCompanyRow.city).all()
+        )
+
+        results = []
+        for c in cities:
+            results.append({
+                "city": c.name,
+                "region": c.region,
+                "raw": raw_counts.get(c.name, 0),
+                "companies": comp_counts.get(c.name, 0),
+                "enriched": enriched_counts.get(c.name, 0),
+                "is_populated": c.is_populated,
+            })
+
+    by_region = defaultdict(list)
+    for r in results:
+        by_region[r["region"]].append(r)
+
+    for region in sorted(by_region):
+        print(f"\n{region}:")
+        for r in sorted(by_region[region], key=lambda x: x["city"]):
+            enriched_mark = "+" if r["enriched"] > 0 else " "
+            pop_mark = "*" if r["is_populated"] else " "
+            print(f"  {enriched_mark}{pop_mark} {r['city']}: raw={r['raw']} "
+                  f"comp={r['companies']} enriched={r['enriched']}")
+
+    print(f"\nВсего городов: {len(results)}")
+    print("  + = enriched  * = populated (переназначенный)")
+    db.engine.dispose()
+
+
 if __name__ == "__main__":
     app()

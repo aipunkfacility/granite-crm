@@ -46,6 +46,13 @@ class PipelineManager:
 
         self.region = RegionResolver(config)
 
+        # Заполняем справочник городов (fast path: skip если уже заполнено)
+        try:
+            from granite.pipeline.region_resolver import seed_cities_table
+            seed_cities_table(db)
+        except Exception as e:
+            logger.warning(f"seed_cities_table: {e} — возможно миграция не применена")
+
         # WebClient config: enrichment.web_client (новая секция) с fallback на sources.web_search
         wc_config = config.get("enrichment", {}).get("web_client", {})
         if not wc_config:

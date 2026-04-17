@@ -10,6 +10,7 @@ from loguru import logger
 
 _CSV_FIELDS = [
     "id", "name", "phones", "address", "website", "emails",
+    "city", "region",
     "segment", "crm_score", "is_network", "cms", "has_marquiz",
     "telegram", "vk", "whatsapp",
 ]
@@ -25,6 +26,8 @@ def _build_csv_row(d: dict) -> dict:
         "address": d.get("address_raw", ""),
         "website": d.get("website", ""),
         "emails": "; ".join(d.get("emails", [])),
+        "city": d.get("city", ""),
+        "region": d.get("region", ""),
         "segment": d.get("segment", ""),
         "crm_score": d.get("crm_score") or 0,
         "is_network": "Yes" if d.get("is_network") else "No",

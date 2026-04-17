@@ -36,6 +36,7 @@ class RawCompanyRow(Base):
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
     scraped_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     city = Column(String, nullable=False, index=True)
+    region = Column(String, nullable=False, index=True, default="")
     merged_into = Column(Integer, ForeignKey("companies.id"), nullable=True)
 
     def __repr__(self):
@@ -53,6 +54,7 @@ class CompanyRow(Base):
     website = Column(String, nullable=True)
     emails = Column(JSON, default=list)
     city = Column(String, nullable=False, index=True)
+    region = Column(String, nullable=False, index=True, default="")
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
     status = Column(String, default="raw", index=True)
     segment = Column(String, default="Не определено")
@@ -63,6 +65,30 @@ class CompanyRow(Base):
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
+
+
+class CityRefRow(Base):
+    """Справочник городов. Заполняется из regions.yaml."""
+    __tablename__ = "cities_ref"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False, unique=True, index=True)
+    region = Column(String, nullable=False, index=True)
+    is_doppelganger = Column(Boolean, default=False)
+    is_populated = Column(Boolean, default=False)
+
+
+class UnmatchedCityRow(Base):
+    """Города, не найденные в справочнике. Для ручной проверки."""
+    __tablename__ = "unmatched_cities"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, unique=True, index=True)
+    detected_from = Column(String, nullable=False, default="")
+    context = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    resolved = Column(Boolean, default=False)
+    resolved_to = Column(String, nullable=True)
 
 
 
@@ -312,6 +338,7 @@ class CrmEmailCampaignRow(Base):
 __all__ = [
     "Base", "Database",
     "RawCompanyRow", "CompanyRow", "EnrichedCompanyRow",
+    "CityRefRow", "UnmatchedCityRow",
     "CrmContactRow", "CrmTouchRow", "CrmTemplateRow",
     "CrmEmailLogRow", "CrmTaskRow", "CrmEmailCampaignRow",
     "VALID_STAGES",

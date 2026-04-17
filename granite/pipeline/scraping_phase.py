@@ -230,6 +230,9 @@ class ScrapingPhase:
                     geo=geo_str,
                     scraped_at=r.scraped_at,
                     city=r.city,
+                    # region передаётся только web_search; для jsprav/dgis/yell
+                    # заполняется позже через lookup_region() в dedup/enrichment
+                    region=getattr(r, "region", ""),
                     messengers=r.messengers,
                 )
                 session.add(row)
