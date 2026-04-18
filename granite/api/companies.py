@@ -3,9 +3,8 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import String, text as sa_text
 from sqlalchemy.orm import Session
-# TODO: заменить cast(String).contains() на json_extract() когда будет SQLAlchemy 2.x JSON type
-from sqlalchemy import String
 
 from granite.api.deps import get_db
 from granite.api.schemas import UpdateCompanyRequest
@@ -59,6 +58,7 @@ def list_companies(
     segment: Optional[str] = None,
     funnel_stage: Optional[str] = None,
     has_telegram: Optional[int] = None,
+    has_whatsapp: Optional[int] = None,
     has_email: Optional[int] = None,
     min_score: Optional[int] = None,
     search: Optional[str] = None,
@@ -82,10 +82,29 @@ def list_companies(
         q = q.filter(EnrichedCompanyRow.segment == segment)
     if funnel_stage:
         q = q.filter(CrmContactRow.funnel_stage == funnel_stage)
+
+    # JSON-фильтры через json_extract (надёжный подход для SQLite 3.38+)
     if has_telegram == 1:
-        q = q.filter(EnrichedCompanyRow.messengers.cast(String).contains('"telegram"'))
+        q = q.filter(sa_text(
+            "json_extract(enriched_companies.messengers, '$.telegram') IS NOT NULL"
+            " AND json_extract(enriched_companies.messengers, '$.telegram') != ''"
+        ))
     if has_telegram == 0:
-        q = q.filter(~EnrichedCompanyRow.messengers.cast(String).contains('"telegram"'))
+        q = q.filter(sa_text(
+            "json_extract(enriched_companies.messengers, '$.telegram') IS NULL"
+            " OR json_extract(enriched_companies.messengers, '$.telegram') = ''"
+        ))
+    if has_whatsapp == 1:
+        q = q.filter(sa_text(
+            "json_extract(enriched_companies.messengers, '$.whatsapp') IS NOT NULL"
+            " AND json_extract(enriched_companies.messengers, '$.whatsapp') != ''"
+        ))
+    if has_whatsapp == 0:
+        q = q.filter(sa_text(
+            "json_extract(enriched_companies.messengers, '$.whatsapp') IS NULL"
+            " OR json_extract(enriched_companies.messengers, '$.whatsapp') = ''"
+        ))
+
     if has_email == 1:
         q = q.filter(
             CompanyRow.emails.isnot(None),

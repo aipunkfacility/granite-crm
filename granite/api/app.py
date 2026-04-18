@@ -3,19 +3,19 @@
 Запуск: python cli.py api
    или: uvicorn granite.api.app:app --reload
 """
+import os
 from contextlib import asynccontextmanager
 
 import yaml
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text as sa_text
 from loguru import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Инициализация при старте, очистка при остановке."""
-    import os
-
     try:
         from dotenv import load_dotenv
         load_dotenv()
@@ -55,11 +55,33 @@ async def lifespan(app: FastAPI):
     logger.info("CRM API stopped.")
 
 
+# --- CORS: origins из env или дефолты ---
+
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+
+def _get_cors_origins() -> list[str]:
+    """Читает CORS origins из переменной окружения CORS_ORIGINS (comma-separated).
+
+    Формат: CORS_ORIGINS=http://localhost:3000,http://myapp.ru
+    Если переменная не задана — используются дефолтные origins.
+    """
+    env = os.environ.get("CORS_ORIGINS", "")
+    if env:
+        return [o.strip() for o in env.split(",") if o.strip()]
+    return list(_DEFAULT_CORS_ORIGINS)
+
+
 app = FastAPI(title="Granite CRM API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000"],
+    allow_origins=_get_cors_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -76,5 +98,15 @@ app.include_router(messenger.router, prefix="/api/v1", tags=["messenger"])
 
 
 @app.get("/health")
-def health():
-    return {"status": "ok"}
+def health(request: Request):
+    """Health check с пингом БД."""
+    db_ok = False
+    try:
+        session = request.app.state.Session()
+        session.execute(sa_text("SELECT 1"))
+        session.close()
+        db_ok = True
+    except Exception:
+        pass
+    status = "ok" if db_ok else "degraded"
+    return {"status": status, "db": db_ok}

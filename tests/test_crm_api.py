@@ -1,80 +1,18 @@
-"""Smoke-тесты для CRM API."""
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, inspect
-from sqlalchemy.pool import StaticPool
-from sqlalchemy.orm import sessionmaker
+"""Smoke-тесты для CRM API.
 
-
-@pytest.fixture
-def client():
-    """Создать тестовый клиент FastAPI с in-memory SQLite.
-
-    Dependency override: get_db направляет все запросы в in-memory БД.
-    """
-    from granite.api.app import app
-    from granite.api.deps import get_db
-    from granite.database import Base, CrmTemplateRow
-
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-
-    @event.listens_for(engine, "connect")
-    def _pragma(dbapi_conn, conn_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    Base.metadata.create_all(engine)
-
-    # Verify tables exist
-    _tables = inspect(engine).get_table_names()
-    assert "crm_contacts" in _tables, f"Missing crm_contacts in {_tables}"
-    assert "crm_email_campaigns" in _tables, f"Missing crm_email_campaigns in {_tables}"
-    assert "crm_templates" in _tables, f"Missing crm_templates in {_tables}"
-
-    TestSession = sessionmaker(bind=engine)
-
-    # Seed templates
-    with TestSession() as s:
-        s.add(CrmTemplateRow(
-            name="cold_email_1", channel="email",
-            subject="Test", body="Hello {from_name}",
-        ))
-        s.add(CrmTemplateRow(
-            name="tg_intro", channel="tg",
-            subject="", body="Hi {from_name}",
-        ))
-        s.commit()
-
-    def get_test_db():
-        session = TestSession()
-        try:
-            yield session
-            session.commit()
-        except Exception:
-            session.rollback()
-            raise
-        finally:
-            session.close()
-
-    app.dependency_overrides[get_db] = get_test_db
-
-    with TestClient(app) as c:
-        yield c
-
-    app.dependency_overrides.clear()
-    engine.dispose()
+Фикстуры (engine, db_session, client) — в tests/conftest.py.
+Фабрики (create_company, create_task) — в tests/helpers.py.
+"""
+from tests.helpers import create_company
 
 
 class TestHealthEndpoint:
-    def test_health(self, client):
+    def test_health_with_db(self, client):
         r = client.get("/health")
         assert r.status_code == 200
-        assert r.json()["status"] == "ok"
+        data = r.json()
+        assert data["status"] == "ok"
+        assert data["db"] is True
 
     def test_funnel_empty(self, client):
         r = client.get("/api/v1/funnel")
@@ -107,3 +45,56 @@ class TestValidation:
     def test_task_invalid_priority(self, client):
         r = client.post("/api/v1/companies/1/tasks", json={"priority": "urgent"})
         assert r.status_code == 422
+
+    def test_task_invalid_call_type(self, client):
+        """A2: task_type 'call' удалён из допустимых значений."""
+        r = client.post("/api/v1/companies/1/tasks", json={"task_type": "call"})
+        assert r.status_code == 422
+
+
+class TestJsonExtractFilters:
+    """A3: Фильтры has_telegram / has_whatsapp через json_extract."""
+
+    def test_filter_has_telegram(self, client, db_session):
+        create_company(db_session, messengers={"telegram": "t.me/test"})
+        db_session.commit()
+        r = client.get("/api/v1/companies?has_telegram=1")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_filter_has_telegram_empty_value(self, client, db_session):
+        """telegram: '' не считается наличием мессенджера."""
+        create_company(db_session, messengers={"telegram": ""})
+        db_session.commit()
+        r = client.get("/api/v1/companies?has_telegram=1")
+        assert r.status_code == 200
+        assert r.json()["total"] == 0
+
+    def test_filter_no_telegram(self, client, db_session):
+        create_company(db_session, messengers={"whatsapp": "wa.me/79001234567"})
+        db_session.commit()
+        r = client.get("/api/v1/companies?has_telegram=0")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_filter_has_whatsapp(self, client, db_session):
+        create_company(db_session, messengers={"whatsapp": "wa.me/79001234567"})
+        db_session.commit()
+        r = client.get("/api/v1/companies?has_whatsapp=1")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_filter_has_whatsapp_empty_value(self, client, db_session):
+        """whatsapp: '' не считается наличием мессенджера."""
+        create_company(db_session, messengers={"whatsapp": ""})
+        db_session.commit()
+        r = client.get("/api/v1/companies?has_whatsapp=1")
+        assert r.status_code == 200
+        assert r.json()["total"] == 0
+
+    def test_filter_no_whatsapp(self, client, db_session):
+        create_company(db_session, messengers={"telegram": "t.me/test"})
+        db_session.commit()
+        r = client.get("/api/v1/companies?has_whatsapp=0")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1

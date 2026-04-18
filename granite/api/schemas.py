@@ -26,7 +26,7 @@ class CreateTaskRequest(BaseModel):
     description: str = ""
     due_date: Optional[str] = None  # ISO format, validated in endpoint
     priority: str = Field("normal", pattern="^(low|normal|high)$")
-    task_type: str = Field("follow_up", pattern="^(follow_up|send_portfolio|call|other)$")
+    task_type: str = Field("follow_up", pattern="^(follow_up|send_portfolio|other)$")
 
 
 class UpdateTaskRequest(BaseModel):

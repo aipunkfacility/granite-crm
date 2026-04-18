@@ -335,6 +335,8 @@ class CrmEmailCampaignRow(Base):
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=True,
+        onupdate=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f"<CrmEmailCampaignRow(id={self.id}, name={self.name!r}, status={self.status!r})>"
