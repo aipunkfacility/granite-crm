@@ -9,8 +9,9 @@ from sqlalchemy.orm import Session
 from granite.api.deps import get_db
 from granite.api.schemas import UpdateCompanyRequest
 from granite.database import (
-    CompanyRow, EnrichedCompanyRow, CrmContactRow,
+    CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
 )
+from loguru import logger
 
 __all__ = ["router"]
 
@@ -153,6 +154,17 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
     if not contact:
         contact = CrmContactRow(company_id=company_id)
         db.add(contact)
+
+    # B3: при stop_automation=True — логировать активные email_logs (не блокировать)
+    if data.stop_automation is True:
+        active_emails = db.query(CrmEmailLogRow).filter_by(
+            company_id=company_id, status="sent"
+        ).count()
+        if active_emails:
+            logger.info(
+                f"stop_automation set for company {company_id} "
+                f"with {active_emails} sent email(s)"
+            )
 
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():

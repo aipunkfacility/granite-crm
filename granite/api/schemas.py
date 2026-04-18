@@ -41,6 +41,21 @@ class CreateCampaignRequest(BaseModel):
     filters: dict = Field(default_factory=dict)
 
 
+class CreateTemplateRequest(BaseModel):
+    name: str = Field(..., min_length=1, pattern=r"^[a-z0-9_]+$")
+    channel: str = Field(..., pattern="^(email|tg|wa)$")
+    subject: str = ""
+    body: str = Field(..., min_length=1)
+    description: str = ""
+
+
+class UpdateTemplateRequest(BaseModel):
+    channel: Optional[str] = Field(None, pattern="^(email|tg|wa)$")
+    subject: Optional[str] = None
+    body: Optional[str] = Field(None, min_length=1)
+    description: Optional[str] = None
+
+
 class SendMessageRequest(BaseModel):
     channel: str = Field(..., pattern="^(tg|wa)$")
     template_name: Optional[str] = None

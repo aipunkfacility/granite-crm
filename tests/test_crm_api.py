@@ -98,3 +98,169 @@ class TestJsonExtractFilters:
         r = client.get("/api/v1/companies?has_whatsapp=0")
         assert r.status_code == 200
         assert r.json()["total"] == 1
+
+
+class TestTemplatesCrud:
+    """B1: CRUD шаблонов."""
+
+    def test_list_templates(self, client):
+        """Сидимые шаблоны из conftest возвращаются."""
+        r = client.get("/api/v1/templates")
+        assert r.status_code == 200
+        names = [t["name"] for t in r.json()]
+        assert "cold_email_1" in names
+        assert "tg_intro" in names
+
+    def test_get_template(self, client):
+        r = client.get("/api/v1/templates/cold_email_1")
+        assert r.status_code == 200
+        assert r.json()["channel"] == "email"
+        assert "{from_name}" in r.json()["body"]
+
+    def test_get_template_not_found(self, client):
+        r = client.get("/api/v1/templates/nonexistent")
+        assert r.status_code == 404
+
+    def test_create_template(self, client):
+        r = client.post("/api/v1/templates", json={
+            "name": "follow_up_email",
+            "channel": "email",
+            "subject": "Following up",
+            "body": "Hi {from_name}, checking in about {company_name}.",
+        })
+        assert r.status_code == 201
+        assert r.json()["ok"] is True
+
+        # Проверяем что появился в списке
+        r = client.get("/api/v1/templates/follow_up_email")
+        assert r.status_code == 200
+        assert r.json()["body"] == "Hi {from_name}, checking in about {company_name}."
+
+    def test_create_template_duplicate(self, client):
+        """Нельзя создать шаблон с существующим name."""
+        r = client.post("/api/v1/templates", json={
+            "name": "cold_email_1",
+            "channel": "email",
+            "body": "dup",
+        })
+        assert r.status_code == 409
+
+    def test_create_template_invalid_name(self, client):
+        """name должен соответствовать pattern ^[a-z0-9_]+$."""
+        r = client.post("/api/v1/templates", json={
+            "name": "My Template!",
+            "channel": "email",
+            "body": "test",
+        })
+        assert r.status_code == 422
+
+    def test_create_template_empty_body(self, client):
+        r = client.post("/api/v1/templates", json={
+            "name": "empty_body",
+            "channel": "tg",
+            "body": "",
+        })
+        assert r.status_code == 422
+
+    def test_update_template(self, client):
+        r = client.put("/api/v1/templates/tg_intro", json={
+            "body": "Updated body for {company_name}.",
+        })
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        r = client.get("/api/v1/templates/tg_intro")
+        assert r.json()["body"] == "Updated body for {company_name}."
+
+    def test_update_template_not_found(self, client):
+        r = client.put("/api/v1/templates/nonexistent", json={"body": "x"})
+        assert r.status_code == 404
+
+    def test_delete_template(self, client):
+        r = client.delete("/api/v1/templates/tg_intro")
+        assert r.status_code == 200
+
+        r = client.get("/api/v1/templates/tg_intro")
+        assert r.status_code == 404
+
+    def test_delete_template_not_found(self, client):
+        r = client.delete("/api/v1/templates/nonexistent")
+        assert r.status_code == 404
+
+    def test_delete_template_active_campaign(self, client, db_session):
+        """Нельзя удалить шаблон, используемый в активной кампании."""
+        from granite.database import CrmEmailCampaignRow
+        campaign = CrmEmailCampaignRow(
+            name="Active", template_name="cold_email_1", status="running",
+        )
+        db_session.add(campaign)
+        db_session.commit()
+
+        r = client.delete("/api/v1/templates/cold_email_1")
+        assert r.status_code == 409
+        assert "active campaign" in r.json()["detail"]
+
+
+class TestStatsEndpoint:
+    """B2: GET /stats."""
+
+    def test_stats_empty(self, client):
+        r = client.get("/api/v1/stats")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_companies"] == 0
+        assert data["funnel"] == {}
+        assert data["segments"] == {}
+        assert data["top_cities"] == []
+        assert data["with_telegram"] == 0
+        assert data["with_email"] == 0
+
+    def test_stats_with_data(self, client, db_session):
+        create_company(db_session, city="Москва", messengers={"telegram": "t.me/a"})
+        create_company(db_session, city="Казань", messengers={"whatsapp": "wa.me/1"}, crm_score=30)
+        db_session.commit()
+
+        r = client.get("/api/v1/stats")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_companies"] == 2
+        assert data["with_telegram"] == 1
+        assert data["with_whatsapp"] == 1
+        assert len(data["top_cities"]) == 2
+
+    def test_stats_filter_by_city(self, client, db_session):
+        create_company(db_session, city="Москва")
+        create_company(db_session, city="Казань")
+        db_session.commit()
+
+        r = client.get("/api/v1/stats?city=Москва")
+        assert r.status_code == 200
+        assert r.json()["total_companies"] == 1
+
+
+class TestStopAutomationGuard:
+    """B3: PATCH /companies/{id} guard при stop_automation=True."""
+
+    def test_stop_automation_succeeds(self, client, db_session):
+        cid = create_company(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{cid}", json={"stop_automation": True})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+    def test_stop_automation_logs_active_emails(self, client, db_session):
+        """B3: при наличии активных email_logs — логируется, но не блокируется."""
+        from granite.database import CrmEmailLogRow
+        cid = create_company(db_session)
+        log = CrmEmailLogRow(
+            company_id=cid, email_to="info@test.ru",
+            status="sent", tracking_id="test-uuid",
+        )
+        db_session.add(log)
+        db_session.commit()
+
+        # PATCH с stop_automation=True — должен пройти (200)
+        r = client.patch(f"/api/v1/companies/{cid}", json={"stop_automation": True})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
