@@ -106,8 +106,13 @@ class WebClient:
                 return None
 
     def _on_search_success(self) -> None:
-        """Сброс задержки к базовому значению при успешном запросе."""
-        self.search_delay = self._SEARCH_DELAY_MIN
+        """FIX 4.4: Постепенный decay задержки вместо мгновенного сброса.
+
+        Без фикса: adaptive backoff накапливает задержку до 60 сек при 429,
+        но один успех мгновенно сбрасывает до 2 сек — может снова получить 429.
+        Decay × 0.5: 60→30→15→8→4→2 (5 успешных запросов для полного сброса).
+        """
+        self.search_delay = max(self._SEARCH_DELAY_MIN, self.search_delay * 0.5)
 
     def _on_search_429(self) -> None:
         """Удвоить задержку при 429 (adaptive backoff)."""

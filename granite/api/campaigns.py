@@ -1,10 +1,12 @@
 """Campaigns API: email-рассылки по сегментам."""
 import json
 import os
+import threading
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import String
@@ -20,6 +22,11 @@ from loguru import logger
 __all__ = ["router"]
 
 router = APIRouter()
+
+# FIX 3.13: In-memory lock для предотвращения параллельного запуска одной кампании.
+# defaultdict(threading.Lock) создаёт уникальный Lock для каждого campaign_id.
+# Без блокировки: два POST /campaigns/1/run → две копии рассылки.
+_campaign_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
 
 
 @router.post("/campaigns")
@@ -121,116 +128,126 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/campaigns/{campaign_id}/run")
-def run_campaign(campaign_id: int):
+def run_campaign(campaign_id: int, request: Request):
     """Запустить кампанию с SSE прогресс-баром.
 
     Возвращает Server-Sent Events: data: {"sent": N, "total": M, "current": "email"}
 
-    Генератор открывает собственную сессию БД (не Depends),
-    потому что StreamingResponse ленивый.
+    FIX 2.4: Используем Session из app.state (общий engine с WAL),
+    вместо создания второго Database() с отдельным engine.
 
     Rate limiting: 3 сек между отправками.
     Batch commits: каждые 10 отправок.
     Interruption: try/finally ставит status="paused" при обрыве SSE.
     """
+    # FIX 3.13: Проверяем, не запущена ли уже эта кампания
+    lock = _campaign_locks[campaign_id]
+    if not lock.acquire(blocking=False):
+        return StreamingResponse(
+            iter([f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"]),
+            media_type="text/event-stream",
+        )
+
+    SessionFactory = request.app.state.Session
+
     def generate():
         import time as _time
-        from granite.database import Database, CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow
+        from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow
         from granite.email.sender import EmailSender
 
         SEND_DELAY = 3
         BATCH_COMMIT = 10
         MAX_SENDS_PER_RUN = 100
 
-        campaign_db = Database()
         campaign = None
+        session = SessionFactory()
         try:
-            with campaign_db.session_scope() as session:
-                campaign = session.get(CrmEmailCampaignRow, campaign_id)
-                if not campaign:
-                    yield f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"
-                    return
+            campaign = session.get(CrmEmailCampaignRow, campaign_id)
+            if not campaign:
+                yield f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"
+                return
 
-                if campaign.status == "running":
-                    yield f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"
-                    return
+            if campaign.status == "running":
+                yield f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"
+                return
 
-                template = session.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
-                if not template:
-                    yield f"data: {json.dumps({'error': 'Template not found'})}\n\n"
-                    return
+            template = session.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
+            if not template:
+                yield f"data: {json.dumps({'error': 'Template not found'})}\n\n"
+                return
 
-                recipients = _get_campaign_recipients(campaign, session)
+            recipients = _get_campaign_recipients(campaign, session)
 
-                from_name = os.environ.get("FROM_NAME", "")
-                sender = EmailSender()
-                sent = 0
-                total = len(recipients)
+            from_name = os.environ.get("FROM_NAME", "")
+            sender = EmailSender()
+            sent = 0
+            total = len(recipients)
 
-                if total > MAX_SENDS_PER_RUN:
-                    recipients = recipients[:MAX_SENDS_PER_RUN]
-                    logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
+            if total > MAX_SENDS_PER_RUN:
+                recipients = recipients[:MAX_SENDS_PER_RUN]
+                logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
 
-                campaign.status = "running"
-                campaign.started_at = datetime.now(timezone.utc)
-                session.commit()
+            campaign.status = "running"
+            campaign.started_at = datetime.now(timezone.utc)
+            session.commit()
 
-                yield f"data: {json.dumps({'status': 'started', 'total': len(recipients)})}\n\n"
+            yield f"data: {json.dumps({'status': 'started', 'total': len(recipients)})}\n\n"
 
-                for company, enriched, contact, email_to in recipients:
-                    city = company.city or ""
-                    render_kwargs = {
-                        "from_name": from_name,
-                        "city": city,
-                        "company_name": company.name_best or "",
-                        "website": company.website or "",
-                    }
-                    subject = template.render_subject(**render_kwargs)
-                    body = template.render(**render_kwargs)
-                    tracking_id = sender.send(
-                        company_id=company.id,
-                        email_to=email_to,
-                        subject=subject,
-                        body_text=body,
-                        template_name=template.name,
-                        db_session=session,
-                        campaign_id=campaign.id,
-                    )
-                    if tracking_id:
-                        sent += 1
-                        campaign.total_sent = sent
-                        if contact:
-                            contact.funnel_stage = "email_sent"
-                            contact.email_sent_count = (contact.email_sent_count or 0) + 1
-                            contact.last_email_sent_at = datetime.now(timezone.utc)
-                        session.add(CrmTouchRow(
-                            company_id=company.id, channel="email", direction="outgoing",
-                            subject=subject, body=f"[tracking_id={tracking_id}]",
-                        ))
-                        if sent % BATCH_COMMIT == 0:
-                            session.commit()
+            for company, enriched, contact, email_to in recipients:
+                city = company.city or ""
+                render_kwargs = {
+                    "from_name": from_name,
+                    "city": city,
+                    "company_name": company.name_best or "",
+                    "website": company.website or "",
+                }
+                subject = template.render_subject(**render_kwargs)
+                body = template.render(**render_kwargs)
+                tracking_id = sender.send(
+                    company_id=company.id,
+                    email_to=email_to,
+                    subject=subject,
+                    body_text=body,
+                    template_name=template.name,
+                    db_session=session,
+                    campaign_id=campaign.id,
+                )
+                if tracking_id:
+                    sent += 1
+                    campaign.total_sent = sent
+                    if contact:
+                        contact.funnel_stage = "email_sent"
+                        contact.email_sent_count = (contact.email_sent_count or 0) + 1
+                        contact.last_email_sent_at = datetime.now(timezone.utc)
+                    session.add(CrmTouchRow(
+                        company_id=company.id, channel="email", direction="outgoing",
+                        subject=subject, body=f"[tracking_id={tracking_id}]",
+                    ))
+                    if sent % BATCH_COMMIT == 0:
+                        session.commit()
 
-                    yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'current': email_to})}\n\n"
-                    _time.sleep(SEND_DELAY)
+                yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'current': email_to})}\n\n"
+                _time.sleep(SEND_DELAY)
 
-                session.commit()
+            session.commit()
 
-                campaign.status = "completed"
-                campaign.completed_at = datetime.now(timezone.utc)
-                session.commit()
-                yield f"data: {json.dumps({'status': 'completed', 'sent': sent, 'total': len(recipients)})}\n\n"
+            campaign.status = "completed"
+            campaign.completed_at = datetime.now(timezone.utc)
+            session.commit()
+            yield f"data: {json.dumps({'status': 'completed', 'sent': sent, 'total': len(recipients)})}\n\n"
         except GeneratorExit:
             if campaign:
                 try:
-                    with campaign_db.session_scope() as session:
-                        camp = session.get(CrmEmailCampaignRow, campaign_id)
-                        if camp and camp.status == "running":
-                            camp.status = "paused"
+                    camp = session.get(CrmEmailCampaignRow, campaign_id)
+                    if camp and camp.status == "running":
+                        camp.status = "paused"
+                        session.commit()
                 except Exception:
                     pass
             logger.info(f"Campaign {campaign_id}: SSE disconnected, status set to 'paused'")
         finally:
-            campaign_db.engine.dispose()
+            session.close()
+            lock.release()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

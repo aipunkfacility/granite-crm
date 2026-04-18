@@ -4,9 +4,45 @@ import time
 import random
 from urllib.parse import urlparse
 from rapidfuzz import fuzz
+
+
+# ── SEO-title детектор (общий для merger.py и web_search.py) ─────────
+_SEO_TITLE_PATTERN = re.compile(
+    r"(?:купить|цен[аыуе]|недорог|заказать|от производитель|"
+    r"с установк|на могил|доставк|скидк|"
+    r"памятник[аиы]?\s+(?:из|в|на|от)|"
+    r"изготовлен.*(?:памятник|надгробие|гранит))",
+    re.IGNORECASE,
+)
+
+
+def is_seo_title(name: str) -> bool:
+    """Проверяет, выглядит ли имя как SEO-заголовок, а не название компании.
+
+    Используется в merger.py (при слиянии кластеров) и web_search.py
+    (при фильтрации результатов поиска). Вынесено из web_search.py в utils.py
+    чтобы избежать циклического импорта (dedup/ → scrapers/).
+    """
+    if not name:
+        return True
+    if len(name) > 80:
+        return True
+    if _SEO_TITLE_PATTERN.search(name):
+        return True
+    return False
+
+
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 import requests
 from loguru import logger
+
+# FIX 3.6: Подавляем SSL-предупреждения один раз при импорте модуля,
+# а не при каждой SSL-ошибке в fetch_page/fetch_json.
+try:
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+except ImportError:
+    pass
 
 
 # ===== User-Agent =====
@@ -205,10 +241,12 @@ def extract_emails(text: str) -> list[str]:
         tld = domain.rsplit(".", 1)[-1].lower()
         if tld in _FAKE_EMAIL_TLDS:
             continue
-        # FIX: Локальная часть — явно не адрес?
-        # Только если домен выглядит как мусорный (CDN, placeholder, no-reply)
+        # FIX 4.1: Локальная часть — явно не адрес?
+        # Фильтруем независимо от TLD: photo@example.com тоже мусор.
+        # Но пропускаем короткие locals (<=4 символов) — 'test', 'info', 'user'
+        # часто являются легитимными email-адресами.
         local_base = local.split("+")[0]
-        if local_base in _FAKE_EMAIL_LOCALS and tld in ("png", "jpg", "gif", "svg", "webp", "ico", "example", "invalid", "test", "local", "localhost"):
+        if local_base in _FAKE_EMAIL_LOCALS and len(local_base) >= 5:
             continue
         # FIX: Паттерны img@2x.example.com
         if re.match(r'^[a-z]+@\d+x?\.', em):
@@ -360,8 +398,6 @@ def fetch_page(url: str, timeout: int = 15) -> str:
         # retry with verify=False as fallback
         logger.debug(f"SSL error for {_sanitize_url_for_log(url)}, retrying with verify=False")
         try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             response = requests.get(url, headers=headers, timeout=timeout,
                                    allow_redirects=True, verify=False)
             if response.status_code == 404:
@@ -401,8 +437,6 @@ def check_site_alive(url: str) -> int | None:
     except requests.exceptions.SSLError:
         # SSL verification failed — retry with verify=False
         try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             headers = {"User-Agent": get_random_ua()}
             r = requests.head(url, headers=headers, timeout=10, allow_redirects=True, verify=False)
             return r.status_code
@@ -521,9 +555,6 @@ def is_safe_url(url: str) -> bool:
                     return False
             except ValueError:
                 pass
-    # Block IPv6 private range prefixes (e.g. fd12:..., fe80:...)
-    if hostname_lower.startswith("fc") or hostname_lower.startswith("fe80"):
-        return False
     return True
 
 

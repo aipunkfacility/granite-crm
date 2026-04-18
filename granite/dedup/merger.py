@@ -1,5 +1,5 @@
 # dedup/merger.py
-from granite.utils import pick_best_value, extract_street, normalize_phone, sanitize_filename
+from granite.utils import pick_best_value, extract_street, normalize_phone, sanitize_filename, is_seo_title
 from loguru import logger
 import os
 
@@ -124,7 +124,20 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
 
     merged = {
         "merged_from": [r.get("id") for r in cluster_records if r.get("id") is not None],
-        "name_best": pick_best_value(*(r.get("name", "") for r in cluster_records)),
+        # FIX 2.1: SEO-название не должно побеждать реальное имя.
+        # pick_best_value берёт самое длинное → SEO-титлы (78+ символов) всегда выигрывают.
+        # Новая логика: если есть не-SEO варианты — берём самое длинное из них.
+        # Если все SEO — берём самое короткое (ближе к реальному названию).
+        "name_best": (
+            max(
+                (n for n in (r.get("name", "") for r in cluster_records) if n and not is_seo_title(n)),
+                key=len, default=None
+            )
+            or min(
+                (n for n in (r.get("name", "") for r in cluster_records) if n),
+                key=len, default=""
+            )
+        ),
         "phones": all_phones,
         "address": pick_best_value(
             *(r.get("address_raw", "") for r in cluster_records)

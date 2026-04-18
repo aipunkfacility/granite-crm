@@ -94,7 +94,9 @@ def list_companies(
     if min_score is not None:
         q = q.filter(EnrichedCompanyRow.crm_score >= min_score)
     if search:
-        q = q.filter(CompanyRow.name_best.ilike(f"%{search}%"))
+        # FIX 3.7: Экранируем LIKE-спецсимволы (% и _) в пользовательском вводе
+        escaped = search.replace("%", r"\%").replace("_", r"\_")
+        q = q.filter(CompanyRow.name_best.ilike(f"%{escaped}%", escape="\\"))
 
     order_col = {
         "crm_score": EnrichedCompanyRow.crm_score,

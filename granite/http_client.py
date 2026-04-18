@@ -31,25 +31,33 @@ from granite.utils import (
 # ===== Singleton async client =====
 
 _client: httpx.AsyncClient | None = None
+# FIX 4.6: asyncio.Lock для безопасной инициализации singleton
+_async_client_lock = asyncio.Lock()
 
 
 async def get_async_client() -> httpx.AsyncClient:
     """Получить или создать разделяемый httpx.AsyncClient.
+
+    FIX 4.6: Double-checked locking с asyncio.Lock.
+    Без блокировки — два параллельных asyncio.gather могут создать
+    два клиента (гонка на global _client).
 
     Синглтон на уровень модуля: один клиент на весь процесс.
     Закрытие через close_async_client() при завершении работы.
     """
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=10.0),
-            follow_redirects=True,
-            limits=httpx.Limits(
-                max_connections=10,
-                max_keepalive_connections=5,
-            ),
-            headers={"User-Agent": get_random_ua()},
-        )
+        async with _async_client_lock:
+            if _client is None or _client.is_closed:
+                _client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(30.0, connect=10.0),
+                    follow_redirects=True,
+                    limits=httpx.Limits(
+                        max_connections=10,
+                        max_keepalive_connections=5,
+                    ),
+                    headers={"User-Agent": get_random_ua()},
+                )
     return _client
 
 
@@ -59,6 +67,32 @@ async def close_async_client() -> None:
     if _client is not None and not _client.is_closed:
         await _client.aclose()
         _client = None
+
+
+# ===== SSL fallback client =====
+
+_no_verify_client: httpx.AsyncClient | None = None
+# FIX 3.11: asyncio.Lock для no-verify singleton
+_no_verify_lock = asyncio.Lock()
+
+
+async def _get_no_verify_client() -> httpx.AsyncClient:
+    """Получить или создать fallback-клиент без SSL-проверки.
+
+    FIX 3.11: Double-checked locking.
+    Используется для сайтов с самоподписанными сертификатами
+    (распространено у российских ритуальных мастерских).
+    """
+    global _no_verify_client
+    if _no_verify_client is None or _no_verify_client.is_closed:
+        async with _no_verify_lock:
+            if _no_verify_client is None or _no_verify_client.is_closed:
+                _no_verify_client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(30.0, connect=10.0),
+                    follow_redirects=True,
+                    verify=False,
+                )
+    return _no_verify_client
 
 
 # ===== Core async HTTP operations =====
@@ -99,6 +133,20 @@ async def async_fetch_page(url: str, timeout: int = 15) -> str | None:
         logger.warning(f"Timeout: {_sanitize_url_for_log(url)}")
         return None
     except Exception as e:
+        # FIX 3.11: SSL fallback для async-запросов.
+        # Sync-версия (utils.fetch_page) уже делает retry с verify=False,
+        # но async-версия просто возвращала None — теряла данные.
+        err_str = str(e).lower()
+        if "ssl" in err_str or "certificate" in err_str:
+            try:
+                client_nv = await _get_no_verify_client()
+                response = await client_nv.get(url, timeout=timeout)
+                if response.status_code == 404:
+                    return None
+                response.raise_for_status()
+                return response.text
+            except Exception:
+                pass
         logger.debug(f"async_fetch_page error: {_sanitize_url_for_log(url)} — {e}")
         return None
 

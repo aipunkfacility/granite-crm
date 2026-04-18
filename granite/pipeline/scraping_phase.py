@@ -66,6 +66,17 @@ class ScrapingPhase:
         max_threads = self.config.get("scraping", {}).get("max_threads", 1)
         print_status(f"ФАЗА 1: Сбор данных (Scraping, threads={max_threads})", "info")
 
+        # FIX 3.8: Очистка старых raw-данных ПЕРЕД сбором новых.
+        # Если скрапинг прервётся — старые данные уже удалены, но новые не сохранены.
+        # DELETE до _collect_results предотвращает накопление дубликатов.
+        from sqlalchemy import text
+        with self.db.session_scope() as session:
+            session.execute(
+                text("DELETE FROM raw_companies WHERE city = :city"),
+                {"city": city}
+            )
+            print_status(f"Очищены старые raw_companies для {city}", "info")
+
         raw_results = self._collect_results(city, region_cities, cat_cache, max_threads)
 
         # Сохранение сырых данных в БД

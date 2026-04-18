@@ -63,9 +63,9 @@ class JspravScraper(BaseScraper):
             longer = max(len(self._city_lower), len(loc_lower))
             if shorter * 100 / longer >= 70:
                 return True
-        if len(loc_lower) >= 3:
+        if len(loc_lower) >= 5:  # FIX 4.2: минимальная длина для stem-сравнения
             stem = loc_lower.rstrip("аеоуияью")
-            if stem and stem == self._city_lower.rstrip("аеоуияью"):
+            if stem and len(stem) >= 5 and stem == self._city_lower.rstrip("аеоуияью"):
                 return True
         return False
 

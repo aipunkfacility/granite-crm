@@ -112,6 +112,12 @@ if PLAYWRIGHT_AVAILABLE:
 else:
     @contextmanager
     def playwright_session(headless: bool = True):
-        """Заглушка — Playwright не установлен."""
-        logger.error("Playwright не установлен. playwright_session недоступен.")
-        yield None, None
+        """FIX 4.7: Fail-fast вместо yield (None, None).
+
+        Стуб_yield (None, None) заставляет callers обрабатывать оба None.
+        ImportError позволяет отловить отсутствие Playwright выше по стеку.
+        """
+        raise ImportError(
+            "Playwright не установлен. Установите: "
+            "pip install playwright && playwright install chromium"
+        )

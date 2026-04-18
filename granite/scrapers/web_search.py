@@ -62,9 +62,20 @@ def is_domain_failed(domain: str, ttl: int = _FAILED_DOMAINS_TTL_DEFAULT) -> boo
 
 
 def mark_domain_failed(domain: str):
-    """Запомнить домен как недоступный."""
+    """Запомнить домен как недоступный.
+
+    FIX 4.9: Lazy cleanup при превышении лимита.
+    Удаляет expired-записи вместо бесконечного роста словаря.
+    """
+    _MAX_FAILED_DOMAINS = 5000
     with _FAILED_DOMAINS_LOCK:
         _FAILED_DOMAINS[domain] = time.time()
+        if len(_FAILED_DOMAINS) > _MAX_FAILED_DOMAINS:
+            now = time.time()
+            expired = [d for d, ts in _FAILED_DOMAINS.items()
+                       if (now - ts) >= _FAILED_DOMAINS_TTL_DEFAULT]
+            for d in expired:
+                del _FAILED_DOMAINS[d]
 
 # ── Русские TLD, которым доверяем без дополнительных проверок ──────────
 _TRUSTED_TLDS = {".ru", ".su"}
@@ -93,25 +104,8 @@ _RU_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# ── SEO-title детектор: фильтруем маркетинговые заголовки ──────────────────
-_SEO_TITLE = re.compile(
-    r"(?:купить|цен[аыуе]|недорог|заказать|от производитель|"
-    r"с установк|на могил|доставк|скидк|"
-    r"памятник[аиы]?\s+(?:из|в|на|от)|"
-    r"изготовлен.*(?:памятник|надгробие|гранит))",
-    re.IGNORECASE,
-)
-
-
-def _is_seo_title(name: str) -> bool:
-    """Проверяет, выглядит ли имя как SEO-заголовок, а не название компании."""
-    if not name:
-        return True
-    if len(name) > 60:
-        return True
-    if _SEO_TITLE.search(name):
-        return True
-    return False
+# ── SEO-title детектор: импортируем из utils.py (общий с merger.py) ──
+from granite.utils import is_seo_title
 
 
 # ── Негатив-фильтр: мусорные темы в title ────────────────────────────────
@@ -338,6 +332,8 @@ class WebSearchScraper(BaseScraper):
         self.queries = self.source_config.get("queries", [])
         self.search_limit = self.source_config.get("search_limit", 10)
         self._failed_domain_ttl = get_failed_domain_ttl(config)
+        # FIX 4.8: Конфигурируемый timeout вместо захардкоженного 15
+        self.timeout = self.source_config.get("timeout", 15)
         # HTTP сессия для Yandex / Bing
         self._session = requests.Session()
         self._session.headers.update(
@@ -347,6 +343,11 @@ class WebSearchScraper(BaseScraper):
                 "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
             }
         )
+        # FIX 2.2: Нормализованный set для быстрого endswith-поиска
+        self._SKIP_DOMAINS_SET = frozenset(
+            d.lower()[4:] if d.lower().startswith("www.") else d.lower()
+            for d in self.SKIP_DOMAINS
+        )
         # Фильтр по чужому городу: корни названий городов из ДРУГИХ регионов.
         # Строится один раз при инициализации скрейпера.
         # Используется в _is_relevant_url() чтобы отсеивать результаты
@@ -354,8 +355,24 @@ class WebSearchScraper(BaseScraper):
         self._foreign_city_roots = self._build_foreign_city_roots()
 
     def _is_skip_domain(self, url: str) -> bool:
-        """Проверяет, нужно ли пропустить URL (каталоги, соцсети, мусор)."""
-        return any(d in url for d in self.SKIP_DOMAINS)
+        """Проверяет, нужно ли пропустить URL (каталоги, соцсети, мусор).
+
+        FIX 2.2: Используем hostname-сравнение через endswith вместо substring match.
+        Раньше: '2gis.com' in 'my2gis.com' = True (ложное срабатывание).
+        Теперь: точный match или endswith для субдоменов (detail.chiebukuro.yahoo.co.jp).
+        """
+        try:
+            parsed = urlparse(url)
+            hostname = (parsed.hostname or "").lower()
+            if hostname.startswith("www."):
+                hostname = hostname[4:]
+            return any(
+                hostname == d or hostname.endswith("." + d)
+                for d in self._SKIP_DOMAINS_SET
+            )
+        except Exception:
+            # Fallback для невалидных URL — оригинальный substring match
+            return any(d in url for d in self.SKIP_DOMAINS)
 
     def _build_foreign_city_roots(self) -> list[str]:
         """Строит список корней городов из ДРУГИХ регионов.
@@ -542,7 +559,7 @@ class WebSearchScraper(BaseScraper):
             resp = self._session.get(
                 search_url,
                 params=params,
-                timeout=15,
+                timeout=min(self.timeout, 30),
                 allow_redirects=True,
                 headers={
                     "User-Agent": self._session.headers.get("User-Agent", get_random_ua()),
@@ -710,7 +727,7 @@ class WebSearchScraper(BaseScraper):
                 if not company.address_raw and details.get("addresses"):
                     company.address_raw = details["addresses"][0]
                 # Обновляем имя если текущее — SEO-заголовок, а из страницы извлечено реальное название
-                if details.get("company_name") and _is_seo_title(company.name):
+                if details.get("company_name") and is_seo_title(company.name):
                     company.name = details["company_name"]
                 enriched += 1
 
@@ -758,7 +775,7 @@ class WebSearchScraper(BaseScraper):
             return None
 
         try:
-            html = fetch_page(url, timeout=15)
+            html = fetch_page(url, timeout=min(self.timeout, 30))
             if not html:
                 # fetch_page вернул None — домен скорее всего мёртв
                 if domain:

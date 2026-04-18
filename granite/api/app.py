@@ -15,8 +15,6 @@ from loguru import logger
 async def lifespan(app: FastAPI):
     """Инициализация при старте, очистка при остановке."""
     import os
-    from sqlalchemy import create_engine, event
-    from sqlalchemy.orm import sessionmaker
 
     try:
         from dotenv import load_dotenv
@@ -28,26 +26,19 @@ async def lifespan(app: FastAPI):
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    db_path = config.get("database", {}).get("path", "data/granite.db")
-    engine = create_engine(
-        f"sqlite:///{db_path}",
-        connect_args={"check_same_thread": False},
-    )
+    # FIX 1.1: Используем Database() вместо отдельного engine.
+    # Database() уже настраивает WAL, FK, busy_timeout — DRY.
+    # При одновременной работе пайплайна и API дефолтный DELETE-режим
+    # вызывал "database is locked" — WAL решает это.
+    from granite.database import Database
+    db = Database(config_path=config_path)
 
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_conn, connection_record):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.execute("PRAGMA busy_timeout=5000")
-        cursor.close()
-
-    Session = sessionmaker(bind=engine)
-
-    app.state.engine = engine
-    app.state.Session = Session
+    app.state.engine = db.engine
+    app.state.Session = db.SessionLocal
     app.state.config = config
+    app.state.db = db
 
-    logger.info(f"CRM API started. DB: {db_path}")
+    logger.info(f"CRM API started. DB: {db._db_path}")
 
     # Файловый лог с ротацией
     logger.add(
@@ -60,7 +51,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    engine.dispose()
+    db.engine.dispose()
     logger.info("CRM API stopped.")
 
 

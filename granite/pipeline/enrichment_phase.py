@@ -10,6 +10,7 @@
 """
 
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from granite.database import Database, CompanyRow, EnrichedCompanyRow
@@ -45,6 +46,7 @@ class EnrichmentPhase:
         self.web = web_client
         self._resolver = RegionResolver(config)
         self._error_counts: dict[str, int] = {}
+        self._error_lock = threading.Lock()
 
     def _is_async_enabled(self) -> bool:
         """Проверить, включён ли async-режим обогащения."""
@@ -101,10 +103,18 @@ class EnrichmentPhase:
             else:
                 logger.info("Обогащение прошло без ошибок")
 
-            # ПРОХОД 2: точечный поиск недостающих данных через веб
-            self._run_deep_enrich_for(
-                session, companies, city, scanner, tech_ext, search_best_url=False
-            )
+        # FIX 1.2: ПРОХОД 2 — ОТДЕЛЬНЫЙ session_scope.
+        # Если deep enrich упадёт — rollback не откатит основное обогащение.
+        # Компании перезагружаются из новой сессии (детаченые объекты из
+        # первой сессии недоступны для session.get()).
+        try:
+            with self.db.session_scope() as session:
+                deep_companies = session.query(CompanyRow).filter_by(city=city).all()
+                self._run_deep_enrich_for(
+                    session, deep_companies, city, scanner, tech_ext, search_best_url=False
+                )
+        except Exception as e:
+            logger.warning(f"Deep enrich failed for {city}: {e}")
 
         # ПРОХОД 3: переназначение города — ОТДЕЛЬНЫЙ session_scope
         # Вызывается ПОСЛЕ выхода из session_scope основного обогащения,
@@ -212,14 +222,17 @@ class EnrichmentPhase:
         else:
             logger.info("Обогащение прошло без ошибок")
 
-        # ПРОХОД 2: точечный поиск недостающих данных через веб
-        # (sync — использует self.web.search/scrape которые sync)
-        with self.db.session_scope() as session:
-            enriched_companies = session.query(EnrichedCompanyRow).filter_by(city=city).all()
-            self._run_deep_enrich_for(
-                session, enriched_companies, city, scanner, tech_ext, search_best_url=False
-            )
-        # session_scope закрыт здесь
+        # FIX 1.2a: ПРОХОД 2 — точечный поиск (try/except).
+        # Без обработки: если deep enrich упадёт — исключение летит наверх,
+        # и _reassign_cities не вызовется.
+        try:
+            with self.db.session_scope() as session:
+                enriched_companies = session.query(EnrichedCompanyRow).filter_by(city=city).all()
+                self._run_deep_enrich_for(
+                    session, enriched_companies, city, scanner, tech_ext, search_best_url=False
+                )
+        except Exception as e:
+            logger.warning(f"Deep enrich (async) failed for {city}: {e}")
 
         # ПРОХОД 3: переназначение города — ОТДЕЛЬНЫЙ session_scope
         reassigned = self._reassign_cities(city)
@@ -321,7 +334,8 @@ class EnrichmentPhase:
                 logger.exception(
                     f"[{category}] Async ошибка обогащения {snap.get('name_best', '?')}: {e}"
                 )
-                self._error_counts[category] = self._error_counts.get(category, 0) + 1
+                with self._error_lock:
+                    self._error_counts[category] = self._error_counts.get(category, 0) + 1
                 results.append(None)
         return results
 
@@ -353,7 +367,8 @@ class EnrichmentPhase:
                 logger.exception(
                     f"[{category}] Async ошибка обогащения {snap.get('name_best', '?')}: {result}"
                 )
-                self._error_counts[category] = self._error_counts.get(category, 0) + 1
+                with self._error_lock:
+                    self._error_counts[category] = self._error_counts.get(category, 0) + 1
                 results.append(None)
             else:
                 results.append(result)
@@ -523,7 +538,8 @@ class EnrichmentPhase:
                 logger.exception(
                     f"[{category}] Ошибка обогащения {c.name_best}: {e}"
                 )
-                self._error_counts[category] = self._error_counts.get(category, 0) + 1
+                with self._error_lock:
+                    self._error_counts[category] = self._error_counts.get(category, 0) + 1
 
         session.flush()
         return count
@@ -561,7 +577,8 @@ class EnrichmentPhase:
                     logger.exception(
                         f"[{category}] Ошибка обогащения {c.name_best}: {e}"
                     )
-                    self._error_counts[category] = self._error_counts.get(category, 0) + 1
+                    with self._error_lock:
+                        self._error_counts[category] = self._error_counts.get(category, 0) + 1
 
         session.flush()
         return count
@@ -772,7 +789,8 @@ class EnrichmentPhase:
                     f"[{category}] Ошибка deep enrich для "
                     f"{getattr(record, name_attr, '?')}: {e}"
                 )
-                self._error_counts[category] = self._error_counts.get(category, 0) + 1
+                with self._error_lock:
+                    self._error_counts[category] = self._error_counts.get(category, 0) + 1
 
         print_status(
             f"Точечный поиск: дополнено {found}/{len(needs_deep)} компаний", "success"

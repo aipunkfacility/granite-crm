@@ -107,7 +107,7 @@ def _search_city(city: str, region_hint: str | None = None) -> dict | None:
         # Ищем точное совпадение по названию + региону (если есть hint)
         for item in results:
             name = item.get("name", "").strip()
-            if name != city:
+            if name.lower() != city.lower():
                 continue
             if region_hint:
                 item_region = item.get("region", "")
@@ -148,13 +148,18 @@ def _extract_subdomain(url: str) -> str:
 
 
 def _check_head(url: str, timeout: int = 8) -> bool:
+    """FIX 4.3: Используем jsprav-сессию с CSRF-токеном вместо голого requests.head."""
     if not is_safe_url(url):
         logger.warning(f"_check_head: skipping unsafe URL '{url}'")
         return False
     try:
-        r = requests.head(
-            url, timeout=timeout, headers=DEFAULT_HEADERS, allow_redirects=True
-        )
+        session = _get_jsprav_session()
+        if session:
+            r = session.head(url, timeout=timeout, allow_redirects=True)
+        else:
+            r = requests.head(
+                url, timeout=timeout, headers=DEFAULT_HEADERS, allow_redirects=True
+            )
         return r.status_code == 200
     except Exception as e:
         logger.debug(f"_check_head failed for '{url}': {e}")

@@ -242,12 +242,17 @@ class CrmTemplateRow(Base):
         result = self.body
         for key, value in kwargs.items():
             result = result.replace(f"{{{key}}}", str(value))
+        # FIX 4.5: Логировать не заполненные плейсхолдеры
+        import re as _re
+        _leftovers = _re.findall(r'\{(\w+)\}', result)
+        if _leftovers:
+            logger.warning(f"Template '{self.name}': unfilled placeholders: {_leftovers}")
         return result
 
     def render_subject(self, **kwargs) -> str:
         """Подставить значения в тему письма."""
         if not self.subject:
-            return self.subject
+            return ""
         result = self.subject
         for key, value in kwargs.items():
             result = result.replace(f"{{{key}}}", str(value))
