@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
 from granite.api.schemas import CreateTaskRequest, UpdateTaskRequest
-from granite.database import CrmTaskRow
+from granite.database import CrmTaskRow, CompanyRow
 
 __all__ = ["router"]
 
@@ -43,34 +43,38 @@ def list_tasks(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     company_id: Optional[int] = None,
+    task_type: Optional[str] = None,
     include_unlinked: bool = False,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
 ):
-    """Список задач с фильтрами. По умолчанию — только привязанные к компании.
-
-    FIX MISS-5: Параметр include_unlinked=True позволяет просмотреть
-    все задачи, включая не привязанные к компании.
-    """
-    q = db.query(CrmTaskRow)
+    """Список задач с фильтрами. По умолчанию — только привязанные к компании."""
+    q = (
+        db.query(CrmTaskRow, CompanyRow)
+        .outerjoin(CompanyRow, CrmTaskRow.company_id == CompanyRow.id)
+    )
     if not include_unlinked:
         q = q.filter(CrmTaskRow.company_id.isnot(None))
     if status:
-        q = q.filter_by(status=status)
+        q = q.filter(CrmTaskRow.status == status)
     if priority:
-        q = q.filter_by(priority=priority)
+        q = q.filter(CrmTaskRow.priority == priority)
     if company_id:
-        q = q.filter_by(company_id=company_id)
+        q = q.filter(CrmTaskRow.company_id == company_id)
+    if task_type:
+        q = q.filter(CrmTaskRow.task_type == task_type)
     q = q.order_by(CrmTaskRow.due_date.asc().nullslast(), CrmTaskRow.created_at.asc())
 
     total = q.count()
-    tasks = q.offset((page - 1) * per_page).limit(per_page).all()
+    rows = q.offset((page - 1) * per_page).limit(per_page).all()
 
     return {
         "items": [
             {
                 "id": t.id,
                 "company_id": t.company_id,
+                "company_name": c.name_best if c else None,
+                "company_city": c.city if c else None,
                 "title": t.title,
                 "task_type": t.task_type,
                 "priority": t.priority,
@@ -78,12 +82,42 @@ def list_tasks(
                 "due_date": t.due_date.isoformat() if t.due_date else None,
                 "created_at": t.created_at.isoformat() if t.created_at else None,
             }
-            for t in tasks
+            for t, c in rows
         ],
         "total": total,
         "page": page,
         "per_page": per_page,
     }
+
+
+@router.get("/companies/{company_id}/tasks")
+def list_company_tasks(
+    company_id: int,
+    db: Session = Depends(get_db),
+    status: Optional[str] = None,
+):
+    """Задачи конкретной компании."""
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    q = db.query(CrmTaskRow).filter_by(company_id=company_id)
+    if status:
+        q = q.filter_by(status=status)
+    tasks = q.order_by(CrmTaskRow.due_date.asc().nullslast()).all()
+
+    return [
+        {
+            "id": t.id,
+            "title": t.title,
+            "task_type": t.task_type,
+            "priority": t.priority,
+            "status": t.status,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        }
+        for t in tasks
+    ]
 
 
 @router.patch("/tasks/{task_id}")

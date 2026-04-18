@@ -188,11 +188,16 @@ class TestSchemaCheck:
     """Проверка обнаружения различий между ORM и БД."""
 
     def test_no_diff_after_upgrade(self, alembic_config, db_url):
-        """После upgrade head нет различий между ORM и БД."""
+        """После upgrade head нет различий между ORM и БД.
+
+        MISS-6: compare_metadata для SQLite игнорирует некоторые типы
+        изменений (server_default, String vs Text). Добавлены явные
+        проверки критичных колонок и индексов.
+        """
         from alembic import command
         from alembic.autogenerate import compare_metadata
         from alembic.migration import MigrationContext
-        from sqlalchemy import create_engine
+        from sqlalchemy import create_engine, inspect
         from granite.database import Base
 
         url, _ = db_url
@@ -204,6 +209,28 @@ class TestSchemaCheck:
             diff = compare_metadata(ctx, Base.metadata)
 
         assert diff == [], f"Unexpected diff after upgrade: {diff}"
+
+        # Явные проверки (MISS-6): compare_metadata может пропускать
+        # некоторые типы изменений в SQLite
+        insp = inspect(engine)
+
+        # enriched_companies.region (ARCH-1)
+        ec_cols = {c["name"] for c in insp.get_columns("enriched_companies")}
+        assert "region" in ec_cols, "enriched_companies.region missing"
+
+        # enriched_companies.region index
+        ec_idx = {idx["name"] for idx in insp.get_indexes("enriched_companies")}
+        assert "ix_enriched_companies_region" in ec_idx, \
+            "enriched_companies.region index missing"
+
+        # crm_contacts.updated_at (MISS-4)
+        crm_cols = {c["name"] for c in insp.get_columns("crm_contacts")}
+        assert "updated_at" in crm_cols, "crm_contacts.updated_at missing"
+
+        # crm_contacts composite index (ARCH-4)
+        crm_idx = {idx["name"] for idx in insp.get_indexes("crm_contacts")}
+        assert "ix_crm_contacts_funnel_stop" in crm_idx, \
+            "composite index (funnel_stage, stop_automation) missing"
 
 
 class TestForeignKeys:

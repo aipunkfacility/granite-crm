@@ -610,7 +610,8 @@ class EnrichmentPhase:
         reassigned = 0
         with self.db.session_scope() as session:
             # Загружаем enriched-записи (свежие, после commit основного обогащения)
-            enriched_rows = session.query(EnrichedCompanyRow).filter_by(city=city).all()
+            # ARCH-3: LIMIT для защиты от O(n²) в detect_city при больших городах
+            enriched_rows = session.query(EnrichedCompanyRow).filter_by(city=city).limit(500).all()
 
             for erow in enriched_rows:
                 # Используем ТОЛЬКО адрес для определения города, а не name+address.

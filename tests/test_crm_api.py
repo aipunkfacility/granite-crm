@@ -411,3 +411,246 @@ class TestSeedUpsert:
 
         total = db_session.query(CrmTemplateRow).count()
         assert total == 6
+
+    def test_email_templates_contain_url(self, db_session):
+        """MISS-7: Email-шаблоны содержат ссылку monument-web."""
+        from granite.database import CrmTemplateRow
+        from scripts.seed_crm_templates import _apply_templates
+
+        _apply_templates(db_session)
+        email_templates = db_session.query(CrmTemplateRow).filter_by(channel="email").all()
+        for t in email_templates:
+            assert "monument-web" in t.body, f"{t.name} missing monument-web URL"
+
+    def test_messenger_templates_no_url(self, db_session):
+        """MISS-7: TG/WA-шаблоны НЕ содержат URL (лучше delivery rate)."""
+        from granite.database import CrmTemplateRow
+        from scripts.seed_crm_templates import _apply_templates
+
+        _apply_templates(db_session)
+        msg_templates = db_session.query(CrmTemplateRow).filter(
+            CrmTemplateRow.channel.in_(["tg", "wa"])
+        ).all()
+        for t in msg_templates:
+            assert "http" not in t.body, f"{t.name} should not contain URL"
+
+
+class TestTasksWithCompany:
+    """C1: GET /tasks с JOIN + GET /companies/{id}/tasks."""
+
+    def test_list_tasks_includes_company_name(self, client, db_session):
+        """GET /tasks возвращает company_name и company_city."""
+        from tests.helpers import create_task
+        cid = create_company(db_session, city="Омск")
+        create_task(db_session, company_id=cid, title="Follow up")
+        db_session.commit()
+
+        r = client.get("/api/v1/tasks")
+        assert r.status_code == 200
+        items = r.json()["items"]
+        assert len(items) == 1
+        assert items[0]["company_name"] == "Test Company"
+        assert items[0]["company_city"] == "Омск"
+
+    def test_list_tasks_null_company(self, client, db_session):
+        """Задача без компании: company_name=null, не падает."""
+        from granite.database import CrmTaskRow
+        task = CrmTaskRow(title="Orphan task", task_type="other", status="pending")
+        db_session.add(task)
+        db_session.commit()
+
+        r = client.get("/api/v1/tasks?include_unlinked=true")
+        assert r.status_code == 200
+        orphans = [i for i in r.json()["items"] if i["title"] == "Orphan task"]
+        assert len(orphans) == 1
+        assert orphans[0]["company_name"] is None
+        assert orphans[0]["company_city"] is None
+
+    def test_list_tasks_filter_task_type(self, client, db_session):
+        """GET /tasks?task_type=follow_up фильтрует корректно."""
+        from tests.helpers import create_task
+        cid = create_company(db_session)
+        create_task(db_session, company_id=cid, title="Follow", task_type="follow_up")
+        create_task(db_session, company_id=cid, title="Portfolio", task_type="send_portfolio")
+        db_session.commit()
+
+        r = client.get("/api/v1/tasks?task_type=follow_up")
+        assert r.status_code == 200
+        items = r.json()["items"]
+        assert len(items) == 1
+        assert items[0]["title"] == "Follow"
+
+    def test_list_company_tasks(self, client, db_session):
+        """GET /companies/{id}/tasks — 200 с задачами компании."""
+        from tests.helpers import create_task
+        cid = create_company(db_session)
+        create_task(db_session, company_id=cid, title="Task A")
+        create_task(db_session, company_id=cid, title="Task B")
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/tasks")
+        assert r.status_code == 200
+        assert len(r.json()) == 2
+
+    def test_list_company_tasks_404(self, client):
+        """GET /companies/9999/tasks — 404."""
+        r = client.get("/api/v1/companies/9999/tasks")
+        assert r.status_code == 404
+
+    def test_list_company_tasks_filter_status(self, client, db_session):
+        """GET /companies/{id}/tasks?status=pending фильтрует по статусу."""
+        from tests.helpers import create_task
+        cid = create_company(db_session)
+        create_task(db_session, company_id=cid, title="Pending", status="pending")
+        create_task(db_session, company_id=cid, title="Done", status="done")
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/tasks?status=pending")
+        assert r.status_code == 200
+        assert len(r.json()) == 1
+        assert r.json()[0]["title"] == "Pending"
+
+    def test_pagination_total_correct(self, client, db_session):
+        """total в GET /tasks считается корректно при JOIN."""
+        from tests.helpers import create_task
+        cid = create_company(db_session)
+        for i in range(5):
+            create_task(db_session, company_id=cid, title=f"Task {i}")
+        db_session.commit()
+
+        r = client.get("/api/v1/tasks?per_page=2&page=1")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] == 5
+        assert len(data["items"]) == 2
+
+
+class TestFollowupPagination:
+    """C2+C3: segment, region, пагинация /followup."""
+
+    def _make_followup_companies(self, db_session, count, city="Москва"):
+        """Создать N компаний с TG, готовых к follow-up (stage=new)."""
+        cids = []
+        for i in range(count):
+            cid = create_company(
+                db_session, city=city,
+                messengers={"telegram": f"t.me/user{i}"},
+            )
+            cids.append(cid)
+        db_session.commit()
+        return cids
+
+    def test_followup_pagination_page1(self, client, db_session):
+        """page=1&per_page=3 из 5 записей — 3 items, total=5."""
+        self._make_followup_companies(db_session, 5)
+        r = client.get("/api/v1/followup?per_page=3&page=1")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] == 5
+        assert len(data["items"]) == 3
+        assert data["page"] == 1
+        assert data["per_page"] == 3
+
+    def test_followup_pagination_page2(self, client, db_session):
+        """page=2&per_page=3 из 5 — 2 items."""
+        self._make_followup_companies(db_session, 5)
+        r = client.get("/api/v1/followup?per_page=3&page=2")
+        assert r.status_code == 200
+        assert len(r.json()["items"]) == 2
+
+    def test_followup_limit_compat(self, client, db_session):
+        """?limit=2 (старый параметр) работает как per_page=2."""
+        self._make_followup_companies(db_session, 5)
+        r = client.get("/api/v1/followup?limit=2")
+        assert r.status_code == 200
+        assert len(r.json()["items"]) == 2
+
+    def test_followup_segment_filter(self, client, db_session):
+        """?segment=A фильтрует по сегменту."""
+        create_company(db_session, segment="A", messengers={"telegram": "t.me/a"})
+        create_company(db_session, segment="B", messengers={"telegram": "t.me/b"})
+        db_session.commit()
+
+        r = client.get("/api/v1/followup?segment=A")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_followup_segment_invalid(self, client):
+        """?segment=Z — 422 (не в паттерне ABCD)."""
+        r = client.get("/api/v1/followup?segment=Z")
+        assert r.status_code == 422
+
+    def test_followup_region_in_response(self, client, db_session):
+        """Ответ содержит поле region."""
+        create_company(db_session, messengers={"telegram": "t.me/x"})
+        db_session.commit()
+
+        r = client.get("/api/v1/followup")
+        assert r.status_code == 200
+        items = r.json()["items"]
+        if items:
+            assert "region" in items[0]
+
+
+class TestMultipleCityFilter:
+    """C4: множественный фильтр по городу."""
+
+    def test_companies_single_city_compat(self, client, db_session):
+        """?city=Москва — обратно совместимо."""
+        create_company(db_session, city="Москва")
+        create_company(db_session, city="Казань")
+        db_session.commit()
+
+        r = client.get("/api/v1/companies?city=Москва")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_companies_multiple_cities(self, client, db_session):
+        """?city=Москва&city=Казань — обе компании."""
+        create_company(db_session, city="Москва")
+        create_company(db_session, city="Казань")
+        create_company(db_session, city="Омск")
+        db_session.commit()
+
+        r = client.get("/api/v1/companies?city=Москва&city=Казань")
+        assert r.status_code == 200
+        assert r.json()["total"] == 2
+
+    def test_companies_city_not_found(self, client, db_session):
+        """?city=НесуществующийГород — total=0."""
+        create_company(db_session)
+        db_session.commit()
+
+        r = client.get("/api/v1/companies?city=НесуществующийГород")
+        assert r.status_code == 200
+        assert r.json()["total"] == 0
+
+    def test_companies_empty_city_ignored(self, client, db_session):
+        """?city= (пустая строка) игнорируется — все компании."""
+        create_company(db_session, city="Москва")
+        db_session.commit()
+
+        r = client.get("/api/v1/companies?city=")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1
+
+    def test_followup_multiple_cities(self, client, db_session):
+        """?city=Москва&city=Казань в /followup."""
+        create_company(db_session, city="Москва", messengers={"telegram": "t.me/a"})
+        create_company(db_session, city="Казань", messengers={"telegram": "t.me/b"})
+        create_company(db_session, city="Омск", messengers={"telegram": "t.me/c"})
+        db_session.commit()
+
+        r = client.get("/api/v1/followup?city=Москва&city=Казань")
+        assert r.status_code == 200
+        assert r.json()["total"] == 2
+
+    def test_followup_single_city_compat(self, client, db_session):
+        """?city=Москва в /followup — обратно совместимо."""
+        create_company(db_session, city="Москва", messengers={"telegram": "t.me/a"})
+        create_company(db_session, city="Казань", messengers={"telegram": "t.me/b"})
+        db_session.commit()
+
+        r = client.get("/api/v1/followup?city=Москва")
+        assert r.status_code == 200
+        assert r.json()["total"] == 1

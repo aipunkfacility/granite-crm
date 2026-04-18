@@ -1,6 +1,6 @@
 """Companies API: список, карточка, обновление CRM-полей."""
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, text as sa_text
@@ -54,7 +54,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
 @router.get("/companies")
 def list_companies(
     db: Session = Depends(get_db),
-    city: Optional[str] = None,
+    city: Optional[List[str]] = Query(None),
     region: Optional[str] = None,
     segment: Optional[str] = None,
     funnel_stage: Optional[str] = None,
@@ -76,7 +76,11 @@ def list_companies(
     )
 
     if city:
-        q = q.filter(CompanyRow.city == city)
+        city = [c for c in city if c.strip()]
+        if len(city) == 1:
+            q = q.filter(CompanyRow.city == city[0])
+        elif len(city) > 1:
+            q = q.filter(CompanyRow.city.in_(city))
     if region:
         q = q.filter(CompanyRow.region == region)
     if segment:

@@ -164,13 +164,16 @@ class CsvExporter:
                     writer.writerow(_build_csv_row(r.to_dict()))
             logger.info(f"Экспорт CSV завершен: {filepath}")
 
-    def export_city_with_preset(self, city: str, preset_name: str, preset: dict):
+    def export_city_with_preset(self, city: str, preset_name: str, preset: dict,
+                                 exclude_spam: bool = True):
         """Экспорт города с фильтром из пресета config.yaml."""
         with self.db.session_scope() as session:
             query = session.query(EnrichedCompanyRow).filter(
                 EnrichedCompanyRow.city == city,
                 EnrichedCompanyRow.crm_score > 0,
             )
+            if exclude_spam:
+                query = query.filter(EnrichedCompanyRow.segment != "spam")
             query = _apply_preset_filter(query, preset_name, preset)
             records = query.all()
 

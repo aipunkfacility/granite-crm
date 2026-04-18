@@ -1,6 +1,6 @@
 """Follow-up очередь: кому нужно написать сегодня."""
 from datetime import datetime, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -25,17 +25,18 @@ STAGE_NEXT_ACTION = {
 @router.get("/followup")
 def get_followup_queue(
     db: Session = Depends(get_db),
-    city: Optional[str] = None,
-    limit: int = Query(100, ge=1, le=500),
+    city: Optional[List[str]] = Query(None),
+    segment: Optional[str] = Query(None, pattern="^[ABCD]$"),
+    limit: int = Query(None, ge=1, le=500),
+    per_page: int = Query(100, ge=1, le=500),
+    page: int = Query(1, ge=1),
 ):
-    """Очередь follow-up: контакты, которым нужно написать прямо сейчас.
-
-    Логика:
-    - stage в STAGE_NEXT_ACTION
-    - нет stop_automation
-    - с последнего касания прошло >= days из конфига стадии
-    """
+    """Очередь follow-up: контакты, которым нужно написать прямо сейчас."""
     now = datetime.now(timezone.utc)
+
+    # Backward compat: limit переопределяет per_page
+    if limit is not None:
+        per_page = limit
 
     q = (
         db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
@@ -47,7 +48,13 @@ def get_followup_queue(
         )
     )
     if city:
-        q = q.filter(CompanyRow.city == city)
+        city = [c for c in city if c.strip()]
+        if len(city) == 1:
+            q = q.filter(CompanyRow.city == city[0])
+        elif len(city) > 1:
+            q = q.filter(CompanyRow.city.in_(city))
+    if segment:
+        q = q.filter(EnrichedCompanyRow.segment == segment)
 
     rows = q.all()
     result = []
@@ -89,6 +96,7 @@ def get_followup_queue(
             "company_id": company.id,
             "name": company.name_best,
             "city": company.city,
+            "region": company.region,
             "funnel_stage": stage,
             "days_since_last_contact": (
                 (now - (last.replace(tzinfo=timezone.utc) if last.tzinfo is None else last)).days
@@ -107,4 +115,11 @@ def get_followup_queue(
 
     # Сортируем: сначала высокий приоритет (score), потом давно не писали
     result.sort(key=lambda x: (-x["crm_score"], -x["days_since_last_contact"]))
-    return {"items": result[:limit], "total": len(result)}
+    total = len(result)
+    start = (page - 1) * per_page
+    return {
+        "items": result[start:start + per_page],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    }
