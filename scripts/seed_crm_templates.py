@@ -86,21 +86,35 @@ TEMPLATES = [
 ]
 
 
+def _apply_templates(session) -> tuple[int, int]:
+    """UPSERT шаблонов в переданную сессию. Возвращает (inserted, updated)."""
+    inserted = 0
+    updated = 0
+
+    for t in TEMPLATES:
+        existing = session.query(CrmTemplateRow).filter_by(name=t["name"]).first()
+        if existing:
+            existing.channel = t["channel"]
+            existing.subject = t["subject"]
+            existing.body = t["body"]
+            existing.description = t.get("description", "")
+            updated += 1
+        else:
+            session.add(CrmTemplateRow(**t))
+            inserted += 1
+
+    logger.info(
+        f"SEED crm_templates: создано {inserted}, обновлено {updated}"
+    )
+    return inserted, updated
+
+
 def seed_crm_templates():
     db = Database()
     with db.session_scope() as session:
-        existing = {row[0] for row in session.query(CrmTemplateRow.name).all()}
-        to_insert = [t for t in TEMPLATES if t["name"] not in existing]
-        if not to_insert:
-            logger.info("SEED crm_templates: все шаблоны уже есть")
-            db.engine.dispose()
-            return 0
-
-        for t in to_insert:
-            session.add(CrmTemplateRow(**t))
-        logger.info(f"SEED crm_templates: создано {len(to_insert)} шаблонов, пропущено {len(existing)}")
+        inserted, updated = _apply_templates(session)
     db.engine.dispose()
-    return len(to_insert)
+    return inserted + updated
 
 
 if __name__ == "__main__":

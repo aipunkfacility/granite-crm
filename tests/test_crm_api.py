@@ -3,6 +3,8 @@
 Фикстуры (engine, db_session, client) — в tests/conftest.py.
 Фабрики (create_company, create_task) — в tests/helpers.py.
 """
+from datetime import datetime, timedelta, timezone
+
 from tests.helpers import create_company
 
 
@@ -264,3 +266,148 @@ class TestStopAutomationGuard:
         r = client.patch(f"/api/v1/companies/{cid}", json={"stop_automation": True})
         assert r.status_code == 200
         assert r.json()["ok"] is True
+
+
+class TestCampaignWatchdog:
+    """D1: POST /campaigns/stale — сброс застрявших кампаний."""
+
+    def _make_campaign(self, db_session, *, status="running",
+                       created_at=None, started_at=None, updated_at=None):
+        from granite.database import CrmEmailCampaignRow
+        c = CrmEmailCampaignRow(
+            name=f"Test {status}", template_name="cold_email_1",
+            status=status, created_at=created_at,
+            started_at=started_at, updated_at=updated_at,
+        )
+        db_session.add(c)
+        db_session.flush()
+        return c
+
+    def test_stale_running_reset(self, client, db_session, monkeypatch):
+        """Кампания с устаревшим created_at сбрасывается в paused."""
+        monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        self._make_campaign(db_session, status="running", created_at=old_time)
+        db_session.commit()
+
+        r = client.post("/api/v1/campaigns/stale")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["count"] == 1
+        assert data["reset"][0]["name"] == "Test running"
+
+        # Проверяем что статус действительно changed
+        from granite.database import CrmEmailCampaignRow
+        c = db_session.query(CrmEmailCampaignRow).first()
+        assert c.status == "paused"
+
+    def test_fresh_running_not_reset(self, client, db_session, monkeypatch):
+        """Свежая кампания (created 1 мин назад) НЕ сбрасывается."""
+        monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
+        fresh_time = datetime.now(timezone.utc) - timedelta(minutes=1)
+        self._make_campaign(db_session, status="running", created_at=fresh_time)
+        db_session.commit()
+
+        r = client.post("/api/v1/campaigns/stale")
+        assert r.status_code == 200
+        assert r.json()["count"] == 0
+
+    def test_no_running_campaigns(self, client, db_session, monkeypatch):
+        """Нет running кампаний — count=0."""
+        monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
+        old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
+        self._make_campaign(db_session, status="completed", created_at=old_time)
+        self._make_campaign(db_session, status="draft", created_at=old_time)
+        db_session.commit()
+
+        r = client.post("/api/v1/campaigns/stale")
+        assert r.status_code == 200
+        assert r.json()["count"] == 0
+
+    def test_updated_at_takes_priority(self, client, db_session, monkeypatch):
+        """Если updated_at свежий — кампания НЕ сбрасывается, даже если started_at старый."""
+        monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
+        old_started = datetime.now(timezone.utc) - timedelta(minutes=20)
+        fresh_updated = datetime.now(timezone.utc) - timedelta(minutes=1)
+        self._make_campaign(
+            db_session, status="running",
+            started_at=old_started, updated_at=fresh_updated,
+        )
+        db_session.commit()
+
+        r = client.post("/api/v1/campaigns/stale")
+        assert r.status_code == 200
+        assert r.json()["count"] == 0
+
+    def test_started_at_fallback(self, client, db_session, monkeypatch):
+        """Если updated_at=None, но started_at старый — кампания сбрасывается."""
+        monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
+        old_started = datetime.now(timezone.utc) - timedelta(minutes=10)
+        self._make_campaign(
+            db_session, status="running", started_at=old_started,
+        )
+        db_session.commit()
+
+        r = client.post("/api/v1/campaigns/stale")
+        assert r.status_code == 200
+        assert r.json()["count"] == 1
+
+
+class TestSeedUpsert:
+    """D2: seed_crm_templates.py использует UPSERT (обновление существующих)."""
+
+    def test_upsert_existing_template(self, db_session):
+        """Существующий шаблон обновляется, а не пропускается."""
+        from granite.database import CrmTemplateRow
+        from scripts.seed_crm_templates import _apply_templates
+
+        # Создаём шаблон вручную
+        t = CrmTemplateRow(
+            name="cold_email_1", channel="email",
+            subject="Old subject", body="Old body",
+            description="Old desc",
+        )
+        db_session.add(t)
+        db_session.commit()
+
+        inserted, updated = _apply_templates(db_session)
+        assert inserted == 5  # остальные 5 шаблонов созданы
+        assert updated == 1  # cold_email_1 обновлён
+
+        # Проверяем что cold_email_1 обновился
+        row = db_session.query(CrmTemplateRow).filter_by(name="cold_email_1").first()
+        assert row.body != "Old body"
+        assert "ретуш" in row.body
+        assert row.subject != "Old subject"
+
+    def test_upsert_creates_all_new(self, db_session):
+        """На пустой БД — все 6 шаблонов создаются."""
+        from granite.database import CrmTemplateRow
+        from scripts.seed_crm_templates import _apply_templates
+
+        inserted, updated = _apply_templates(db_session)
+        assert inserted == 6
+        assert updated == 0
+
+        names = {r[0] for r in db_session.query(CrmTemplateRow.name).all()}
+        assert names == {
+            "cold_email_1", "follow_up_email",
+            "tg_intro", "tg_follow_up",
+            "wa_intro", "wa_follow_up",
+        }
+
+    def test_upsert_idempotent(self, db_session):
+        """Повторный запуск — 0 inserted, 6 updated (без дублей)."""
+        from granite.database import CrmTemplateRow
+        from scripts.seed_crm_templates import _apply_templates
+
+        inserted1, updated1 = _apply_templates(db_session)
+        assert inserted1 == 6
+        assert updated1 == 0
+
+        inserted2, updated2 = _apply_templates(db_session)
+        assert inserted2 == 0
+        assert updated2 == 6
+
+        total = db_session.query(CrmTemplateRow).count()
+        assert total == 6

@@ -3,7 +3,7 @@ import json
 import os
 import threading
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -266,3 +266,31 @@ def campaign_stats(campaign_id: int, db: Session = Depends(get_db)):
         "open_rate": round(campaign.total_opened / campaign.total_sent * 100, 1)
                      if campaign.total_sent else 0,
     }
+
+
+@router.post("/campaigns/stale")
+def check_stale_campaigns(db: Session = Depends(get_db)):
+    """D1: Сбросить застрявшие кампании (status=running без активности).
+
+    Кампания считается застрявшей, если её последнее обновление (updated_at,
+    started_at или created_at) старше STALE_CAMPAIGN_MINUTES (дефолт: 10 мин).
+    Застрявшие кампании переводятся в status='paused'.
+    """
+    stale_minutes = int(os.environ.get("STALE_CAMPAIGN_MINUTES", "10"))
+    threshold = datetime.now(timezone.utc) - timedelta(minutes=stale_minutes)
+
+    running = db.query(CrmEmailCampaignRow).filter_by(status="running").all()
+    reset = []
+    for c in running:
+        last_activity = c.updated_at or c.started_at or c.created_at
+        if last_activity and last_activity.replace(tzinfo=timezone.utc) < threshold:
+            c.status = "paused"
+            reset.append({"id": c.id, "name": c.name})
+
+    if reset:
+        logger.info(
+            f"Campaign watchdog: reset {len(reset)} stale campaigns "
+            f"(threshold={stale_minutes}min)"
+        )
+
+    return {"reset": reset, "count": len(reset)}
