@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
+from granite.api.schemas import PaginatedResponse
 from granite.database import CompanyRow, EnrichedCompanyRow, CrmContactRow
 
 __all__ = ["router"]
@@ -22,7 +23,7 @@ STAGE_NEXT_ACTION = {
 }
 
 
-@router.get("/followup")
+@router.get("/followup", response_model=PaginatedResponse)
 def get_followup_queue(
     db: Session = Depends(get_db),
     city: Optional[List[str]] = Query(None),

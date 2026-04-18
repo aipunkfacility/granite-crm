@@ -1,8 +1,19 @@
-"""Pydantic схемы для валидации API запросов."""
-from typing import Optional
+"""Pydantic схемы для валидации API запросов и ответов.
+
+FIX M4: Добавлены Response-модели для всех эндпоинтов.
+Это позволяет FastAPI генерировать корректную OpenAPI-документацию
+и автогенерировать TypeScript-типы через openapi-typescript.
+
+FIX M5: Добавлен PaginatedResponse — единая обёртка для всех списков.
+"""
+from typing import Optional, Any
 
 from pydantic import BaseModel, Field
 
+
+# ============================================================
+# Request-модели (валидация входящих данных)
+# ============================================================
 
 class CreateTouchRequest(BaseModel):
     channel: str = Field(..., pattern="^(email|tg|wa|manual)$")
@@ -60,3 +71,206 @@ class SendMessageRequest(BaseModel):
     channel: str = Field(..., pattern="^(tg|wa)$")
     template_name: Optional[str] = None
     text: Optional[str] = None
+
+
+# ============================================================
+# Response-модели (документирование OpenAPI-ответов)
+# ============================================================
+
+
+class OkResponse(BaseModel):
+    """Универсальный ответ {ok: true, ...}."""
+    ok: bool = True
+
+
+class OkWithIdResponse(BaseModel):
+    """Ответ с ID созданного объекта."""
+    ok: bool = True
+    id: Optional[int] = Field(None, description="ID созданного объекта")
+
+
+class CompanyResponse(BaseModel):
+    """Карточка компании — используется в list и get."""
+    id: int
+    name: str
+    phones: list[str] = []
+    website: Optional[str] = None
+    emails: list[str] = []
+    city: str
+    region: str = ""
+    messengers: dict = {}
+    telegram: Optional[str] = None
+    whatsapp: Optional[str] = None
+    vk: Optional[str] = None
+    segment: Optional[str] = None
+    crm_score: int = 0
+    cms: Optional[str] = None
+    has_marquiz: bool = False
+    is_network: bool = False
+    tg_trust: dict = {}
+    funnel_stage: str = "new"
+    email_sent_count: int = 0
+    email_opened_count: int = 0
+    tg_sent_count: int = 0
+    wa_sent_count: int = 0
+    last_contact_at: Optional[str] = None
+    notes: str = ""
+    stop_automation: bool = False
+
+    model_config = {"from_attributes": True}
+
+
+class TouchResponse(BaseModel):
+    """Запись о касании."""
+    id: int
+    company_id: int
+    channel: str
+    direction: str
+    subject: str = ""
+    body: str = ""
+    note: str = ""
+    created_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskResponse(BaseModel):
+    """Задача."""
+    id: int
+    company_id: Optional[int] = None
+    company_name: Optional[str] = None
+    company_city: Optional[str] = None
+    title: str
+    task_type: str
+    priority: str
+    status: str
+    due_date: Optional[str] = None
+    created_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TaskDetailResponse(BaseModel):
+    """Задача (без join-данных о компании)."""
+    id: int
+    title: str
+    task_type: str
+    priority: str
+    status: str
+    due_date: Optional[str] = None
+    created_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class TemplateResponse(BaseModel):
+    """Шаблон сообщения."""
+    name: str
+    channel: str
+    subject: str = ""
+    body: str
+    description: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CampaignResponse(BaseModel):
+    """Кампания (в списке)."""
+    id: int
+    name: str
+    template_name: str
+    status: str
+    total_sent: int = 0
+    total_opened: int = 0
+    total_replied: int = 0
+    created_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CampaignDetailResponse(BaseModel):
+    """Детали кампании + предпросмотр получателей."""
+    id: int
+    name: str
+    template_name: str
+    status: str
+    filters: dict = {}
+    total_sent: int = 0
+    total_opened: int = 0
+    preview_recipients: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class CampaignStatsResponse(BaseModel):
+    """Статистика кампании."""
+    id: int
+    name: str
+    status: str
+    total_sent: int = 0
+    total_opened: int = 0
+    total_replied: int = 0
+    open_rate: float = 0.0
+
+    model_config = {"from_attributes": True}
+
+
+class FollowupItemResponse(BaseModel):
+    """Элемент очереди follow-up."""
+    company_id: int
+    name: str
+    city: str
+    region: str = ""
+    funnel_stage: str
+    days_since_last_contact: int
+    recommended_channel: str
+    channel_available: bool
+    template_name: str
+    action: str
+    telegram: Optional[str] = None
+    whatsapp: Optional[str] = None
+    emails: list[str] = []
+    crm_score: int = 0
+    segment: str = "D"
+
+    model_config = {"from_attributes": True}
+
+
+class FunnelResponse(BaseModel):
+    """Распределение по стадиям воронки."""
+    model_config = {"extra": "allow"}
+
+    # Динамические ключи: new, email_sent, ..., unreachable -> int
+
+
+class StatsResponse(BaseModel):
+    """Агрегированная статистика CRM."""
+    total_companies: int = 0
+    funnel: dict[str, int] = {}
+    segments: dict[str, int] = {}
+    top_cities: list[dict[str, Any]] = []
+    with_telegram: int = 0
+    with_whatsapp: int = 0
+    with_email: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class MessengerResultResponse(BaseModel):
+    """Результат отправки через мессенджер."""
+    ok: bool
+    channel: Optional[str] = None
+    contact_id: Optional[str] = None
+    error: Optional[str] = None
+
+
+# FIX M5: Универсальная обёртка для пагинированных списков.
+# Используется всеми list-эндпоинтами для согласованного формата ответа.
+class PaginatedResponse(BaseModel):
+    """Стандартный ответ для пагинированных списков."""
+    items: list[Any] = []
+    total: int = 0
+    page: int = 1
+    per_page: int = 50

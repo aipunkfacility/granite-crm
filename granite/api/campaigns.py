@@ -11,7 +11,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import String
 
 from granite.api.deps import get_db
-from granite.api.schemas import CreateCampaignRequest
+from granite.api.schemas import (
+    CreateCampaignRequest, OkResponse,
+    OkWithIdResponse, CampaignResponse, CampaignDetailResponse,
+    CampaignStatsResponse, PaginatedResponse,
+)
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
     CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow,
@@ -38,7 +42,7 @@ def _get_campaign_lock(campaign_id: int) -> threading.Lock:
         return _campaign_locks_storage[campaign_id]
 
 
-@router.post("/campaigns")
+@router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
 def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}"""
     campaign = CrmEmailCampaignRow(
@@ -48,10 +52,10 @@ def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     )
     db.add(campaign)
     db.flush()
-    return {"ok": True, "campaign_id": campaign.id}
+    return OkWithIdResponse(ok=True, id=campaign.id)
 
 
-@router.get("/campaigns")
+@router.get("/campaigns", response_model=list[CampaignResponse])
 def list_campaigns(db: Session = Depends(get_db)):
     campaigns = db.query(CrmEmailCampaignRow).order_by(CrmEmailCampaignRow.created_at.desc()).all()
     return [
@@ -118,7 +122,7 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
     return recipients
 
 
-@router.get("/campaigns/{campaign_id}")
+@router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)
 def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     """Детали кампании + предпросмотр получателей."""
     campaign = db.get(CrmEmailCampaignRow, campaign_id)
@@ -225,14 +229,17 @@ def run_campaign(campaign_id: int, request: Request):
                 if tracking_id:
                     sent += 1
                     campaign.total_sent = sent
-                    if contact:
-                        contact.funnel_stage = "email_sent"
-                        contact.email_sent_count = (contact.email_sent_count or 0) + 1
-                        contact.last_email_sent_at = datetime.now(timezone.utc)
+
+                    # FIX K3: Используем apply_outgoing_touch() вместо ручного обновления.
+                    # Ранее были пропущены: contact_count, last_contact_at,
+                    # last_contact_channel, first_contact_at, updated_at.
                     session.add(CrmTouchRow(
                         company_id=company.id, channel="email", direction="outgoing",
                         subject=subject, body=f"[tracking_id={tracking_id}]",
                     ))
+                    if contact:
+                        from granite.api.stage_transitions import apply_outgoing_touch
+                        apply_outgoing_touch(contact, "email")
                     if sent % BATCH_COMMIT == 0:
                         session.commit()
 
@@ -262,7 +269,7 @@ def run_campaign(campaign_id: int, request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-@router.get("/campaigns/{campaign_id}/stats")
+@router.get("/campaigns/{campaign_id}/stats", response_model=CampaignStatsResponse)
 def campaign_stats(campaign_id: int, db: Session = Depends(get_db)):
     """Статистика кампании."""
     campaign = db.get(CrmEmailCampaignRow, campaign_id)

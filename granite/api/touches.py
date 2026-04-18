@@ -2,22 +2,31 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from fastapi import HTTPException
+
 from granite.api.deps import get_db
-from granite.api.schemas import CreateTouchRequest
+from granite.api.schemas import (
+    CreateTouchRequest, OkWithIdResponse, TouchResponse,
+)
 from granite.api.stage_transitions import apply_outgoing_touch, apply_incoming_touch
-from granite.database import CrmTouchRow, CrmContactRow
+from granite.database import CrmTouchRow, CrmContactRow, CompanyRow
 
 __all__ = ["router"]
 
 router = APIRouter()
 
 
-@router.post("/companies/{company_id}/touches")
+@router.post("/companies/{company_id}/touches", response_model=OkWithIdResponse, status_code=201)
 def create_touch(company_id: int, data: CreateTouchRequest, db: Session = Depends(get_db)):
     """Залогировать касание.
 
     Body: {channel: email|tg|wa|manual, direction: outgoing|incoming, body?: str, subject?: str}
     """
+    # FIX H5: Проверяем существование компании перед созданием касания.
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
     touch = CrmTouchRow(
         company_id=company_id,
         channel=data.channel,
@@ -39,10 +48,10 @@ def create_touch(company_id: int, data: CreateTouchRequest, db: Session = Depend
         apply_incoming_touch(contact)
 
     db.flush()
-    return {"ok": True, "touch_id": touch.id}
+    return OkWithIdResponse(ok=True, id=touch.id)
 
 
-@router.get("/companies/{company_id}/touches")
+@router.get("/companies/{company_id}/touches", response_model=list[TouchResponse])
 def get_touches(company_id: int, db: Session = Depends(get_db)):
     """История касаний компании (новые первые)."""
     touches = (

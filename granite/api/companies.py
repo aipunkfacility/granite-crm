@@ -7,7 +7,10 @@ from sqlalchemy import String, text as sa_text
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
-from granite.api.schemas import UpdateCompanyRequest
+from granite.api.schemas import (
+    UpdateCompanyRequest, CompanyResponse, OkResponse,
+    PaginatedResponse,
+)
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
 )
@@ -51,7 +54,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
     }
 
 
-@router.get("/companies")
+@router.get("/companies", response_model=PaginatedResponse)
 def list_companies(
     db: Session = Depends(get_db),
     city: Optional[List[str]] = Query(None),
@@ -140,7 +143,7 @@ def list_companies(
     return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
-@router.get("/companies/{company_id}")
+@router.get("/companies/{company_id}", response_model=CompanyResponse)
 def get_company(company_id: int, db: Session = Depends(get_db)):
     """Карточка компании."""
     company = db.get(CompanyRow, company_id)
@@ -151,7 +154,7 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
     return _build_company_response(company, enriched, contact)
 
 
-@router.patch("/companies/{company_id}")
+@router.patch("/companies/{company_id}", response_model=OkResponse)
 def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = Depends(get_db)):
     """Обновить CRM-поля компании (funnel_stage, notes, stop_automation)."""
     contact = db.get(CrmContactRow, company_id)

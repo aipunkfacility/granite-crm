@@ -6,7 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
-from granite.api.schemas import CreateTaskRequest, UpdateTaskRequest
+from granite.api.schemas import (
+    CreateTaskRequest, UpdateTaskRequest,
+    OkWithIdResponse, OkResponse,
+    TaskDetailResponse, PaginatedResponse,
+)
 from granite.database import CrmTaskRow, CompanyRow
 
 __all__ = ["router"]
@@ -14,15 +18,25 @@ __all__ = ["router"]
 router = APIRouter()
 
 
-@router.post("/companies/{company_id}/tasks")
+@router.post("/companies/{company_id}/tasks", response_model=OkWithIdResponse, status_code=201)
 def create_task(company_id: int, data: CreateTaskRequest, db: Session = Depends(get_db)):
     """Создать задачу для компании."""
+    # FIX K5: При ошибке парсинга due_date возвращаем 422,
+    # а не молча создаём задачу с due_date=None.
     due_date = None
     if data.due_date:
         try:
             due_date = datetime.fromisoformat(data.due_date)
-        except ValueError:
-            pass
+        except ValueError as exc:
+            raise HTTPException(
+                422,
+                f"Invalid due_date format: {exc}. Expected ISO 8601, e.g. 2026-05-01T12:00",
+            )
+
+    # FIX H6: Проверяем существование компании перед созданием задачи.
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
 
     task = CrmTaskRow(
         company_id=company_id,
@@ -34,10 +48,10 @@ def create_task(company_id: int, data: CreateTaskRequest, db: Session = Depends(
     )
     db.add(task)
     db.flush()
-    return {"ok": True, "task_id": task.id}
+    return OkWithIdResponse(ok=True, id=task.id)
 
 
-@router.get("/tasks")
+@router.get("/tasks", response_model=PaginatedResponse)
 def list_tasks(
     db: Session = Depends(get_db),
     status: Optional[str] = None,
@@ -90,7 +104,7 @@ def list_tasks(
     }
 
 
-@router.get("/companies/{company_id}/tasks")
+@router.get("/companies/{company_id}/tasks", response_model=list[TaskDetailResponse])
 def list_company_tasks(
     company_id: int,
     db: Session = Depends(get_db),
@@ -120,7 +134,7 @@ def list_company_tasks(
     ]
 
 
-@router.patch("/tasks/{task_id}")
+@router.patch("/tasks/{task_id}", response_model=OkResponse)
 def update_task(task_id: int, data: UpdateTaskRequest, db: Session = Depends(get_db)):
     """Обновить задачу (статус, приоритет)."""
     task = db.get(CrmTaskRow, task_id)
@@ -134,10 +148,10 @@ def update_task(task_id: int, data: UpdateTaskRequest, db: Session = Depends(get
     if data.status == "done":
         task.completed_at = datetime.now(timezone.utc)
 
-    return {"ok": True}
+    return OkResponse(ok=True)
 
 
-@router.delete("/tasks/{task_id}")
+@router.delete("/tasks/{task_id}", response_model=OkResponse)
 def delete_task(task_id: int, db: Session = Depends(get_db)):
     """Удалить задачу."""
     task = db.get(CrmTaskRow, task_id)
@@ -145,4 +159,4 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Task not found")
     db.delete(task)
     db.flush()
-    return {"ok": True}
+    return OkResponse(ok=True)

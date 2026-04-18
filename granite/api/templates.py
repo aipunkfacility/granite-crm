@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
-from granite.api.schemas import CreateTemplateRequest, UpdateTemplateRequest
+from granite.api.schemas import (
+    CreateTemplateRequest, UpdateTemplateRequest,
+    OkResponse, TemplateResponse,
+)
 from granite.database import CrmTemplateRow, CrmEmailCampaignRow
 from loguru import logger
 
@@ -37,7 +40,7 @@ def _warn_unknown_placeholders(body: str, template_name: str) -> list[str]:
     return sorted(unknown)
 
 
-@router.get("/templates")
+@router.get("/templates", response_model=list[TemplateResponse])
 def list_templates(db: Session = Depends(get_db)):
     """Список всех шаблонов."""
     rows = db.query(CrmTemplateRow).order_by(CrmTemplateRow.name).all()
@@ -55,7 +58,7 @@ def list_templates(db: Session = Depends(get_db)):
     ]
 
 
-@router.get("/templates/{template_name}")
+@router.get("/templates/{template_name}", response_model=TemplateResponse)
 def get_template(template_name: str, db: Session = Depends(get_db)):
     """Получить шаблон по имени."""
     t = db.query(CrmTemplateRow).filter_by(name=template_name).first()
@@ -72,7 +75,7 @@ def get_template(template_name: str, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/templates", status_code=201)
+@router.post("/templates", response_model=OkResponse, status_code=201)
 def create_template(data: CreateTemplateRequest, db: Session = Depends(get_db)):
     """Создать шаблон. name — уникальный идентификатор."""
     existing = db.query(CrmTemplateRow).filter_by(name=data.name).first()
@@ -90,14 +93,10 @@ def create_template(data: CreateTemplateRequest, db: Session = Depends(get_db)):
     )
     db.add(t)
     db.flush()
-    return {
-        "ok": True,
-        "name": t.name,
-        "warnings": {"unknown_placeholders": unknown} if unknown else None,
-    }
+    return OkResponse(ok=True, warnings=unknown)
 
 
-@router.put("/templates/{template_name}")
+@router.put("/templates/{template_name}", response_model=OkResponse)
 def update_template(template_name: str, data: UpdateTemplateRequest, db: Session = Depends(get_db)):
     """Обновить шаблон (полная замена переданных полей)."""
     t = db.query(CrmTemplateRow).filter_by(name=template_name).first()
@@ -118,10 +117,10 @@ def update_template(template_name: str, data: UpdateTemplateRequest, db: Session
         if unknown:
             warnings = {"unknown_placeholders": unknown}
 
-    return {"ok": True, "warnings": warnings}
+    return OkResponse(ok=True, warnings=warnings)
 
 
-@router.delete("/templates/{template_name}")
+@router.delete("/templates/{template_name}", response_model=OkResponse)
 def delete_template(template_name: str, db: Session = Depends(get_db)):
     """Удалить шаблон.
 
@@ -146,4 +145,4 @@ def delete_template(template_name: str, db: Session = Depends(get_db)):
 
     db.delete(t)
     db.flush()
-    return {"ok": True}
+    return OkResponse(ok=True)

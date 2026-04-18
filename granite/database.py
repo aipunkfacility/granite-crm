@@ -38,7 +38,9 @@ class RawCompanyRow(Base):
     scraped_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     city = Column(String, nullable=False, index=True)
     region = Column(String, nullable=False, index=True, default="")
-    merged_into = Column(Integer, ForeignKey("companies.id"), nullable=True)
+    # FIX K6: Добавлен ondelete="SET NULL" — при удалении компании
+    # merged_into не вызовет ошибку FK, а будет очищен.
+    merged_into = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name!r})>"
@@ -283,9 +285,12 @@ class CrmEmailLogRow(Base):
     email_to = Column(String, nullable=False)
     email_subject = Column(String, default="")
     template_name = Column(String, default="")
-    campaign_id = Column(Integer, nullable=True, index=True)
+    # FIX K7: campaign_id теперь ссылается на crm_email_campaigns.id.
+    # Ранее это был plain Integer без FK — можно было указать несуществующий campaign_id.
+    campaign_id = Column(Integer, ForeignKey("crm_email_campaigns.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    status = Column(String, default="pending")
+    # FIX M2: Добавлен индекс на status для мониторинга ошибок рассылок.
+    status = Column(String, default="pending", index=True)
 
     sent_at = Column(DateTime, nullable=True)
     opened_at = Column(DateTime, nullable=True)

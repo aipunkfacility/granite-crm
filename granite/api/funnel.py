@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from granite.api.deps import get_db
+from granite.api.schemas import FunnelResponse
 from granite.database import CrmContactRow
 
 __all__ = ["router"]
@@ -16,7 +17,7 @@ FUNNEL_ORDER = [
 ]
 
 
-@router.get("/funnel")
+@router.get("/funnel", response_model=FunnelResponse)
 def get_funnel(db: Session = Depends(get_db)):
     """Количество контактов по каждой стадии воронки."""
     rows = (

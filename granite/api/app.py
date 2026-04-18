@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 import yaml
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text as sa_text
 from loguru import logger
 
@@ -87,14 +88,53 @@ def _get_cors_origins() -> list[str]:
 
 app = FastAPI(title="Granite CRM API", version="0.1.0", lifespan=lifespan)
 
+# FIX K2: Ограничиваем CORS-методы и заголовки вместо wildcard.
+# Ранее allow_methods=["*"] и allow_headers=["*"] позволяли
+# любые HTTP-методы и заголовки, что избыточно для CRM API.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_get_cors_origins(),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS", "HEAD"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "Accept"],
+    allow_credentials=True,
 )
 
-from granite.api import companies, touches, tasks, tracking, campaigns, followup, funnel, messenger, templates, stats
+
+# FIX K1: API-key аутентификация.
+# Если переменная GRANITE_API_KEY не задана — аутентификация отключена (dev-режим).
+# Если задана — все /api/v1/* запросы требуют заголовок X-API-Key.
+# /health, /docs, /openapi.json, /redoc — доступны без ключа.
+@app.middleware("http")
+async def api_key_auth_middleware(request: Request, call_next):
+    # Пропускаем без аутентификации:
+    # - non-API маршруты (health, docs, openapi.json, redoc)
+    # - OPTIONS (preflight для CORS)
+    skip_paths = ("/health", "/docs", "/openapi.json", "/redoc")
+    if (
+        not request.url.path.startswith("/api/v1/")
+        or request.url.path in skip_paths
+        or request.method == "OPTIONS"
+    ):
+        return await call_next(request)
+
+    expected_key = os.environ.get("GRANITE_API_KEY", "")
+    if not expected_key:
+        # Ключ не настроен — пропускаем без проверки (dev-режим)
+        return await call_next(request)
+
+    provided_key = request.headers.get("X-API-Key", "")
+    if not provided_key or provided_key != expected_key:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Invalid or missing API key. Set X-API-Key header."},
+        )
+
+    return await call_next(request)
+
+from granite.api import (
+    companies, touches, tasks, tracking, campaigns,
+    followup, funnel, messenger, templates, stats,
+)
 app.include_router(companies.router, prefix="/api/v1", tags=["companies"])
 app.include_router(touches.router, prefix="/api/v1", tags=["touches"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["tasks"])

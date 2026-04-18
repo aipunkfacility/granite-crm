@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
-from granite.api.schemas import SendMessageRequest
+from granite.api.schemas import SendMessageRequest, MessengerResultResponse
 from granite.database import CompanyRow, EnrichedCompanyRow, CrmTemplateRow
 from granite.messenger.dispatcher import MessengerDispatcher
 
@@ -11,7 +11,7 @@ __all__ = ["router"]
 router = APIRouter()
 
 
-@router.post("/companies/{company_id}/send")
+@router.post("/companies/{company_id}/send", response_model=MessengerResultResponse)
 def send_message(
     company_id: int,
     data: SendMessageRequest,
@@ -29,6 +29,14 @@ def send_message(
     company = db.get(CompanyRow, company_id)
     if not company:
         raise HTTPException(404, "Company not found")
+
+    # FIX K4: Проверяем stop_automation перед отправкой сообщения.
+    # Без этой проверки можно было отправить сообщение компании,
+    # которая отписалась (stop_automation=True).
+    from granite.database import CrmContactRow
+    contact = db.get(CrmContactRow, company_id)
+    if contact and contact.stop_automation:
+        raise HTTPException(409, "Automation stopped for this company")
 
     enriched = db.get(EnrichedCompanyRow, company_id)
     messengers = enriched.messengers or {} if enriched else {}
