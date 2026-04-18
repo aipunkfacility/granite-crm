@@ -66,8 +66,10 @@ def get_followup_queue(
             days_since = (now - last_aware).days
             if days_since < days_required:
                 continue
-        # Для stage "new" (days=0): показывать только если ещё не было касаний
-        if stage == "new" and last is not None:
+        # FIX MISS-8: Для stage "new" проверять email_sent_count, не last_contact_at.
+        # last_contact_at может быть установлен при ручном логировании touch,
+        # но компания всё ещё "новая" в воронке.
+        if stage == "new" and (contact.email_sent_count or 0) > 0:
             continue
 
         # Проверяем доступность канала
@@ -89,7 +91,7 @@ def get_followup_queue(
             "city": company.city,
             "funnel_stage": stage,
             "days_since_last_contact": (
-                (now - last.replace(tzinfo=timezone.utc) if last.tzinfo is None else now - last).days
+                (now - (last.replace(tzinfo=timezone.utc) if last.tzinfo is None else last)).days
                 if last else 999
             ),
             "recommended_channel": channel,

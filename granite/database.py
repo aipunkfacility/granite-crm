@@ -10,6 +10,7 @@ from sqlalchemy import (
     Text,
     JSON,
     ForeignKey,
+    Index,
     event,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
@@ -104,6 +105,7 @@ class EnrichedCompanyRow(Base):
     website = Column(String, nullable=True)
     emails = Column(JSON, default=list)
     city = Column(String, nullable=False, index=True)
+    region = Column(String, nullable=False, default="", index=True)
 
     # Обогащенные данные
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "whatsapp": "..."}
@@ -131,6 +133,7 @@ class EnrichedCompanyRow(Base):
             "website": self.website,
             "emails": self.emails or [],
             "city": self.city,
+            "region": self.region or "",
             "messengers": self.messengers or {},
             "tg_trust": self.tg_trust or {},
             "cms": self.cms,
@@ -155,6 +158,11 @@ VALID_STAGES = {
 class CrmContactRow(Base):
     """Главная CRM-запись для компании. Создаётся SEED-скриптом для всех companies."""
     __tablename__ = "crm_contacts"
+
+    # FIX ARCH-4: составной индекс для follow-up запроса (funnel_stage + stop_automation)
+    __table_args__ = (
+        Index('ix_crm_contacts_funnel_stop', 'funnel_stage', 'stop_automation'),
+    )
 
     company_id = Column(
         Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True

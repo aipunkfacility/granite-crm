@@ -12,6 +12,7 @@ def apply_outgoing_touch(contact, channel: str) -> None:
     contact.contact_count = (contact.contact_count or 0) + 1
     contact.last_contact_at = now
     contact.last_contact_channel = channel
+    contact.updated_at = now  # FIX MISS-4: onupdate не работает через setattr
     if not contact.first_contact_at:
         contact.first_contact_at = now
 
@@ -37,6 +38,7 @@ def apply_incoming_touch(contact) -> None:
     now = datetime.now(timezone.utc)
     contact.contact_count = (contact.contact_count or 0) + 1
     contact.last_contact_at = now
+    contact.updated_at = now  # FIX MISS-4: onupdate не работает через setattr
     contact.stop_automation = 1
     if contact.funnel_stage not in ("interested", "not_interested"):
         contact.funnel_stage = "replied"

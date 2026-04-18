@@ -2,7 +2,6 @@
 import json
 import os
 import threading
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -23,10 +22,20 @@ __all__ = ["router"]
 
 router = APIRouter()
 
-# FIX 3.13: In-memory lock для предотвращения параллельного запуска одной кампании.
-# defaultdict(threading.Lock) создаёт уникальный Lock для каждого campaign_id.
-# Без блокировки: два POST /campaigns/1/run → две копии рассылки.
-_campaign_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
+# FIX BUG-3: Потокобезопасное управление блокировками кампаний.
+# defaultdict(threading.Lock) НЕ потокобезопасен: при одновременном доступе
+# к несуществующему campaign_id оба потока могут пройти через __missing__
+# до записи Lock в dict. Решение: мета-лок + явная проверка.
+_campaign_locks_storage: dict[int, threading.Lock] = {}
+_campaign_locks_meta = threading.Lock()
+
+
+def _get_campaign_lock(campaign_id: int) -> threading.Lock:
+    """Получить или создать Lock для campaign_id (потокобезопасно)."""
+    with _campaign_locks_meta:
+        if campaign_id not in _campaign_locks_storage:
+            _campaign_locks_storage[campaign_id] = threading.Lock()
+        return _campaign_locks_storage[campaign_id]
 
 
 @router.post("/campaigns")
@@ -140,8 +149,8 @@ def run_campaign(campaign_id: int, request: Request):
     Batch commits: каждые 10 отправок.
     Interruption: try/finally ставит status="paused" при обрыве SSE.
     """
-    # FIX 3.13: Проверяем, не запущена ли уже эта кампания
-    lock = _campaign_locks[campaign_id]
+    # FIX BUG-3: Проверяем, не запущена ли уже эта кампания
+    lock = _get_campaign_lock(campaign_id)
     if not lock.acquire(blocking=False):
         return StreamingResponse(
             iter([f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"]),
@@ -167,8 +176,9 @@ def run_campaign(campaign_id: int, request: Request):
                 yield f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"
                 return
 
-            if campaign.status == "running":
-                yield f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"
+            # FIX MISS-10: Запрещаем перезапуск завершённых и активных кампаний
+            if campaign.status in ("running", "completed"):
+                yield f"data: {json.dumps({'error': f'Cannot restart campaign in status {campaign.status}'})}\n\n"
                 return
 
             template = session.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()

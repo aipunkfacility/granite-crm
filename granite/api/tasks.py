@@ -43,11 +43,18 @@ def list_tasks(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     company_id: Optional[int] = None,
+    include_unlinked: bool = False,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
 ):
-    """Список задач с фильтрами. По умолчанию — только привязанные к компании."""
-    q = db.query(CrmTaskRow).filter(CrmTaskRow.company_id.isnot(None))
+    """Список задач с фильтрами. По умолчанию — только привязанные к компании.
+
+    FIX MISS-5: Параметр include_unlinked=True позволяет просмотреть
+    все задачи, включая не привязанные к компании.
+    """
+    q = db.query(CrmTaskRow)
+    if not include_unlinked:
+        q = q.filter(CrmTaskRow.company_id.isnot(None))
     if status:
         q = q.filter_by(status=status)
     if priority:

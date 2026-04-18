@@ -1,5 +1,6 @@
 """Templates API: CRUD шаблонов сообщений."""
 import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -106,6 +107,10 @@ def update_template(template_name: str, data: UpdateTemplateRequest, db: Session
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(t, key, value)
+
+    # FIX MISS-1: Явно обновляем updated_at при PUT.
+    # onupdate в SQLAlchemy ORM не работает при setattr + session.commit().
+    t.updated_at = datetime.now(timezone.utc)
 
     warnings = None
     if data.body is not None:

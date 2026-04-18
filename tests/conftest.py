@@ -76,9 +76,12 @@ def client(engine):
         finally:
             session.close()
 
-    app.dependency_overrides[get_db] = get_test_db
+    # FIX BUG-5: Сохраняем оригинальное значение app.state.Session
+    # и восстанавливаем после теста. app — синглтон модуля, без этого
+    # значение «утекает» между тестами (особенно с pytest-xdist).
+    original_session = getattr(app.state, 'Session', None)
 
-    # Expose test Session factory for /health DB-ping
+    app.dependency_overrides[get_db] = get_test_db
     app.state.Session = TestSession
 
     try:
@@ -86,3 +89,4 @@ def client(engine):
             yield c
     finally:
         app.dependency_overrides.clear()
+        app.state.Session = original_session

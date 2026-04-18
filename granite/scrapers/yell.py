@@ -138,7 +138,7 @@ class YellScraper(BaseScraper):
             await page.wait_for_load_state("domcontentloaded", timeout=20000)
 
             # Извлекаем карточки с текущей страницы
-            page_companies = await self._extract_companies(page, seen_names)
+            page_companies = await self._extract_companies(page, seen_names, start_url)
             companies.extend(page_companies)
             pages_loaded += 1
 
@@ -166,7 +166,7 @@ class YellScraper(BaseScraper):
                     await page.wait_for_timeout(2000 + random.randint(500, 1500))
 
                     pages_loaded += 1
-                    new_companies = await self._extract_companies(page, seen_names)
+                    new_companies = await self._extract_companies(page, seen_names, start_url)
                     companies.extend(new_companies)
 
                     if not new_companies:

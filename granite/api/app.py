@@ -51,6 +51,14 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # FIX MISS-11: Закрываем httpx.AsyncClient при shutdown.
+    # Без этого — ResourceWarning: Unclosed client session в тестах и при перезагрузке.
+    try:
+        from granite.http_client import close_async_client
+        await close_async_client()
+    except Exception:
+        pass
+
     db.engine.dispose()
     logger.info("CRM API stopped.")
 
