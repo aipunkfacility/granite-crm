@@ -5,7 +5,7 @@ from sqlalchemy import func
 
 from granite.api.deps import get_db
 from granite.api.schemas import FunnelResponse
-from granite.database import CrmContactRow
+from granite.database import CrmContactRow, CompanyRow
 
 __all__ = ["router"]
 
@@ -22,6 +22,8 @@ def get_funnel(db: Session = Depends(get_db)):
     """Количество контактов по каждой стадии воронки."""
     rows = (
         db.query(CrmContactRow.funnel_stage, func.count())
+        .join(CompanyRow, CrmContactRow.company_id == CompanyRow.id)
+        .filter(CompanyRow.deleted_at.is_(None))
         .group_by(CrmContactRow.funnel_stage)
         .all()
     )

@@ -112,6 +112,7 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
             CompanyRow.emails.isnot(None),
             CompanyRow.emails.cast(String) != "[]",
             CompanyRow.emails.cast(String) != "",
+            CompanyRow.deleted_at.is_(None),
         )
     )
 

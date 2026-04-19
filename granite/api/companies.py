@@ -78,6 +78,7 @@ def list_companies(
         db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
         .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
         .outerjoin(CrmContactRow, CompanyRow.id == CrmContactRow.company_id)
+        .filter(CompanyRow.deleted_at.is_(None))
     )
 
     if city:
@@ -148,7 +149,10 @@ def list_companies(
 @router.get("/companies/{company_id}", response_model=CompanyResponse)
 def get_company(company_id: int, db: Session = Depends(get_db)):
     """Карточка компании."""
-    company = db.get(CompanyRow, company_id)
+    company = db.query(CompanyRow).filter(
+        CompanyRow.id == company_id,
+        CompanyRow.deleted_at.is_(None),
+    ).first()
     if not company:
         raise HTTPException(404, "Company not found")
     enriched = db.get(EnrichedCompanyRow, company_id)
@@ -360,7 +364,7 @@ def list_cities(
     """
     rows = (
         db.query(CompanyRow.city)
-        .filter(CompanyRow.city.isnot(None), CompanyRow.city != "")
+        .filter(CompanyRow.city.isnot(None), CompanyRow.city != "", CompanyRow.deleted_at.is_(None))
         .distinct()
         .order_by(CompanyRow.city)
         .all()
@@ -385,7 +389,7 @@ def list_regions(
     """
     rows = (
         db.query(CompanyRow.region)
-        .filter(CompanyRow.region.isnot(None), CompanyRow.region != "")
+        .filter(CompanyRow.region.isnot(None), CompanyRow.region != "", CompanyRow.deleted_at.is_(None))
         .distinct()
         .order_by(CompanyRow.region)
         .all()

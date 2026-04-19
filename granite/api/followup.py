@@ -46,6 +46,7 @@ def get_followup_queue(
         .filter(
             CrmContactRow.funnel_stage.in_(list(STAGE_NEXT_ACTION.keys())),
             CrmContactRow.stop_automation == 0,
+            CompanyRow.deleted_at.is_(None),
         )
     )
     if city:

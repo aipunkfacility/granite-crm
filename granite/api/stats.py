@@ -33,17 +33,19 @@ def get_stats(
     Все агрегации выполняются на стороне SQL (func.count, GROUP BY) —
     не загружаем данные в память Python.
     """
-    # Базовый фильтр по городу (если указан)
-    city_filter = [CompanyRow.city == city] if city else []
+    # Базовый фильтр: только активные (не удалённые) компании
+    base_filter = [CompanyRow.deleted_at.is_(None)]
+    if city:
+        base_filter.append(CompanyRow.city == city)
 
     # --- Total companies ---
-    total = db.query(func.count(CompanyRow.id)).filter(*city_filter).scalar()
+    total = db.query(func.count(CompanyRow.id)).filter(*base_filter).scalar()
 
     # --- Воронка: count по funnel_stage из crm_contacts ---
     funnel_q = (
         db.query(CrmContactRow.funnel_stage, func.count())
         .join(CompanyRow, CrmContactRow.company_id == CompanyRow.id)
-        .filter(*city_filter)
+        .filter(*base_filter)
         .group_by(CrmContactRow.funnel_stage)
         .all()
     )
@@ -53,7 +55,7 @@ def get_stats(
     segment_q = (
         db.query(EnrichedCompanyRow.segment, func.count())
         .join(CompanyRow, EnrichedCompanyRow.id == CompanyRow.id)
-        .filter(*city_filter)
+        .filter(*base_filter)
         .group_by(EnrichedCompanyRow.segment)
         .all()
     )
@@ -62,7 +64,7 @@ def get_stats(
     # --- Топ-10 городов ---
     city_q = (
         db.query(CompanyRow.city, func.count().label("cnt"))
-        .filter(CompanyRow.city.isnot(None), CompanyRow.city != "")
+        .filter(CompanyRow.city.isnot(None), CompanyRow.city != "", CompanyRow.deleted_at.is_(None))
         .group_by(CompanyRow.city)
         .order_by(func.count().desc())
         .limit(10)
@@ -78,7 +80,7 @@ def get_stats(
         .filter(
             sa_text("json_extract(enriched_companies.messengers, '$.telegram') IS NOT NULL"),
             sa_text("json_extract(enriched_companies.messengers, '$.telegram') != ''"),
-            *city_filter,
+            *base_filter,
         )
         .scalar()
     )
@@ -89,7 +91,7 @@ def get_stats(
         .filter(
             sa_text("json_extract(enriched_companies.messengers, '$.whatsapp') IS NOT NULL"),
             sa_text("json_extract(enriched_companies.messengers, '$.whatsapp') != ''"),
-            *city_filter,
+            *base_filter,
         )
         .scalar()
     )
@@ -101,7 +103,7 @@ def get_stats(
             CompanyRow.emails.isnot(None),
             CompanyRow.emails.cast(String) != "[]",
             CompanyRow.emails.cast(String) != "",
-            *city_filter,
+            *base_filter,
         )
         .scalar()
     )

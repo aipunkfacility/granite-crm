@@ -47,6 +47,7 @@ def pipeline_status(
     )
     comp_counts = dict(
         db.query(CompanyRow.city, func.count(CompanyRow.id))
+        .filter(CompanyRow.deleted_at.is_(None))
         .group_by(CompanyRow.city).all()
     )
     enriched_counts = dict(

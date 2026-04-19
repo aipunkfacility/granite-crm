@@ -69,6 +69,10 @@ def list_tasks(
     )
     if not include_unlinked:
         q = q.filter(CrmTaskRow.company_id.isnot(None))
+    # Не показывать задачи привязанные к удалённым компаниям
+    q = q.filter(
+        (CompanyRow.id == None) | (CompanyRow.deleted_at.is_(None))
+    )
     if status:
         q = q.filter(CrmTaskRow.status == status)
     if priority:
