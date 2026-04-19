@@ -46,14 +46,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    conn = op.get_bind()
-
-    # Убрать updated_at
-    col_exists = conn.execute(text(
-        "SELECT COUNT(*) FROM pragma_table_info('crm_email_campaigns') WHERE name='updated_at'"
-    )).scalar()
-    if col_exists:
-        with op.batch_alter_table('crm_email_campaigns', schema=None) as batch_op:
-            batch_op.drop_column('updated_at')
-
-    # task_type 'call': нет обратной миграции данных (необратимо)
+    # FIX AUDIT-3 #13: data migration (call → other) необратима.
+    # Ранее downgrade молча удалял updated_at, но не восстанавливал
+    # task_type='call', создавая частичный откат и неконсистентное состояние.
+    raise NotImplementedError(
+        "Cannot reverse data migration 'call → other'. "
+        "This migration is partially irreversible."
+    )

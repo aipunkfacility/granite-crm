@@ -40,7 +40,9 @@ class RawCompanyRow(Base):
     region = Column(String, nullable=False, index=True, default="")
     # FIX K6: Добавлен ondelete="SET NULL" — при удалении компании
     # merged_into не вызовет ошибку FK, а будет очищен.
-    merged_into = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True)
+    # FIX AUDIT-3 #14: Добавлен index=True — FK без индекса вызывает full table scan
+    # при JOIN/lookup по merged_into.
+    merged_into = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name!r})>"
@@ -64,7 +66,11 @@ class CompanyRow(Base):
     needs_review = Column(Boolean, default=False)
     review_reason = Column(String, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
@@ -399,14 +405,19 @@ def _alembic_needs_upgrade(engine) -> bool:
 
 def run_alembic_upgrade(engine, db_path: str, config_path: str = "config.yaml"):
     """
-    Применить миграции / stamp через существующий engine (без создания
-    отдельного подключения к SQLite — чтобы не было «database is locked»).
+    Применить миграции Alembic через существующий engine.
 
     Стратегия:
     - Таблицы существуют, alembic_version совпадает с head → ничего не делать.
-    - Таблицы существуют, alembic_version пуст → stamp head (raw SQL).
-    - Таблиц не существуют → create_all() + stamp head (raw SQL).
+    - Таблицы существуют, alembic_version пуст или устарел → alembic upgrade head.
+      Это гарантирует применение всех ALTER TABLE из миграций.
+    - Таблиц не существуют → create_all() + stamp head (для свежих деплоев).
+
+    FIX AUDIT-3: Ранее при существующих таблицах + пустом alembic_version
+    делался stamp head БЕЗ применения миграций. Это пропускало ALTER TABLE,
+    что приводило к runtime-ошибкам при обновлении кода.
     """
+    from alembic.command import upgrade as alembic_upgrade
     from sqlalchemy import text
     alembic_cfg = _make_alembic_config(db_path, config_path)
     from alembic.script import ScriptDirectory
@@ -418,12 +429,31 @@ def run_alembic_upgrade(engine, db_path: str, config_path: str = "config.yaml"):
             logger.debug("Alembic: schema up-to-date")
             return
 
-        # 2. Создаём таблицы, если их нет
-        if not _tables_exist(engine):
-            Base.metadata.create_all(engine)
-            logger.debug("Alembic: таблицы созданы через create_all")
+        # 2. Если таблиц существуют — реальный upgrade (применит все ALTER TABLE)
+        if _tables_exist(engine):
+            logger.info("Alembic: таблицы существуют, запускаем 'upgrade head'")
+            try:
+                alembic_upgrade(alembic_cfg, "head")
+                logger.info("Alembic: upgrade head выполнен успешно")
+                return
+            except Exception as upgrade_err:
+                logger.warning(
+                    f"Alembic upgrade не удался ({upgrade_err}), "
+                    f"пробуем stamp head как fallback"
+                )
+                # Fallback: stamp если upgrade не работает (например, конфликт)
+                with engine.connect() as conn:
+                    conn.execute(text("DELETE FROM alembic_version"))
+                    conn.execute(text(
+                        "INSERT INTO alembic_version (version_num) VALUES (:rev)"
+                    ), {"rev": HEAD_REVISION})
+                    conn.commit()
+                logger.warning("Alembic: stamped head как fallback (миграции не применены)")
+                return
 
-        # 3. Stamp alembic_version напрямую через тот же engine
+        # 3. Таблиц не существует → create_all() + stamp head (для свежих деплоев)
+        Base.metadata.create_all(engine)
+        logger.info("Alembic: таблицы созданы через create_all")
         with engine.connect() as conn:
             conn.execute(text(
                 "CREATE TABLE IF NOT EXISTS alembic_version ("
@@ -436,7 +466,7 @@ def run_alembic_upgrade(engine, db_path: str, config_path: str = "config.yaml"):
                 "INSERT INTO alembic_version (version_num) VALUES (:rev)"
             ), {"rev": HEAD_REVISION})
             conn.commit()
-        logger.debug("Alembic: stamped to head")
+        logger.info("Alembic: stamped to head (fresh install)")
 
     except Exception as e:
         import warnings

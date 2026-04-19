@@ -3,6 +3,7 @@
 Запуск: python cli.py api
    или: uvicorn granite.api.app:app --reload
 """
+import hmac
 import os
 from contextlib import asynccontextmanager
 
@@ -113,6 +114,7 @@ async def api_key_auth_middleware(request: Request, call_next):
     if (
         not request.url.path.startswith("/api/v1/")
         or request.url.path in skip_paths
+        or request.url.path.startswith("/api/v1/track/")
         or request.method == "OPTIONS"
     ):
         return await call_next(request)
@@ -123,7 +125,7 @@ async def api_key_auth_middleware(request: Request, call_next):
         return await call_next(request)
 
     provided_key = request.headers.get("X-API-Key", "")
-    if not provided_key or provided_key != expected_key:
+    if not provided_key or not hmac.compare_digest(provided_key, expected_key):
         return JSONResponse(
             status_code=401,
             content={"detail": "Invalid or missing API key. Set X-API-Key header."},

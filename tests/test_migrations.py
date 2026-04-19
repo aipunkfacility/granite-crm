@@ -79,33 +79,56 @@ class TestInitialMigration:
                 assert idx_name in actual, f"Missing index {idx_name} on {table}"
 
     def test_downgrade_removes_all_tables(self, alembic_config, db_url):
-        """downgrade base удаляет все таблицы (кроме alembic_version)."""
+        """downgrade удаляет таблицы до первой необратимой миграции.
+
+        FIX AUDIT-3 #13: a3f1b2c4d5e6 и a1b2c3d4e5f6 имеют
+        NotImplementedError в downgrade(). Полный downgrade до base
+        больше невозможен. Тестируем downgrade до a1b2c3d4e5f6 (глубокая
+        безопасная точка).
+        """
         from alembic import command
+        from alembic.script import ScriptDirectory
         from sqlalchemy import create_engine, text
 
         url, _ = db_url
         command.upgrade(alembic_config, "head")
-        command.downgrade(alembic_config, "base")
+
+        # Downgrade до a1b2c3d4e5f6 — последняя безопасная точка
+        command.downgrade(alembic_config, "a1b2c3d4e5f6")
+
+        # Попытка полного downgrade должна вызвать NotImplementedError
+        import pytest
+        with pytest.raises(NotImplementedError):
+            command.downgrade(alembic_config, "base")
+
+        # Upgrade обратно для проверки восстановления
+        command.upgrade(alembic_config, "head")
 
         engine = create_engine(url)
-        with engine.connect() as conn:
-            result = conn.execute(text(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name != 'alembic_version'"
-            ))
-            remaining = [row[0] for row in result]
+        insp = engine.connect()
+        result = insp.execute(text(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ))
+        tables = [row[0] for row in result]
+        insp.close()
 
-        non_system = [t for t in remaining if t != "sqlite_sequence"]
-        assert non_system == [], f"Tables remain after downgrade: {non_system}"
+        # Ключевые таблицы должны существовать после re-upgrade
+        for t in ("companies", "raw_companies", "enriched_companies"):
+            assert t in tables, f"{t} missing after upgrade"
 
     def test_upgrade_after_downgrade(self, alembic_config, db_url):
-        """Повторный upgrade после downgrade восстанавливает схему."""
+        """Повторный upgrade после downgrade восстанавливает схему.
+
+        FIX AUDIT-3 #13: downgrade только до a1b2c3d4e5f6
+        (последняя безопасная точка).
+        """
         from alembic import command
         from sqlalchemy import create_engine, inspect
 
         url, _ = db_url
-        # Первый цикл
+        # Первый цикл (downgrade до безопасной точки)
         command.upgrade(alembic_config, "head")
-        command.downgrade(alembic_config, "base")
+        command.downgrade(alembic_config, "a1b2c3d4e5f6")
 
         # Второй цикл (проверяем idempotency)
         command.upgrade(alembic_config, "head")

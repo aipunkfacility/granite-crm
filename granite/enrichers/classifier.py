@@ -55,6 +55,12 @@ class Classifier:
             except (TypeError, ValueError):
                 pass
 
+            # FIX AUDIT-5 #12: Бот-автоответчик — не живой контакт.
+            # Без штрафа TG-бот получал +11 (trust_score=-2 × multiplier=2 + 15 base),
+            # что выше живого WhatsApp (+10). Штраф -10 делает бота < WA.
+            if tg_trust.get("is_bot"):
+                score -= 10
+
         if messengers.get("whatsapp"):
             score += self.weights.get("has_whatsapp", 0)
 

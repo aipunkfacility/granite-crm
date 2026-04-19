@@ -6,6 +6,7 @@
     tracking_id = sender.send(company_id=42, email_to="info@company.ru",
                               template_name="cold_email_1")
 """
+import html
 import os
 import secrets
 import smtplib
@@ -79,7 +80,7 @@ class EmailSender:
         pixel_url = f"{self.base_url}/api/v1/track/open/{tracking_id}.png"
 
         body_html = (
-            f"<pre style='font-family:sans-serif;white-space:pre-wrap'>{body_text}</pre>"
+            f"<pre style='font-family:sans-serif;white-space:pre-wrap'>{html.escape(body_text)}</pre>"
             f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
         )
 

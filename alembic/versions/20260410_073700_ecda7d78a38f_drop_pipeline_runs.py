@@ -27,6 +27,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Данные pipeline_runs не восстанавливаются — таблица была deprecated/пустой.
-    # Не создаём таблицу при откате, чтобы downgrade base оставлял БД чистой.
-    pass
+    # FIX AUDIT-3 #13: Нельзя восстановить удалённую таблицу без схемы.
+    # Ранее `pass` молча пропускал откат, создавая иллюзию обратимости.
+    raise NotImplementedError(
+        "Cannot restore dropped 'pipeline_runs' table. "
+        "This migration is one-way (irreversible)."
+    )
