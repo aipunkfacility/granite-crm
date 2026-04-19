@@ -318,19 +318,20 @@ class JspravScraper(BaseScraper):
                     logger.error(f"  JSprav error ({_sanitize_url_for_log(url)}): {e}")
                     continue  # не теряем набранные компании при ошибке страницы
 
-            # Всегда помечаем что нужен Playwright fallback если есть declared_total
-            # и мы не добрали — scraping_phase.py запустит JspravPlaywrightScraper
+            # Playwright fallback: запускается только если ИЗВЕСТНО что недобрали.
+            # Порог: <90% от declared_total. Если declared_total неизвестен —
+            # НЕ запускаем PW автоматически (jsprav JSON-LD обычно собирает всё).
             cat_count = len(companies) - companies_before
-            if declared_total is not None and cat_count < declared_total:
+            threshold = self.source_config.get("playwright_threshold", 0.9)
+            if declared_total is not None and cat_count < declared_total * threshold:
                 self._needs_playwright = True
                 logger.warning(
-                    f"  JSprav: получено {cat_count} из {declared_total} для {self.city}/{category}. "
-                    f"Потрібен Playwright fallback для добора."
+                    f"  JSprav: получено {cat_count} из {declared_total} "
+                    f"({cat_count * 100 // declared_total}%) для {self.city}/{category}. "
+                    f"Порог <{threshold * 100:.0f}%, нужен Playwright fallback."
                 )
-            elif declared_total is None and cat_count > 0:
-                # declared_total не найден — тоже помечаем для PW на всякий случай
-                # (jsprav может скрывать summary на некоторых городах)
-                self._needs_playwright = True
+            # declared_total неизвестен — НЕ запускаем PW автоматически
+            # (JSON-LD собрал что мог, PW fallback — только при явном недоборе)
 
         # ═══════════════════════════════════════════════════════════════
         #  Второй проход: enrichment detail-страниц — мессенджеры, сайт, email

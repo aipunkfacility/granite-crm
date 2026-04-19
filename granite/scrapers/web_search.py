@@ -735,18 +735,20 @@ class WebSearchScraper(BaseScraper):
 
         logger.info(f"  WebSearch: обогащено {enriched}/{len(seen_domains)} сайтов")
 
-        # Фильтруем компании без российских телефонов +7 (после обогащения)
-        if companies:
+        # Фильтр по российскому телефону ВЫКЛЮЧЕН.
+        # Раньше: компании без найденного телефона отбрасывались (30-50% потерь).
+        # Теперь: все компании попадают в raw_companies, фильтрация на этапе дедупликации.
+        # Если нужен — включить через config: sources.web_search.require_ru_phone: true
+        require_ru_phone = self.source_config.get("require_ru_phone", False)
+        if require_ru_phone and companies:
             before = len(companies)
             filtered = []
             for c in companies:
-                # Пропускаем если есть хотя бы один российский телефон (начинается с 7)
                 has_ru_phone = any(
                     p.startswith("7") and len(p) == 11
                     for p in c.phones
                 )
                 if has_ru_phone:
-                    # Есть российский телефон — оставляем
                     filtered.append(c)
                 else:
                     logger.debug(
@@ -755,7 +757,7 @@ class WebSearchScraper(BaseScraper):
             companies = filtered
             if len(companies) < before:
                 logger.info(
-                    f"  WebSearch: отфильтровано {before - len(companies)} нероссийских компаний"
+                    f"  WebSearch: отфильтровано {before - len(companies)} без российских телефонов"
                 )
 
         return companies

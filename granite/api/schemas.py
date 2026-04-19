@@ -87,6 +87,18 @@ class SendMessageRequest(BaseModel):
     text: Optional[str] = None
 
 
+class PipelineRunRequest(BaseModel):
+    """Запрос на запуск пайплайна для города."""
+    city: str = Field(..., min_length=1, description="Название города или 'all'")
+    force: bool = Field(False, description="Очистить старые данные")
+    re_enrich: bool = Field(False, description="Только обогащение")
+
+
+class MergeRequest(BaseModel):
+    """Запрос на слияние компаний."""
+    source_ids: List[int] = Field(..., min_length=1, description="ID компаний для слияния в текущую")
+
+
 # ============================================================
 # Response-модели (документирование OpenAPI-ответов)
 # ============================================================

@@ -1,4 +1,4 @@
-"""Companies API: список, карточка, обновление CRM-полей."""
+"""Companies API: список, карточка, обновление CRM-полей, similar, merge."""
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -9,11 +9,12 @@ from sqlalchemy.orm import Session
 from granite.api.deps import get_db
 from granite.api.schemas import (
     UpdateCompanyRequest, CompanyResponse, OkResponse,
-    PaginatedResponse,
+    PaginatedResponse, MergeRequest,
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
 )
+from granite.utils import extract_domain, normalize_phones
 from loguru import logger
 
 __all__ = ["router"]
@@ -178,6 +179,171 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
         setattr(contact, key, value)
     contact.updated_at = datetime.now(timezone.utc)
     return {"ok": True}
+
+
+@router.get("/companies/{company_id}/similar")
+def get_similar_companies(
+    company_id: int,
+    db: Session = Depends(get_db),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Найти компании, похожие на данную.
+
+    Критерии similar:
+    - Общий номер телефона (любой из списка)
+    - Общий домен сайта
+    Возвращает список похожих компаний (без текущей).
+    """
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    similar_ids = set()
+
+    # 1. Общие телефоны (json_each для SQLite JSON-массивов)
+    if company.phones:
+        for phone in company.phones:
+            phone_matches = db.execute(
+                sa_text(
+                    "SELECT c.id FROM companies c, json_each(c.phones) AS j "
+                    "WHERE j.value = :phone AND c.id != :cid AND c.deleted_at IS NULL"
+                ),
+                {"phone": phone, "cid": company_id},
+            ).fetchall()
+            for row in phone_matches:
+                similar_ids.add(row[0])
+
+    # 2. Общий домен сайта
+    if company.website:
+        domain = extract_domain(company.website)
+        if domain:
+            all_companies = db.query(CompanyRow).filter(
+                CompanyRow.id != company_id,
+                CompanyRow.website.isnot(None),
+                CompanyRow.website != "",
+                CompanyRow.deleted_at.is_(None),
+            ).all()
+            for c in all_companies:
+                if c.website and extract_domain(c.website) == domain:
+                    similar_ids.add(c.id)
+
+    if not similar_ids:
+        return {"company_id": company_id, "similar": [], "total": 0}
+
+    # Загружаем похожие компании с enriched данными
+    rows = (
+        db.query(CompanyRow, EnrichedCompanyRow)
+        .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
+        .filter(CompanyRow.id.in_(similar_ids))
+        .limit(limit)
+        .all()
+    )
+
+    similar = []
+    for c, e in rows:
+        entry = {
+            "id": c.id,
+            "name": c.name_best,
+            "phones": c.phones or [],
+            "website": c.website,
+            "city": c.city,
+            "segment": e.segment if e else None,
+            "crm_score": e.crm_score if e else 0,
+        }
+
+        # Определяем причину similar
+        reasons = []
+        if company.phones and c.phones:
+            shared = set(company.phones) & set(c.phones)
+            if shared:
+                reasons.append("shared_phone")
+        if company.website and c.website:
+            if extract_domain(company.website) == extract_domain(c.website):
+                reasons.append("shared_domain")
+        entry["match_reason"] = reasons
+        similar.append(entry)
+
+    return {"company_id": company_id, "similar": similar, "total": len(similar)}
+
+
+@router.patch("/companies/{company_id}/merge", response_model=OkResponse)
+def merge_companies(
+    company_id: int,
+    body: MergeRequest,
+    db: Session = Depends(get_db),
+):
+    """Слить указанные компании в текущую (target).
+
+    Операция:
+    1. Source компании помечаются merged_into = target_id
+    2. Телефоны и emails из source добавляются в target
+    3. CRM-контакты source переносятся на target (если нет)
+    4. Raw-записи source помечаются
+    """
+    target = db.get(CompanyRow, company_id)
+    if not target:
+        raise HTTPException(404, "Target company not found")
+
+    merged_count = 0
+    for source_id in body.source_ids:
+        if source_id == company_id:
+            continue  # Нельзя слить саму с собой
+
+        source = db.get(CompanyRow, source_id)
+        if not source:
+            logger.warning(f"merge: source {source_id} not found, skipping")
+            continue
+
+        # 1. Помечаем source как merged
+        source.merged_into = company_id
+        source.deleted_at = datetime.now(timezone.utc)
+        source.review_reason = f"merged_into_{company_id}"
+
+        # 2. Добавляем уникальные телефоны в target
+        if source.phones:
+            target_phones = set(target.phones or [])
+            added_phones = [p for p in source.phones if p not in target_phones]
+            if added_phones:
+                target_phones.update(added_phones)
+                target.phones = list(target_phones)
+
+        # 3. Добавляем уникальные emails в target
+        if source.emails:
+            target_emails = set(target.emails or [])
+            added_emails = [e for e in source.emails if e not in target_emails]
+            if added_emails:
+                target_emails.update(added_emails)
+                target.emails = list(target_emails)
+
+        # 4. Добавляем merged_from в target
+        merged_from = list(target.merged_from or [])
+        if source_id not in merged_from:
+            merged_from.append(source_id)
+        target.merged_from = merged_from
+
+        # 5. Переносим CRM-контакт source на target
+        source_contact = db.get(CrmContactRow, source_id)
+        if source_contact:
+            target_contact = db.get(CrmContactRow, company_id)
+            if target_contact:
+                # Суммируем метрики
+                target_contact.contact_count = (
+                    (target_contact.contact_count or 0)
+                    + (source_contact.contact_count or 0)
+                )
+            # Source-контакт оставляем для истории (не удаляем)
+
+        # 6. Обновляем enriched (если есть)
+        source_enriched = db.get(EnrichedCompanyRow, source_id)
+        if source_enriched:
+            source_enriched.city = target.city  # Переносим в город target
+
+        merged_count += 1
+        logger.info(f"merge: {source_id} ({source.name_best}) -> {company_id} ({target.name_best})")
+
+    target.updated_at = datetime.now(timezone.utc)
+
+    return {"ok": True, "message": f"Слито {merged_count} компаний в #{company_id}"}
 
 
 @router.get("/cities")

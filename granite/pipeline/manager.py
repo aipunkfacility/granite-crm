@@ -136,6 +136,17 @@ class PipelineManager:
                     self._run_phase("обогащение",
                                    lambda: self.enrichment.run(city))
 
+            # 1.6: Возобновление частичного обогащения
+            # Если обогащение было прервано (progress < 95%), дозаполняем
+            elif stage == "enriched" and self.checkpoints.needs_enrich_resume(city):
+                progress = self.checkpoints.get_enrichment_progress(city)
+                print_status(
+                    f"Обнаружено неполное обогащение ({progress * 100:.0f}%), возобновление...",
+                    "warning",
+                )
+                self._run_phase("обогащение (resume)",
+                               lambda: self.enrichment.run(city, only_new=True))
+
         # Reverse lookup enrichment (между обогащением и детектором сетей)
         rl_config = self.config.get("enrichment", {}).get("reverse_lookup", {})
         if rl_config.get("enabled", False):
@@ -151,7 +162,66 @@ class PipelineManager:
         # Автоэкспорт
         self._run_phase("экспорт", lambda: self.export.run(city))
 
+        # 1.8: Сводная статистика по завершении города
+        self._print_city_stats(city)
+
         print_status(f"Город {city} завершен!", "success")
+
+    def _print_city_stats(self, city: str) -> None:
+        """Вывод сводной статистики по городу после завершения пайплайна."""
+        try:
+            from granite.database import EnrichedCompanyRow
+            from sqlalchemy import func, or_
+
+            stats = {}
+            with self.db.session_scope() as session:
+                base = session.query(EnrichedCompanyRow).filter_by(city=city)
+                stats["total"] = base.count()
+                stats["seg_a"] = base.filter_by(segment="A").count()
+                stats["seg_b"] = base.filter_by(segment="B").count()
+                stats["seg_c"] = base.filter_by(segment="C").count()
+                stats["seg_d"] = base.filter_by(segment="D").count()
+                stats["tg"] = base.filter(
+                    EnrichedCompanyRow.messengers["telegram"].isnot(None)
+                ).count()
+                stats["wa"] = base.filter(
+                    EnrichedCompanyRow.messengers["whatsapp"].isnot(None)
+                ).count()
+                stats["email"] = base.filter(
+                    EnrichedCompanyRow.emails.isnot(None),
+                    EnrichedCompanyRow.emails != "[]",
+                    EnrichedCompanyRow.emails != "",
+                ).count()
+                stats["website"] = base.filter(
+                    EnrichedCompanyRow.website.isnot(None)
+                ).count()
+                stats["network"] = base.filter_by(is_network=True).count()
+                stats["avg_score"] = base.with_entities(
+                    func.avg(EnrichedCompanyRow.crm_score)
+                ).scalar() or 0
+
+            if stats["total"] == 0:
+                print_status(f"Нет обогащённых компаний для {city}", "warning")
+                return
+
+            print_status(f"Итоги для {city}:", "bold")
+            rows = [
+                ["Всего компаний", str(stats["total"])],
+                ["Сегмент A", str(stats["seg_a"])],
+                ["Сегмент B", str(stats["seg_b"])],
+                ["Сегмент C", str(stats["seg_c"])],
+                ["Сегмент D", str(stats["seg_d"])],
+                ["С Telegram", str(stats["tg"])],
+                ["С WhatsApp", str(stats["wa"])],
+                ["С email", str(stats["email"])],
+                ["С сайтом", str(stats["website"])],
+                ["Филиальные сети", str(stats["network"])],
+                ["Средний CRM-скор", f"{stats['avg_score']:.1f}"],
+            ]
+            for label, value in rows:
+                print_status(f"  {label}: {value}")
+        except Exception as e:
+            logger.debug(f"Не удалось вывести статистику: {e}")
 
     _CRITICAL_PHASES = frozenset({"скрапинг", "дедупликация"})
 

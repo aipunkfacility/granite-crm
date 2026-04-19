@@ -11,5 +11,7 @@ build/
 *.egg-info/
 .idea/
 .vscode/
-*.logvenv/
+*.log
+venv/
 scratch/
+requirements.txt

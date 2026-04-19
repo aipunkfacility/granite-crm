@@ -531,6 +531,12 @@ class EnrichmentPhase:
                 session.merge(erow)
                 if count % batch_flush == batch_flush - 1:
                     session.flush()
+                    # FIX 1.4: освобождаем identity map после батча.
+                    # При 500+ компаний session.merge() накапливает ORM-объекты
+                    # в памяти. expunge_all() удаляет их из identity map,
+                    # позволяя GC собрать. CompanyRow объекты (companies)
+                    # уже загружены eagerly — чтение атрибутов безопасно.
+                    session.expunge_all()
                 count += 1
                 self._print_enriched_status(c.name_best, erow, count, len(companies))
             except Exception as e:
@@ -542,6 +548,7 @@ class EnrichmentPhase:
                     self._error_counts[category] = self._error_counts.get(category, 0) + 1
 
         session.flush()
+        session.expunge_all()  # FIX 1.4: финальная очистка
         return count
 
     def _enrich_companies_parallel(self, session, companies, scanner, tech_ext,
@@ -581,6 +588,7 @@ class EnrichmentPhase:
                         self._error_counts[category] = self._error_counts.get(category, 0) + 1
 
         session.flush()
+        session.expunge_all()  # FIX 1.4: очистка identity map после параллельного обогащения
         return count
 
     @staticmethod
@@ -783,6 +791,10 @@ class EnrichmentPhase:
                     logger.debug(f"  — {company_name}: ничего нового")
 
                 session.flush()
+                # FIX 1.4: освобождаем identity map после каждой компании
+                # в deep enrich. session.get() на следующей итерации
+                # перечитает данные из БД (не из кэша), что безопасно.
+                session.expunge_all()
             except Exception as e:
                 category = classify_error(e)
                 logger.exception(

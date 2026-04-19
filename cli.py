@@ -3,6 +3,7 @@ import typer
 import yaml
 import sys
 import os
+from pathlib import Path
 from loguru import logger
 from granite.database import Database
 from granite.pipeline.manager import PipelineManager, PipelineCriticalError
@@ -64,7 +65,9 @@ def run(
     city: str = typer.Argument(..., help="Название города, например 'Астрахань' или 'all' для всех"),
     force: bool = typer.Option(False, "--force", "-f", help="Очистить старые данные и начать заново"),
     no_scrape: bool = typer.Option(False, "--no-scrape", help="Пропустить фазу парсинга (использовать кэш)"),
-    re_enrich: bool = typer.Option(False, "--re-enrich", help="Перезапустить только обогащение (сохранить scrape+dedup)")
+    re_enrich: bool = typer.Option(False, "--re-enrich", help="Перезапустить только обогащение (сохранить scrape+dedup)"),
+    city_list: Path = typer.Option(None, "--city-list", "-l",
+        help="Файл со списком городов (по одному на строку)"),
 ):
     """Запуск полного цикла сбора, дедупликации и обогащения для города."""
     config = load_config()
@@ -74,7 +77,19 @@ def run(
     manager = PipelineManager(config, db)
     
     target_cities = []
-    if city.lower() == "all":
+    if city_list:
+        # 1.5: Batch-запуск из файла
+        if not city_list.exists():
+            print_status(f"Файл не найден: {city_list}", "error")
+            raise typer.Exit(1)
+        cities_from_file = city_list.read_text(encoding="utf-8").strip().splitlines()
+        cities_from_file = [c.strip() for c in cities_from_file if c.strip() and not c.strip().startswith("#")]
+        if not cities_from_file:
+            print_status("Файл со списком городов пуст", "error")
+            raise typer.Exit(1)
+        target_cities = cities_from_file
+        print_status(f"Загружено {len(target_cities)} городов из {city_list}", "info")
+    elif city.lower() == "all":
         # Все города из data/regions.yaml
         from granite.pipeline.region_resolver import RegionResolver
         resolver = RegionResolver(config)
@@ -83,8 +98,20 @@ def run(
     else:
         target_cities = [city]
 
-    for c in target_cities:
+    # FIX 1.7: Задержка между городами для предотвращения rate-limit (429).
+    # DDG и другие поисковики блокируют при слишком частых запросах.
+    # Настраивается через config: scraping.inter_city_delay (секунды).
+    import time
+    inter_city_delay = config.get("scraping", {}).get("inter_city_delay", 10)
+
+    for i, c in enumerate(target_cities):
         try:
+            if i > 0 and inter_city_delay > 0:
+                print_status(
+                    f"Пауза {inter_city_delay}с перед городом {c} (rate-limit)",
+                    "info",
+                )
+                time.sleep(inter_city_delay)
             manager.run_city(c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich)
         except PipelineCriticalError:
             print_status(f"Критическая ошибка для города {c}. Остановка.", "error")

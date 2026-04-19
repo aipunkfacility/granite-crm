@@ -32,6 +32,32 @@ class CheckpointManager:
 
             return "start"
 
+    def get_enrichment_progress(self, city: str) -> float:
+        """Доля обогащённых компаний для города (0.0 — 1.0).
+
+        Возвращает соотношение COUNT(enriched_companies) / COUNT(companies).
+        Используется для возобновления частичного обогащения: если progress < 0.95,
+        пайплайн должен дозаполнить оставшиеся компании.
+        """
+        with self.db.session_scope() as session:
+            company_count = session.query(CompanyRow).filter_by(city=city).count()
+            if company_count == 0:
+                return 0.0
+            enriched_count = (
+                session.query(EnrichedCompanyRow).filter_by(city=city).count()
+            )
+            return enriched_count / company_count
+
+    def needs_enrich_resume(self, city: str, threshold: float = 0.95) -> bool:
+        """Проверить, нужно ли возобновить обогащение для города.
+
+        Возвращает True если есть компании без enriched-записи
+        (progress < threshold). Используется в manager.run_city()
+        для автоматического возобновления прерванного обогащения.
+        """
+        progress = self.get_enrichment_progress(city)
+        return 0.0 < progress < threshold
+
     def clear_city(self, city: str):
         """Полная очистка всех данных по городу (при --force)."""
         with self.db.session_scope() as session:
