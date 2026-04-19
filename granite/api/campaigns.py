@@ -12,7 +12,7 @@ from sqlalchemy import String
 
 from granite.api.deps import get_db
 from granite.api.schemas import (
-    CreateCampaignRequest, OkResponse,
+    CreateCampaignRequest, UpdateCampaignRequest, OkResponse,
     OkWithIdResponse, CampaignResponse, CampaignDetailResponse,
     CampaignStatsResponse, PaginatedResponse,
 )
@@ -44,7 +44,15 @@ def _get_campaign_lock(campaign_id: int) -> threading.Lock:
 
 @router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
 def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
-    """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}"""
+    """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}
+
+    FIX HIGH-7: Валидация template_name — проверяем существование шаблона
+    до создания кампании, чтобы ошибка обнаружилась сразу, а не при запуске.
+    """
+    template = db.query(CrmTemplateRow).filter_by(name=data.template_name).first()
+    if not template:
+        raise HTTPException(404, f"Template '{data.template_name}' not found")
+
     campaign = CrmEmailCampaignRow(
         name=data.name,
         template_name=data.template_name,
@@ -140,6 +148,65 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.patch("/campaigns/{campaign_id}", response_model=OkResponse)
+def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session = Depends(get_db)):
+    """Обновить кампанию (name, template_name).
+
+    Можно обновить только черновики (draft) и приостановленные (paused).
+    При смене template_name — проверяем существование нового шаблона.
+    """
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    if campaign.status not in ("draft", "paused"):
+        raise HTTPException(
+            409,
+            f"Cannot update campaign in status '{campaign.status}'. "
+            f"Only 'draft' and 'paused' campaigns can be updated.",
+        )
+
+    updates = data.model_dump(exclude_unset=True)
+
+    if "template_name" in updates:
+        template = db.query(CrmTemplateRow).filter_by(name=updates["template_name"]).first()
+        if not template:
+            raise HTTPException(
+                404,
+                f"Template '{updates['template_name']}' not found",
+            )
+
+    for key, value in updates.items():
+        setattr(campaign, key, value)
+    campaign.updated_at = datetime.now(timezone.utc)
+    db.flush()
+    return OkResponse(ok=True)
+
+
+@router.delete("/campaigns/{campaign_id}", response_model=OkResponse)
+def delete_campaign(campaign_id: int, db: Session = Depends(get_db)):
+    """Удалить кампанию-черновик.
+
+    Можно удалить только черновики (draft). Запущенные, завершённые
+    и приостановленные кампании удалять нельзя — чтобы сохранить
+    историю отправок и статистику.
+    """
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    if campaign.status != "draft":
+        raise HTTPException(
+            409,
+            f"Cannot delete campaign in status '{campaign.status}'. "
+            f"Only 'draft' campaigns can be deleted.",
+        )
+
+    db.delete(campaign)
+    db.flush()
+    return OkResponse(ok=True)
+
+
 @router.post("/campaigns/{campaign_id}/run")
 def run_campaign(campaign_id: int, request: Request):
     """Запустить кампанию с SSE прогресс-баром.
@@ -153,7 +220,27 @@ def run_campaign(campaign_id: int, request: Request):
     Batch commits: каждые 10 отправок.
     Interruption: try/finally ставит status="paused" при обрыве SSE.
     """
-    # FIX BUG-3: Проверяем, не запущена ли уже эта кампания
+    # FIX HIGH-3: Проверяем статус кампании в БД (survives uvicorn restart).
+    # В дополнение к in-memory lock — защита от concurrent runs через HTTP.
+    SessionFactory = request.app.state.Session
+    check_session = SessionFactory()
+    try:
+        db_campaign = check_session.get(CrmEmailCampaignRow, campaign_id)
+        if not db_campaign:
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"]),
+                media_type="text/event-stream",
+            )
+        if db_campaign.status == "running":
+            check_session.close()
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"]),
+                media_type="text/event-stream",
+            )
+    finally:
+        check_session.close()
+
+    # FIX BUG-3: Проверяем, не запущена ли уже эта кампания (in-memory lock)
     lock = _get_campaign_lock(campaign_id)
     if not lock.acquire(blocking=False):
         return StreamingResponse(
@@ -161,7 +248,15 @@ def run_campaign(campaign_id: int, request: Request):
             media_type="text/event-stream",
         )
 
-    SessionFactory = request.app.state.Session
+    # Атомарно обновляем статус в БД ПЕРЕД запуском потока
+    pre_session = SessionFactory()
+    try:
+        pre_camp = pre_session.get(CrmEmailCampaignRow, campaign_id)
+        if pre_camp:
+            pre_camp.status = "running"
+            pre_session.commit()
+    finally:
+        pre_session.close()
 
     def generate():
         import time as _time
@@ -201,7 +296,8 @@ def run_campaign(campaign_id: int, request: Request):
                 recipients = recipients[:MAX_SENDS_PER_RUN]
                 logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
 
-            campaign.status = "running"
+            # Статус уже установлен в "running" атомарно перед запуском потока.
+            # Здесь только фиксируем started_at в рамках текущей сессии.
             campaign.started_at = datetime.now(timezone.utc)
             session.commit()
 
@@ -240,7 +336,10 @@ def run_campaign(campaign_id: int, request: Request):
                     if contact:
                         from granite.api.stage_transitions import apply_outgoing_touch
                         apply_outgoing_touch(contact, "email")
+                    # FIX BUG-C5: Heartbeat — обновляем updated_at при каждом
+                    # batch commit, чтобы watchdog не сбросил кампанию.
                     if sent % BATCH_COMMIT == 0:
+                        campaign.updated_at = datetime.now(timezone.utc)
                         session.commit()
 
                 yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'current': email_to})}\n\n"

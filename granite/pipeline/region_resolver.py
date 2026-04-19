@@ -75,7 +75,10 @@ _STOP_WORDS = frozenset({
 
 
 # ── Модульный кэш для build_city_lookup ─────────────────────────────────
+import threading
+
 _CITY_LOOKUP_CACHE: tuple[dict[str, str | None], list[str]] | None = None
+_city_lookup_lock = threading.Lock()
 
 
 def build_city_lookup() -> tuple[dict[str, str | None], list[str]]:
@@ -95,54 +98,59 @@ def build_city_lookup() -> tuple[dict[str, str | None], list[str]]:
         - Корень без "ь": "пермь" → "перм" ловит "в Перми"
 
     Кэшируется на уровне модуля — вызывается один раз.
+    Thread-safe через double-checked locking с threading.Lock.
     """
     global _CITY_LOOKUP_CACHE
     if _CITY_LOOKUP_CACHE is not None:
         return _CITY_LOOKUP_CACHE
 
-    regions = _load_regions()
+    with _city_lookup_lock:
+        if _CITY_LOOKUP_CACHE is not None:
+            return _CITY_LOOKUP_CACHE
 
-    # Считаем двойников: города, чьё имя встречается > 1 раза
-    name_counts: dict[str, int] = {}
-    for cities in regions.values():
-        if isinstance(cities, list):
+        regions = _load_regions()
+
+        # Считаем двойников: города, чьё имя встречается > 1 раза
+        name_counts: dict[str, int] = {}
+        for cities in regions.values():
+            if isinstance(cities, list):
+                for city in cities:
+                    name_counts[city] = name_counts.get(city, 0) + 1
+
+        city_lookup: dict[str, str | None] = {}
+        roots_set: set[str] = set()
+
+        for region_name, cities in regions.items():
+            if not isinstance(cities, list):
+                continue
             for city in cities:
-                name_counts[city] = name_counts.get(city, 0) + 1
+                is_doppel = name_counts.get(city, 0) > 1
+                name_lower = city.lower()
 
-    city_lookup: dict[str, str | None] = {}
-    roots_set: set[str] = set()
+                # Полное имя lowercase
+                city_lookup[name_lower] = None if is_doppel else city
+                if len(name_lower) >= 5 and name_lower not in _STOP_WORDS:
+                    roots_set.add(name_lower)
 
-    for region_name, cities in regions.items():
-        if not isinstance(cities, list):
-            continue
-        for city in cities:
-            is_doppel = name_counts.get(city, 0) > 1
-            name_lower = city.lower()
+                # Префикс для падежей: "Москв" ловит "Москве"
+                if len(name_lower) >= 5:
+                    prefix_len = max(5, len(name_lower) - 1)
+                    prefix = name_lower[:prefix_len]
+                    if prefix != name_lower and prefix not in _STOP_WORDS:
+                        city_lookup[prefix] = None if is_doppel else city
+                        roots_set.add(prefix)
 
-            # Полное имя lowercase
-            city_lookup[name_lower] = None if is_doppel else city
-            if len(name_lower) >= 5 and name_lower not in _STOP_WORDS:
-                roots_set.add(name_lower)
+                # Города на "ь": "Пермь" → "перм" ловит "в Перми"
+                if name_lower.endswith("ь") and len(name_lower) >= 5:
+                    root_no_soft = name_lower[:-1]
+                    if root_no_soft not in _STOP_WORDS:
+                        city_lookup[root_no_soft] = None if is_doppel else city
+                        roots_set.add(root_no_soft)
 
-            # Префикс для падежей: "Москв" ловит "Москве"
-            if len(name_lower) >= 5:
-                prefix_len = max(5, len(name_lower) - 1)
-                prefix = name_lower[:prefix_len]
-                if prefix != name_lower and prefix not in _STOP_WORDS:
-                    city_lookup[prefix] = None if is_doppel else city
-                    roots_set.add(prefix)
-
-            # Города на "ь": "Пермь" → "перм" ловит "в Перми"
-            if name_lower.endswith("ь") and len(name_lower) >= 5:
-                root_no_soft = name_lower[:-1]
-                if root_no_soft not in _STOP_WORDS:
-                    city_lookup[root_no_soft] = None if is_doppel else city
-                    roots_set.add(root_no_soft)
-
-    # Сортируем по длине DESC (длинные совпадения имеют приоритет)
-    sorted_roots = sorted(roots_set, key=len, reverse=True)
-    _CITY_LOOKUP_CACHE = (city_lookup, sorted_roots)
-    return _CITY_LOOKUP_CACHE
+        # Сортируем по длине DESC (длинные совпадения имеют приоритет)
+        sorted_roots = sorted(roots_set, key=len, reverse=True)
+        _CITY_LOOKUP_CACHE = (city_lookup, sorted_roots)
+        return _CITY_LOOKUP_CACHE
 
 
 def _match_score(text: str, pos: int, match_len: int = 0) -> int:

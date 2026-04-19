@@ -596,3 +596,27 @@ def classify_error(exc: Exception) -> str:
     )):
         return ERROR_PARSING
     return ERROR_DATA
+
+
+def classify_messenger(url: str, messengers: dict) -> None:
+    """Классифицировать URL мессенджера и добавить в dict.
+
+    Shared helper для jsprav.py и jsprav_playwright.py (LOW-7: DRY).
+    Определяет тип мессенджера по URL и записывает в messengers dict.
+    YouTube пропускается — не является мессенджером для CRM.
+    """
+    url_lower = url.lower()
+    if "t.me" in url_lower:
+        messengers["telegram"] = url
+    elif "vk.com" in url_lower or "vkontakte" in url_lower:
+        messengers["vk"] = url
+    elif "viber" in url_lower:
+        messengers["viber"] = url
+    elif "wa.me" in url_lower or "whatsapp" in url_lower:
+        messengers["whatsapp"] = url
+    elif "ok.ru" in url_lower:
+        messengers["odnoklassniki"] = url
+    elif "youtube" in url_lower or "youtu.be" in url_lower:
+        pass  # YouTube — не мессенджер, пропускаем
+    elif "instagram" in url_lower:
+        messengers["instagram"] = url

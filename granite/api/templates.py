@@ -2,8 +2,9 @@
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from granite.api.deps import get_db
 from granite.api.schemas import (
@@ -41,9 +42,15 @@ def _warn_unknown_placeholders(body: str, template_name: str) -> list[str]:
 
 
 @router.get("/templates", response_model=list[TemplateResponse])
-def list_templates(db: Session = Depends(get_db)):
-    """Список всех шаблонов."""
-    rows = db.query(CrmTemplateRow).order_by(CrmTemplateRow.name).all()
+def list_templates(
+    channel: Optional[str] = Query(None, pattern="^(email|tg|wa)$"),
+    db: Session = Depends(get_db),
+):
+    """Список шаблонов. Опциональный фильтр по каналу: ?channel=email|tg|wa."""
+    q = db.query(CrmTemplateRow)
+    if channel:
+        q = q.filter_by(channel=channel)
+    rows = q.order_by(CrmTemplateRow.name).all()
     return [
         {
             "name": t.name,
@@ -111,11 +118,12 @@ def update_template(template_name: str, data: UpdateTemplateRequest, db: Session
     # onupdate в SQLAlchemy ORM не работает при setattr + session.commit().
     t.updated_at = datetime.now(timezone.utc)
 
+    # FIX BUG-C1: warnings теперь List[str] (совместимо с OkResponse schema)
     warnings = None
     if data.body is not None:
         unknown = _warn_unknown_placeholders(data.body, template_name)
         if unknown:
-            warnings = {"unknown_placeholders": unknown}
+            warnings = unknown  # list[str]
 
     return OkResponse(ok=True, warnings=warnings)
 

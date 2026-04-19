@@ -297,9 +297,25 @@ class MessengerScanner:
         и async_adaptive_delay() для неблокирующего I/O.
         Используется в EnrichmentPhase.run_async() для параллельного обогащения.
 
+        MED-4: Добавлен общий таймаут 30 сек на всё сканирование сайта,
+        чтобы медленный или циклически редиректящий сервер не блокировал
+        параллельное обогащение.
+
         Returns:
             dict с ключами: telegram, whatsapp, vk, _emails, _phones.
         """
+        import asyncio
+
+        try:
+            return await asyncio.wait_for(
+                self._scan_website_async_internal(base_url),
+                timeout=30.0,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(f"MessengerScanner: timeout scanning {base_url}")
+            return {"_emails": [], "_phones": []}
+
+    async def _scan_website_async_internal(self, base_url: str) -> dict:
         found: dict = {
             "_emails": [],
             "_phones": [],

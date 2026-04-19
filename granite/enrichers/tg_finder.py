@@ -8,6 +8,10 @@ from loguru import logger
 from granite.enrichers._tg_common import TG_MAX_RETRIES, TG_INITIAL_BACKOFF, get_tg_config
 from granite.http_client import async_get, async_adaptive_delay
 
+# MED-5: Ключевые слова для определения ритуальной тематики TG-канала.
+# Вынесены в константу — ранее дублировались в find_tg_by_name и find_tg_by_name_async.
+_TG_MATCH_KEYWORDS = ("ритуал", "похорон", "памятник", "мемориал", "funeral", "angel")
+
 
 def tg_request(url: str, headers: dict, timeout: int = 10,
                max_retries: int = TG_MAX_RETRIES,
@@ -138,7 +142,7 @@ def find_tg_by_name(name: str, phone: str, config: dict) -> str | None:
             m2 = re.search(r"tgme_page_title[^>]*>([^<]+)", r.text)
             title = m2.group(1).lower() if m2 else ""
 
-            keywords = ["ритуал", "похорон", "памятник", "мемориал", "funeral", "angel"]
+            keywords = _TG_MATCH_KEYWORDS
 
             if any(k in desc for k in keywords) or any(k in title for k in keywords):
                 return f"https://t.me/{v}"
@@ -207,7 +211,7 @@ async def find_tg_by_name_async(name: str, phone: str, config: dict) -> str | No
             m2 = re.search(r"tgme_page_title[^>]*>([^<]+)", r.text)
             title = m2.group(1).lower() if m2 else ""
 
-            keywords = ["ритуал", "похорон", "памятник", "мемориал", "funeral", "angel"]
+            keywords = _TG_MATCH_KEYWORDS
 
             if any(k in desc for k in keywords) or any(k in title for k in keywords):
                 return f"https://t.me/{v}"

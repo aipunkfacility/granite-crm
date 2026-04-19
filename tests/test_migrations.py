@@ -271,3 +271,20 @@ class TestForeignKeys:
         fk = fks[0]
         assert fk["referred_table"] == "companies"
         assert "merged_into" in fk["constrained_columns"]
+
+    def test_raw_companies_fk_on_delete_set_null(self, alembic_config, db_url):
+        """LOW-8: raw_companies.merged_into имеет ON DELETE SET NULL."""
+        from alembic import command
+        from sqlalchemy import create_engine, inspect
+
+        url, _ = db_url
+        command.upgrade(alembic_config, "head")
+
+        engine = create_engine(url)
+        insp = inspect(engine)
+
+        fks = insp.get_foreign_keys("raw_companies")
+        fk = next((f for f in fks if "merged_into" in f["constrained_columns"]), None)
+        assert fk is not None, "FK on raw_companies.merged_into not found"
+        ondelete = fk.get("options", {}).get("ondelete", "").upper()
+        assert ondelete == "SET NULL", f"Expected ON DELETE SET NULL, got: {ondelete}"

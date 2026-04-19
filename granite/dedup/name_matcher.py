@@ -1,7 +1,25 @@
 # dedup/name_matcher.py
+import re
 from granite.utils import compare_names
 from collections import defaultdict
 from loguru import logger
+
+# MED-8: Префиксы организационно-правовых форм, которые нужно убрать
+# перед блокировкой по первой букве. Без этого "ООО Ритуал" и "Ритуал"
+# попадают в разные блоки ("о" и "р") и не сравниваются напрямую.
+_ORG_PREFIX_RE = re.compile(
+    r'^(ООО|ОАО|ЗАО|ИП|АО|ПАО|ТОО|ЧУП|УП)\s+', re.IGNORECASE
+)
+
+
+def _normalize_for_blocking(name: str) -> str:
+    """Убрать организационно-правовой префикс для блокировки.
+
+    'ООО Ритуал-Сервис' → 'ритуал-сервис'
+    'ИП Иванов' → 'иванов'
+    """
+    stripped = _ORG_PREFIX_RE.sub('', name).strip()
+    return stripped.lower() if stripped else name.lower()
 
 
 def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[int]]:
@@ -10,6 +28,10 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
     Оптимизация: блокировка по первой букве названия — сравниваем только
     компании у которых совпадает первая буква. Сильно сокращает число
     сравнений на больших выборках.
+
+    MED-8: Перед блокировкой названия нормализуются — убираются
+    организационные префиксы (ООО, ОАО, ИП и т.д.), чтобы
+    "ООО Ритуал-Сервис" и "Ритуал-Сервис" попадали в один блок.
 
     Args:
         companies: список dict с полями {"id": int, "name": str, "address": str}
@@ -20,13 +42,13 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
     """
     matches = []
 
-    # Блокировка по первой букве названия
-    # NOTE: First-letter blocking may miss matches where prefixes differ
-    # (e.g., "ООО Ритуал-Сервис" vs "Ритуал-Сервис"). Consider using
-    # sorted n-gram blocking for better recall.
+    # Блокировка по первой букве нормализованного названия
     blocks: dict[str, list[dict]] = defaultdict(list)
     for company in companies:
-        name_lower = (company.get("name") or "").lower().strip()
+        name = company.get("name") or ""
+        if not name.strip():
+            continue
+        name_lower = _normalize_for_blocking(name)
         if not name_lower:
             continue
         key = name_lower[0] if name_lower[0].isalpha() else "#"

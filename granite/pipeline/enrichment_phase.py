@@ -618,7 +618,7 @@ class EnrichmentPhase:
                 # SEO-имена содержат мусорные упоминания городов, что приводит
                 # к ложным переназначениям.
                 text = (erow.address_raw or "").strip()
-                if not text or len(text) < 10:
+                if not text or len(text) < 6:
                     continue
 
                 # Требуем признак улицы в адресе для уверенности
@@ -660,13 +660,12 @@ class EnrichmentPhase:
                 reassigned += 1
                 logger.info(f"  Переназначен: {erow.name} — {city} → {real_city}")
                 # Запись в лог-файл для аудита
-                import os as _os
-                from datetime import datetime as _dt
-                _log_path = _os.path.join("data", "reassign_log.txt")
-                _os.makedirs("data", exist_ok=True)
-                with open(_log_path, "a", encoding="utf-8") as _f:
-                    _f.write(f"{_dt.now().isoformat()} | {erow.id} | {erow.name} | "
-                            f"{city} → {real_city} | {erow.address_raw}\n")
+                # LOW-5: используем loguru вместо прямого open() —
+                # ротация, structured logging, thread-safe.
+                logger.info(
+                    f"City reassigned: id={erow.id}, name={erow.name}, "
+                    f"{city} → {real_city}, address={erow.address_raw}"
+                )
 
             # Flush внутри session_scope — auto-commit при exit
 
@@ -891,27 +890,33 @@ class EnrichmentPhase:
         # Обновляем email
         if new_emails:
             existing = set(erow.emails or [])
+            added = False
             for em in new_emails:
                 if em not in existing:
                     existing.add(em)
-            if "email" not in updated:
-                updated.append("email")
-            erow.emails = list(existing)
-            if c:
-                c.emails = list(existing)
+                    added = True
+            if added:
+                erow.emails = list(existing)
+                if c:
+                    c.emails = list(existing)
+                if "email" not in updated:
+                    updated.append("email")
 
         # Обновляем телефоны (дополняем)
         if new_phones:
             existing_phones = set(erow.phones or [])
+            added = False
             for ph in new_phones:
                 ph_norm = normalize_phone(ph)
                 if ph_norm and ph_norm not in existing_phones:
                     existing_phones.add(ph_norm)
-            if "phone" not in updated:
-                updated.append("phone")
-            erow.phones = list(existing_phones)
-            if c:
-                c.phones = list(existing_phones)
+                    added = True
+            if added:
+                erow.phones = list(existing_phones)
+                if c:
+                    c.phones = list(existing_phones)
+                if "phone" not in updated:
+                    updated.append("phone")
 
         # Мессенджеры и CMS с найденного сайта
         if best_url:

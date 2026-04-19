@@ -7,7 +7,7 @@ import base64
 import json
 from granite.scrapers.base import BaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phones, extract_emails, adaptive_delay, slugify, _sanitize_url_for_log
+from granite.utils import normalize_phones, extract_emails, adaptive_delay, slugify, _sanitize_url_for_log, classify_messenger
 from loguru import logger
 
 JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
@@ -319,24 +319,8 @@ class JspravPlaywrightScraper(BaseScraper):
         )
         return companies
 
-    @staticmethod
-    def _classify_messenger(url: str, messengers: dict) -> None:
-        """Классифицирует URL мессенджера и добавляет в dict."""
-        url_lower = url.lower()
-        if "t.me" in url_lower:
-            messengers["telegram"] = url
-        elif "vk.com" in url_lower or "vkontakte" in url_lower:
-            messengers["vk"] = url
-        elif "viber" in url_lower:
-            messengers["viber"] = url
-        elif "wa.me" in url_lower or "whatsapp" in url_lower:
-            messengers["whatsapp"] = url
-        elif "ok.ru" in url_lower:
-            messengers["odnoklassniki"] = url
-        elif "youtube" in url_lower or "youtu.be" in url_lower:
-            pass  # YouTube — не мессенджер, пропускаем
-        elif "instagram" in url_lower:
-            messengers["instagram"] = url
+    # LOW-7: _classify_messenger вынесен в granite.utils.classify_messenger.
+    _classify_messenger = staticmethod(classify_messenger)
 
     # ═══════════════════════════════════════════════════════════════════
     #  РЕЖИМ: deep — обход каждой страницы компании

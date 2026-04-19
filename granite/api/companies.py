@@ -178,3 +178,37 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
         setattr(contact, key, value)
     contact.updated_at = datetime.now(timezone.utc)
     return {"ok": True}
+
+
+@router.get("/cities")
+def list_cities(db: Session = Depends(get_db)):
+    """Список уникальных городов для фильтра на фронтенде.
+
+    Возвращает города, в которых есть хотя бы одна компания.
+    Сортировка по алфавиту.
+    """
+    rows = (
+        db.query(CompanyRow.city)
+        .filter(CompanyRow.city.isnot(None), CompanyRow.city != "")
+        .distinct()
+        .order_by(CompanyRow.city)
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+@router.get("/regions")
+def list_regions(db: Session = Depends(get_db)):
+    """Список уникальных регионов для фильтра на фронтенде.
+
+    Возвращает регионы, в которых есть хотя бы одна компания.
+    Сортировка по алфавиту.
+    """
+    rows = (
+        db.query(CompanyRow.region)
+        .filter(CompanyRow.region.isnot(None), CompanyRow.region != "")
+        .distinct()
+        .order_by(CompanyRow.region)
+        .all()
+    )
+    return [r[0] for r in rows]

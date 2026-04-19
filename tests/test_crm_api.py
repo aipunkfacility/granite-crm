@@ -654,3 +654,384 @@ class TestMultipleCityFilter:
         r = client.get("/api/v1/followup?city=Москва")
         assert r.status_code == 200
         assert r.json()["total"] == 1
+
+
+class TestCitiesAndRegions:
+    """S1.1: GET /cities и GET /regions."""
+
+    def test_cities_empty(self, client):
+        """Пустая БД — пустой список."""
+        r = client.get("/api/v1/cities")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_cities_returns_unique(self, client, db_session):
+        """Две компании в одном городе — один город в списке."""
+        create_company(db_session, city="Москва")
+        create_company(db_session, city="Москва")
+        create_company(db_session, city="Казань")
+        db_session.commit()
+
+        r = client.get("/api/v1/cities")
+        assert r.status_code == 200
+        cities = r.json()
+        assert len(cities) == 2
+        assert "Казань" in cities
+        assert "Москва" in cities
+
+    def test_cities_sorted(self, client, db_session):
+        """Города отсортированы по алфавиту."""
+        create_company(db_session, city="Ярославль")
+        create_company(db_session, city="Астрахань")
+        db_session.commit()
+
+        r = client.get("/api/v1/cities")
+        cities = r.json()
+        assert cities == ["Астрахань", "Ярославль"]
+
+    def test_regions_empty(self, client):
+        r = client.get("/api/v1/regions")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_regions_returns_unique(self, client, db_session):
+        create_company(db_session, region="Московская обл.")
+        create_company(db_session, region="Московская обл.")
+        create_company(db_session, region="Татарстан")
+        db_session.commit()
+
+        r = client.get("/api/v1/regions")
+        regions = r.json()
+        assert len(regions) == 2
+        assert "Татарстан" in regions
+        assert "Московская обл." in regions
+
+
+class TestTouchesPagination:
+    """S1.2: Пагинация GET /companies/{id}/touches."""
+
+    def test_touches_paginated(self, client, db_session):
+        """Пагинация касаний: page=1&per_page=2 из 3 — 2 items."""
+        cid = create_company(db_session)
+        from granite.database import CrmTouchRow
+        for i in range(3):
+            t = CrmTouchRow(
+                company_id=cid, channel="email", direction="outgoing",
+                subject=f"Subj {i}", body=f"Body {i}",
+            )
+            db_session.add(t)
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/touches?page=1&per_page=2")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] == 3
+        assert len(data["items"]) == 2
+        assert data["page"] == 1
+        assert data["per_page"] == 2
+
+    def test_touches_page2(self, client, db_session):
+        """page=2&per_page=2 из 3 — 1 item."""
+        cid = create_company(db_session)
+        from granite.database import CrmTouchRow
+        for i in range(3):
+            t = CrmTouchRow(
+                company_id=cid, channel="email", direction="outgoing",
+                subject=f"Subj {i}",
+            )
+            db_session.add(t)
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/touches?page=2&per_page=2")
+        data = r.json()
+        assert len(data["items"]) == 1
+
+    def test_touches_empty(self, client, db_session):
+        """Нет касаний — total=0, items=[]."""
+        cid = create_company(db_session)
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/touches")
+        data = r.json()
+        assert data["total"] == 0
+        assert data["items"] == []
+
+
+class TestTouchGetAndDelete:
+    """S1.3: GET /companies/{id}/touches/{touch_id} и DELETE /touches/{id}."""
+
+    def _create_touch(self, db_session, company_id):
+        from granite.database import CrmTouchRow
+        t = CrmTouchRow(
+            company_id=company_id, channel="email",
+            direction="outgoing", subject="Test subj", body="Test body",
+        )
+        db_session.add(t)
+        db_session.flush()
+        return t.id
+
+    def test_get_touch(self, client, db_session):
+        """Получить конкретное касание."""
+        cid = create_company(db_session)
+        tid = self._create_touch(db_session, cid)
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/touches/{tid}")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["id"] == tid
+        assert data["channel"] == "email"
+        assert data["subject"] == "Test subj"
+
+    def test_get_touch_wrong_company(self, client, db_session):
+        """Касание чужой компании — 404."""
+        cid1 = create_company(db_session, city="Казань")
+        cid2 = create_company(db_session, city="Омск")
+        tid = self._create_touch(db_session, cid1)
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid2}/touches/{tid}")
+        assert r.status_code == 404
+
+    def test_get_touch_not_found(self, client):
+        """Несуществующее касание — 404."""
+        r = client.get("/api/v1/companies/1/touches/9999")
+        assert r.status_code == 404
+
+    def test_delete_touch(self, client, db_session):
+        """Удалить касание."""
+        cid = create_company(db_session)
+        tid = self._create_touch(db_session, cid)
+        db_session.commit()
+
+        r = client.delete(f"/api/v1/touches/{tid}")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        # Проверяем что касание удалено
+        r = client.get(f"/api/v1/companies/{cid}/touches")
+        assert r.json()["total"] == 0
+
+    def test_delete_touch_not_found(self, client):
+        """Несуществующее касание — 404."""
+        r = client.delete("/api/v1/touches/9999")
+        assert r.status_code == 404
+
+
+class TestCampaignPatchAndDelete:
+    """S1.4: PATCH /campaigns/{id} и DELETE /campaigns/{id}."""
+
+    def _create_campaign(self, db_session, **kwargs):
+        from granite.database import CrmEmailCampaignRow
+        defaults = {"name": "Test Campaign", "template_name": "cold_email_1", "status": "draft"}
+        defaults.update(kwargs)
+        c = CrmEmailCampaignRow(**defaults)
+        db_session.add(c)
+        db_session.flush()
+        return c.id
+
+    def test_patch_campaign_name(self, client, db_session):
+        """Обновить имя кампании-черновика."""
+        cid = self._create_campaign(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/campaigns/{cid}", json={"name": "Updated Name"})
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        r = client.get(f"/api/v1/campaigns/{cid}")
+        assert r.json()["name"] == "Updated Name"
+
+    def test_patch_campaign_template(self, client, db_session):
+        """Обновить template_name кампании."""
+        cid = self._create_campaign(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/campaigns/{cid}", json={"template_name": "tg_intro"})
+        assert r.status_code == 200
+
+        r = client.get(f"/api/v1/campaigns/{cid}")
+        assert r.json()["template_name"] == "tg_intro"
+
+    def test_patch_campaign_bad_template(self, client, db_session):
+        """Несуществующий шаблон — 404."""
+        cid = self._create_campaign(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/campaigns/{cid}", json={"template_name": "nonexistent"})
+        assert r.status_code == 404
+
+    def test_patch_running_campaign_rejected(self, client, db_session):
+        """Нельзя обновить запущенную кампанию."""
+        cid = self._create_campaign(db_session, status="running")
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/campaigns/{cid}", json={"name": "New Name"})
+        assert r.status_code == 409
+        assert "running" in r.json()["detail"]
+
+    def test_patch_completed_campaign_rejected(self, client, db_session):
+        """Нельзя обновить завершённую кампанию."""
+        cid = self._create_campaign(db_session, status="completed")
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/campaigns/{cid}", json={"name": "New Name"})
+        assert r.status_code == 409
+
+    def test_patch_paused_campaign_allowed(self, client, db_session):
+        """Приостановленную кампанию можно обновить."""
+        cid = self._create_campaign(db_session, status="paused")
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/campaigns/{cid}", json={"name": "Resumed"})
+        assert r.status_code == 200
+
+    def test_patch_not_found(self, client):
+        r = client.patch("/api/v1/campaigns/9999", json={"name": "x"})
+        assert r.status_code == 404
+
+    def test_delete_draft_campaign(self, client, db_session):
+        """Удалить черновик — 200."""
+        cid = self._create_campaign(db_session)
+        db_session.commit()
+
+        r = client.delete(f"/api/v1/campaigns/{cid}")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        r = client.get(f"/api/v1/campaigns/{cid}")
+        assert r.status_code == 404
+
+    def test_delete_running_rejected(self, client, db_session):
+        """Нельзя удалить запущенную кампанию."""
+        cid = self._create_campaign(db_session, status="running")
+        db_session.commit()
+
+        r = client.delete(f"/api/v1/campaigns/{cid}")
+        assert r.status_code == 409
+
+    def test_delete_completed_rejected(self, client, db_session):
+        """Нельзя удалить завершённую кампанию."""
+        cid = self._create_campaign(db_session, status="completed")
+        db_session.commit()
+
+        r = client.delete(f"/api/v1/campaigns/{cid}")
+        assert r.status_code == 409
+
+    def test_delete_paused_rejected(self, client, db_session):
+        """Нельзя удалить приостановленную кампанию."""
+        cid = self._create_campaign(db_session, status="paused")
+        db_session.commit()
+
+        r = client.delete(f"/api/v1/campaigns/{cid}")
+        assert r.status_code == 409
+
+    def test_delete_not_found(self, client):
+        r = client.delete("/api/v1/campaigns/9999")
+        assert r.status_code == 404
+
+
+class TestTemplateChannelFilter:
+    """S1.6: GET /templates?channel=email|tg|wa."""
+
+    def test_filter_channel_email(self, client, db_session):
+        """Фильтр по channel=email — только email-шаблоны."""
+        from granite.database import CrmTemplateRow
+        db_session.add(CrmTemplateRow(
+            name="tg_only", channel="tg", body="TG template",
+        ))
+        db_session.commit()
+
+        r = client.get("/api/v1/templates?channel=email")
+        assert r.status_code == 200
+        templates = r.json()
+        assert len(templates) >= 1
+        assert all(t["channel"] == "email" for t in templates)
+
+    def test_filter_channel_tg(self, client, db_session):
+        """Фильтр по channel=tg — только tg-шаблоны."""
+        r = client.get("/api/v1/templates?channel=tg")
+        assert r.status_code == 200
+        templates = r.json()
+        assert len(templates) >= 1
+        assert all(t["channel"] == "tg" for t in templates)
+
+    def test_filter_no_match(self, client, db_session):
+        """Фильтр по каналу без результатов — пустой список."""
+        r = client.get("/api/v1/templates?channel=wa")
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_filter_invalid_channel(self, client):
+        """Невалидный channel — 422."""
+        r = client.get("/api/v1/templates?channel=invalid")
+        assert r.status_code == 422
+
+    def test_no_filter_returns_all(self, client):
+        """Без фильтра — все шаблоны."""
+        r = client.get("/api/v1/templates")
+        assert r.status_code == 200
+        assert len(r.json()) >= 2  # cold_email_1 + tg_intro из conftest
+
+
+class TestExportCsv:
+    """S1.7: GET /api/v1/export/{city}.csv."""
+
+    def test_export_csv_success(self, client, db_session):
+        """Успешный экспорт города в CSV."""
+        create_company(db_session, city="Омск", crm_score=30)
+        db_session.commit()
+
+        r = client.get("/api/v1/export/Омск.csv")
+        assert r.status_code == 200
+        assert "text/csv" in r.headers["content-type"]
+        assert "attachment" in r.headers["content-disposition"]
+
+        content = r.content.decode("utf-8-sig")
+        assert "id" in content  # CSV header
+        assert "Омск" in content
+
+    def test_export_csv_no_data(self, client, db_session):
+        """Нет enriched данных для города — 404."""
+        create_company(db_session, city="Нижневартовск", crm_score=0)
+        db_session.commit()
+
+        r = client.get("/api/v1/export/Нижневартовск.csv")
+        assert r.status_code == 404
+
+    def test_export_csv_city_not_found(self, client):
+        """Город не существует — 404."""
+        r = client.get("/api/v1/export/НеизвестныйГород.csv")
+        assert r.status_code == 404
+
+    def test_export_csv_utf8_bom(self, client, db_session):
+        """CSV начинается с BOM для корректного отображения в Excel."""
+        create_company(db_session, city="Самара", crm_score=20)
+        db_session.commit()
+
+        r = client.get("/api/v1/export/Самара.csv")
+        assert r.status_code == 200
+        # UTF-8 BOM: 0xEF, 0xBB, 0xBF
+        assert r.content[:3] == b'\xef\xbb\xbf'
+
+
+class TestCreateCampaignTemplateValidation:
+    """S1.5 (HIGH-7): Валидация template_name при создании кампании."""
+
+    def test_create_campaign_bad_template(self, client):
+        """Несуществующий шаблон — 404."""
+        r = client.post("/api/v1/campaigns", json={
+            "name": "Bad Campaign",
+            "template_name": "nonexistent_template",
+        })
+        assert r.status_code == 404
+        assert "Template" in r.json()["detail"]
+
+    def test_create_campaign_valid_template(self, client):
+        """Существующий шаблон — 201."""
+        r = client.post("/api/v1/campaigns", json={
+            "name": "Good Campaign",
+            "template_name": "cold_email_1",
+        })
+        assert r.status_code == 201
+        assert r.json()["id"] is not None
