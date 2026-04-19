@@ -1,4 +1,5 @@
 """Tracking pixel endpoint для отслеживания открытий email."""
+import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
@@ -15,15 +16,28 @@ router = APIRouter()
 
 _BOT_USER_AGENTS = ("bot", "crawler", "spider", "curl", "wget", "python-requests", "go-http")
 
+# AUDIT #20: Валидация формата tracking_id — UUID-подобный паттерн.
+# Отбрасываем заведомо невалидные значения (путь-траверсинг, SQL-инъекции).
+_TRACKING_ID_PATTERN = re.compile(r"^[a-zA-Z0-9\-_]{8,64}$")
+
 
 @router.get("/track/open/{tracking_id}.png")
 def track_open(tracking_id: str, request: Request, db: Session = Depends(get_db)):
     """Tracking pixel: 1x1 PNG. При открытии письма — обновляет статус в БД.
 
     Защита от ложных срабатываний:
+    - AUDIT #20: Валидация формата tracking_id (alphanumeric, 8-64 символа).
     - Игнорирует повторные открытия (opened_at уже есть).
     - Игнорирует известные боты по User-Agent.
     """
+    # AUDIT #20: Валидация tracking_id
+    if not _TRACKING_ID_PATTERN.match(tracking_id):
+        return Response(
+            content=TRANSPARENT_PNG,
+            media_type="image/png",
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+        )
+
     user_agent = request.headers.get("user-agent", "").lower()
     if any(bot in user_agent for bot in _BOT_USER_AGENTS):
         return Response(

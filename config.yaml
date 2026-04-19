@@ -317,6 +317,8 @@ enrichment:
     delay_between_requests: 2.0  # секунд между запросами (с jitter ±30%)
 
 # ===== Priority Score =====
+# AUDIT #8, #17, #18, #24: Расширенная конфигурация скоринга.
+# Новые секции: tld_penalties, tech_weights, has_address.
 scoring:
   weights:
     has_website: 5
@@ -329,9 +331,37 @@ scoring:
     multiple_phones: 5
     has_email: 5
     is_network: 5
+    has_address: 5          # AUDIT #5: Физический адрес = реальная мастерская
+  # AUDIT #17: TLD-штрафы перенесены из hardcoded в config.
+  # Каждый элемент: {tld: "<домен>", penalty: <баллы>}
+  # .com/.net/.org получают мягкий штраф (-3), .kz/.by — жёсткий (-5).
+  tld_penalties:
+    - tld: ".kz"
+      penalty: -5
+    - tld: ".by"
+      penalty: -5
+    - tld: ".com"
+      penalty: -3
+    - tld: ".net"
+      penalty: -3
+    - tld: ".org"
+      penalty: -3
+    - tld: ".biz"
+      penalty: -5
+  # AUDIT #8: Веса для tech_keywords (обнаруживаются TechExtractor).
+  # production/equipment — высокие баллы (производство).
+  # site_constructor — отрицательный (признак кустарного сайта).
+  tech_weights:
+    production: 8         # «Собственное производство»
+    equipment: 5          # «ЧПУ», «лазерный станок»
+    portrait: 2           # «Фото на памятник»
+    site_constructor: -3  # ucoz/narod — признак кустарного сайта
+  # AUDIT #18: Пороги сегментов снижены для лучшего распределения.
+  # Ранее A≥50 был достижим только для ~3% компаний.
+  # Новые пороги дают ~8% A, ~20% B (см. аудит 5).
   levels:
-    segment_A: 50
-    segment_B: 30
+    segment_A: 40
+    segment_B: 25
     segment_C: 15
 
 # ===== Экспорт: Smart Filters / Presets =====

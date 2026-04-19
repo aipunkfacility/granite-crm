@@ -14,6 +14,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text as sa_text
 from loguru import logger
 
+# AUDIT #10: Rate limiting через in-memory счётчик.
+# Для production рекомендуется заменить на slowapi + Redis.
+import time
+import threading
+_rate_limit_store: dict[str, list[float]] = {}
+_rate_limit_lock = threading.Lock()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -80,14 +87,93 @@ def _get_cors_origins() -> list[str]:
 
     Формат: CORS_ORIGINS=http://localhost:3000,http://myapp.ru
     Если переменная не задана — используются дефолтные origins.
+
+    AUDIT #19: При использовании дефолтных origins выводится warning в лог,
+    т.к. wildcard-origins в production небезопасны.
     """
     env = os.environ.get("CORS_ORIGINS", "")
     if env:
         return [o.strip() for o in env.split(",") if o.strip()]
+    # AUDIT #19: Warning при использовании dev-дефолтов
+    logger.warning(
+        "CORS: using default localhost origins. "
+        "Set CORS_ORIGINS env var for production."
+    )
     return list(_DEFAULT_CORS_ORIGINS)
 
 
 app = FastAPI(title="Granite CRM API", version="0.1.0", lifespan=lifespan)
+
+# AUDIT #10: Rate limiting middleware (in-memory).
+# Лимиты по умолчанию: send=10/мин, run campaign=3/мин, export=20/мин.
+# Настраивается через RATE_LIMITS env (JSON).
+_RATE_LIMITS = {
+    "post:/companies/.*?/send": (10, 60),
+    "post:/campaigns/.*?/run": (3, 60),
+    "get:/export/.*": (20, 60),
+}
+
+
+def _parse_rate_limits_from_env() -> dict:
+    """AUDIT #10: Читает rate limits из env RATE_LIMITS (JSON).
+
+    Формат: {"post:/companies/1/send": [10, 60], ...}
+    """
+    env = os.environ.get("RATE_LIMITS", "")
+    if not env:
+        return {}
+    try:
+        import json
+        parsed = json.loads(env)
+        if isinstance(parsed, dict):
+            result = {}
+            for pattern, val in parsed.items():
+                if isinstance(val, list) and len(val) == 2:
+                    result[pattern] = (int(val[0]), int(val[1]))
+            return result
+    except Exception:
+        pass
+    return {}
+
+
+_ENV_LIMITS = _parse_rate_limits_from_env()
+if _ENV_LIMITS:
+    _RATE_LIMITS.update(_ENV_LIMITS)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """AUDIT #10: Простой rate limiter — in-memory, по IP + endpoint.
+
+    Для каждого {method}:{path} считает количество запросов за окно.
+    При превышении — 429 Too Many Requests.
+    """
+    key = f"{request.method.lower()}:{request.url.path}"
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Проверяем, попал ли запрос под лимит
+    for pattern, (max_requests, window_sec) in _RATE_LIMITS.items():
+        import re as _re
+        if _re.match(pattern, key):
+            now = time.time()
+            bucket_key = f"{client_ip}:{pattern}"
+            with _rate_limit_lock:
+                timestamps = _rate_limit_store.get(bucket_key, [])
+                # Очищаем старые записи за пределами окна
+                timestamps = [t for t in timestamps if now - t < window_sec]
+                if len(timestamps) >= max_requests:
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "detail": f"Rate limit exceeded: {max_requests} requests per {window_sec}s",
+                        },
+                    )
+                timestamps.append(now)
+                _rate_limit_store[bucket_key] = timestamps
+            break
+
+    return await call_next(request)
+
 
 # FIX K2: Ограничиваем CORS-методы и заголовки вместо wildcard.
 # Ранее allow_methods=["*"] и allow_headers=["*"] позволяли

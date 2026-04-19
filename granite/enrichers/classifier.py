@@ -15,7 +15,34 @@ class Classifier:
         self.weights = self.rules.get("weights", {})
         self.thresholds = self.rules.get("levels", {})
 
-        # SEO-паттерны для штрафа за некачественное имя
+        # AUDIT #17: Штрафы за иностранные TLD перенесены из hardcoded в config.
+        # Формат: список {"tld": ".com", "penalty": -5}.
+        # Если не задано — используется fallback (hardcoded в __init__).
+        self.tld_penalties = self.rules.get("tld_penalties", [])
+        if not self.tld_penalties:
+            # Fallback: обратная совместимость со старым поведением
+            self.tld_penalties = [
+                {"tld": ".kz", "penalty": -5},
+                {"tld": ".by", "penalty": -5},
+                {"tld": ".com", "penalty": -3},
+                {"tld": ".net", "penalty": -3},
+                {"tld": ".org", "penalty": -3},
+                {"tld": ".biz", "penalty": -5},
+            ]
+
+        # AUDIT #8: Веса для tech_keywords из config.yaml.
+        # Категории: equipment, production, portrait, site_constructor.
+        # Если не задано — используются дефолтные значения.
+        self.tech_weights = self.rules.get("tech_weights", {})
+        if not self.tech_weights:
+            self.tech_weights = {
+                "production": 8,    # «Собственное производство»
+                "equipment": 5,     # «ЧПУ», «лазерный станок»
+                "portrait": 2,      # «Фото на памятник»
+                "site_constructor": -3,  # ucoz/narod — признак кустарного сайта
+            }
+
+        # SEO-паттерн для штрафа за некачественное имя
         self._seo_name = re.compile(
             r"(?:купить|цен[аыуе]|недорог|заказать|от производитель|"
             r"с установк|на могил|доставк|скидк)",
@@ -78,17 +105,33 @@ class Classifier:
         if company.get("is_network"):
             score += self.weights.get("is_network", 0)
 
+        # AUDIT #8: tech_keywords — баллы за обнаруженные категории
+        tech_signals = company.get("tech_signals") or {}
+        for category, has_signal in tech_signals.items():
+            if has_signal and category in self.tech_weights:
+                score += self.tech_weights[category]
+
+        # Адрес — признак реальной мастерской (AUDIT #5 рекомендация)
+        if company.get("address_raw"):
+            score += self.weights.get("has_address", 0)
+
         # ── Штрафы за негативные сигналы ──
 
-        # Не-российские домены (.kz, .by, .com, .net)
+        # AUDIT #17: TLD-штрафы из config.yaml вместо hardcoded.
+        # Применяется только один (первый совпавший) штраф за TLD.
         website = company.get("website", "")
         domain = extract_domain(website) if website else ""
-        if domain and any(domain.endswith(tld) for tld in (".kz", ".by", ".com", ".net", ".org", ".biz")):
-            score -= 10
+        if domain:
+            for rule in self.tld_penalties:
+                tld = rule.get("tld", "")
+                penalty = rule.get("penalty", 0)
+                if tld and domain.endswith(tld):
+                    score += penalty
+                    break
 
-        # Нет сайта вообще
-        if not website:
-            score -= 5
+        # AUDIT #24: Убран двойной штраф «нет сайта».
+        # Ранее: не получая +5 за has_website И получая -5 за no_website = -10.
+        # Теперь: отсутствие сайта уже наказано невыдачей +5, дополнительный штраф снят.
 
         # SEO-имя → скорее всего агрегатор, не реальная компания
         name = (company.get("name") or "").lower()

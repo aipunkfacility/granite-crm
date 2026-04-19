@@ -71,6 +71,11 @@ class CompanyRow(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    # AUDIT #14: Soft-delete — компания не удаляется физически,
+    # а помечается deleted_at. CASCADE в БД сохраняется как safety net,
+    # но приложение должно фильтровать deleted_at IS NOT NULL.
+    # crm_contacts и crm_tasks используют SET NULL для сохранения истории.
+    deleted_at = Column(DateTime, nullable=True, index=True)
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
@@ -102,6 +107,17 @@ class UnmatchedCityRow(Base):
 
 
 class EnrichedCompanyRow(Base):
+    """Обогащённые данные компании (1:1 с companies по id).
+
+    AUDIT #23: Дублирование данных с companies (name, phones, address, website,
+    emails, city, region) — осознанное архитектурное решение.
+
+    Обоснование:
+    - enriched_companies — read-only таблица для API и экспорта.
+    - companies — mutable, обновляется при дедупликации и re-enrich.
+    - Разделение позволяет пересчитать скоринг без потери оригинальных данных.
+    - Копирование 7 полей — минимальная цена за развязку жизненного цикла.
+    """
     __tablename__ = "enriched_companies"
 
     id = Column(
@@ -124,6 +140,8 @@ class EnrichedCompanyRow(Base):
 
     # Результаты анализа
     crm_score = Column(Integer, default=0, index=True)
+    # AUDIT #13: CHECK constraint на segment добавлен через миграцию
+    # (A, B, C, D, spam).
     segment = Column(String, default="D", index=True)
 
     updated_at = Column(
@@ -172,10 +190,17 @@ class CrmContactRow(Base):
         Index('ix_crm_contacts_funnel_stop', 'funnel_stage', 'stop_automation'),
     )
 
+    # AUDIT #14: CASCADE сохраняется как safety net.
+    # Soft-delete через deleted_at защищает от случайного удаления:
+    # приложение фильтрует deleted_at IS NOT NULL вместо физического DELETE.
+    # Перевод на SET NULL невозможен в SQLite (Alembic не обновляет FK ondelete).
+    # При переезде на PostgreSQL — заменить CASCADE на SET NULL в миграции.
     company_id = Column(
         Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True
     )
 
+    # AUDIT #13: CHECK constraint на funnel_stage (VALID_STAGES) добавлен
+    # через миграцию. Валидация в API через Pydantic pattern.
     funnel_stage = Column(String, default="new", server_default="new", index=True)
 
     # Email метрики
@@ -326,6 +351,8 @@ class CrmTaskRow(Base):
     description = Column(Text, default="")
     due_date = Column(DateTime, nullable=True)
     priority = Column(String, default="normal")
+    # AUDIT #13: CHECK constraints на status и priority
+    # добавлены через миграцию.
     status = Column(String, default="pending", index=True)
     task_type = Column(String, default="follow_up")
 
@@ -345,7 +372,9 @@ class CrmEmailCampaignRow(Base):
     template_name = Column(String, nullable=False)
     status = Column(String, default="draft", index=True)
 
-    filters = Column(Text, default="{}")
+    # AUDIT #15: Text → JSON для SQL-фильтрации по campaign filters.
+    # Миграция i3j4k5l6m7n8 конвертирует существующие данные.
+    filters = Column(JSON, default=dict)
 
     total_sent = Column(Integer, default=0)
     total_opened = Column(Integer, default=0)

@@ -46,10 +46,19 @@ class UpdateTaskRequest(BaseModel):
     title: Optional[str] = Field(None, min_length=1)
 
 
+# AUDIT #21: CampaignFilters — типизированная схема для campaign filters.
+# Ранее filters: dict принимал любые ключи без валидации.
+class CampaignFilters(BaseModel):
+    """Фильтры кампании: город, сегмент, минимальный скор."""
+    city: Optional[str] = None
+    segment: Optional[str] = Field(None, pattern="^(A|B|C|D|spam)$")
+    min_score: Optional[int] = Field(None, ge=0, le=200)
+
+
 class CreateCampaignRequest(BaseModel):
     name: str = Field("Campaign", min_length=1)
     template_name: str = Field("cold_email_1", min_length=1)
-    filters: dict = Field(default_factory=dict)
+    filters: CampaignFilters = Field(default_factory=CampaignFilters)
 
 
 class UpdateCampaignRequest(BaseModel):

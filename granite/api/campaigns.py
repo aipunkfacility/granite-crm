@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import String
+from sqlalchemy import String, text as sa_text
 
 from granite.api.deps import get_db
 from granite.api.schemas import (
@@ -53,10 +53,12 @@ def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     if not template:
         raise HTTPException(404, f"Template '{data.template_name}' not found")
 
+    # AUDIT #15: filters хранится как JSON-колонка, Pydantic→dict для ORM.
+    # AUDIT #21: data.filters теперь CampaignFilters (Pydantic model), конвертируем в dict.
     campaign = CrmEmailCampaignRow(
         name=data.name,
         template_name=data.template_name,
-        filters=json.dumps(data.filters),
+        filters=data.filters.model_dump(exclude_none=True),
     )
     db.add(campaign)
     db.flush()
@@ -84,7 +86,8 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
     - По campaign_id (не отправлять дважды в одну кампанию).
     - По email-адресу (один info@granit.ru у разных компаний).
     """
-    filters = json.loads(campaign.filters or "{}")
+    # AUDIT #15: filters теперь JSON-колонка (не Text), читаем напрямую
+    filters = campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}")
 
     sent_company_ids = {
         row[0] for row in
@@ -141,7 +144,7 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
         "id": campaign.id, "name": campaign.name,
         "template_name": campaign.template_name,
         "status": campaign.status,
-        "filters": json.loads(campaign.filters or "{}"),
+        "filters": campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}"),
         "total_sent": campaign.total_sent,
         "total_opened": campaign.total_opened,
         "preview_recipients": len(recipients),
@@ -249,12 +252,25 @@ def run_campaign(campaign_id: int, request: Request):
         )
 
     # Атомарно обновляем статус в БД ПЕРЕД запуском потока
+    # AUDIT #12: Атомарный UPDATE с WHERE — защита от TOCTOU race condition.
+    # Ранее проверка и обновление были в разных сессиях, что позволяло
+    # параллельным запросам оба пройти проверку (в multi-worker deploy).
     pre_session = SessionFactory()
     try:
-        pre_camp = pre_session.get(CrmEmailCampaignRow, campaign_id)
-        if pre_camp:
-            pre_camp.status = "running"
-            pre_session.commit()
+        result = pre_session.execute(
+            sa_text(
+                "UPDATE crm_email_campaigns SET status='running', updated_at=:now "
+                "WHERE id=:id AND status NOT IN ('running', 'completed')"
+            ),
+            {"id": campaign_id, "now": datetime.now(timezone.utc)},
+        )
+        pre_session.commit()
+        if result.rowcount == 0:
+            pre_session.close()
+            return StreamingResponse(
+                iter([f"data: {json.dumps({'error': 'Campaign already running or completed'})}\n\n"]),
+                media_type="text/event-stream",
+            )
     finally:
         pre_session.close()
 
@@ -342,7 +358,9 @@ def run_campaign(campaign_id: int, request: Request):
                         campaign.updated_at = datetime.now(timezone.utc)
                         session.commit()
 
-                yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'current': email_to})}\n\n"
+                # AUDIT #11: Маскируем email в SSE — не передаём PII (152-ФЗ/GDPR).
+                # Заменяем полный email на company_id для клиента.
+                yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'company_id': company.id})}\n\n"
                 _time.sleep(SEND_DELAY)
 
             session.commit()
