@@ -15,7 +15,9 @@ from loguru import logger
 from sqlalchemy import func
 
 from granite.api.deps import get_db
-from granite.api.schemas import PipelineRunRequest
+from granite.api.schemas import (
+    PipelineRunRequest, PipelineStatusResponse, PipelineCitiesResponse,
+)
 from granite.database import (
     RawCompanyRow, CompanyRow, EnrichedCompanyRow, CityRefRow,
 )
@@ -27,7 +29,7 @@ _running_pipelines: dict[str, threading.Thread] = {}
 _running_lock = threading.Lock()
 
 
-@router.get("/pipeline/status")
+@router.get("/pipeline/status", response_model=PipelineStatusResponse)
 def pipeline_status(
     request: Request,
     limit: int = Query(50, ge=1, le=500, description="Максимум городов в ответе"),
@@ -93,9 +95,17 @@ def pipeline_status(
         if comp > 0:
             progress = enriched / comp
 
+        # Проверяем, запущен ли пайплайн для этого города
+        is_running = False
+        with _running_lock:
+            thread = _running_pipelines.get(city_name)
+            if thread and thread.is_alive():
+                is_running = True
+
         entry = {
             "city": city_name,
             "stage": stage,
+            "is_running": is_running,
             "raw_count": raw,
             "company_count": comp,
             "enriched_count": enriched,
@@ -111,7 +121,7 @@ def pipeline_status(
     }
 
 
-@router.get("/pipeline/cities")
+@router.get("/pipeline/cities", response_model=PipelineCitiesResponse)
 def pipeline_cities(db=Depends(get_db)):
     """Список всех городов из справочника cities_ref."""
     cities = db.query(CityRefRow).order_by(CityRefRow.region, CityRefRow.name).all()

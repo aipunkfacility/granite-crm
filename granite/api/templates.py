@@ -9,7 +9,7 @@ from typing import Optional
 from granite.api.deps import get_db
 from granite.api.schemas import (
     CreateTemplateRequest, UpdateTemplateRequest,
-    OkResponse, TemplateResponse,
+    OkResponse, TemplateResponse, PaginatedResponse,
 )
 from granite.database import CrmTemplateRow, CrmEmailCampaignRow
 from loguru import logger
@@ -41,17 +41,22 @@ def _warn_unknown_placeholders(body: str, template_name: str) -> list[str]:
     return sorted(unknown)
 
 
-@router.get("/templates", response_model=list[TemplateResponse])
+@router.get("/templates", response_model=PaginatedResponse[TemplateResponse])
 def list_templates(
     channel: Optional[str] = Query(None, pattern="^(email|tg|wa)$"),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
     """Список шаблонов. Опциональный фильтр по каналу: ?channel=email|tg|wa."""
     q = db.query(CrmTemplateRow)
     if channel:
         q = q.filter_by(channel=channel)
-    rows = q.order_by(CrmTemplateRow.name).all()
-    return [
+    q = q.order_by(CrmTemplateRow.name)
+
+    total = q.count()
+    rows = q.offset((page - 1) * per_page).limit(per_page).all()
+    items = [
         {
             "name": t.name,
             "channel": t.channel,
@@ -63,6 +68,7 @@ def list_templates(
         }
         for t in rows
     ]
+    return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
 @router.get("/templates/{template_name}", response_model=TemplateResponse)

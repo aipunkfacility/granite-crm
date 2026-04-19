@@ -28,7 +28,9 @@ class TestHealthEndpoint:
     def test_campaigns_list_empty(self, client):
         r = client.get("/api/v1/campaigns")
         assert r.status_code == 200
-        assert r.json() == []
+        data = r.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
 
 class TestValidation:
@@ -109,7 +111,8 @@ class TestTemplatesCrud:
         """Сидимые шаблоны из conftest возвращаются."""
         r = client.get("/api/v1/templates")
         assert r.status_code == 200
-        names = [t["name"] for t in r.json()]
+        data = r.json()
+        names = [t["name"] for t in data["items"]]
         assert "cold_email_1" in names
         assert "tg_intro" in names
 
@@ -200,7 +203,7 @@ class TestTemplatesCrud:
 
         r = client.delete("/api/v1/templates/cold_email_1")
         assert r.status_code == 409
-        assert "active campaign" in r.json()["detail"]
+        assert "active campaign" in r.json()["error"]
 
 
 class TestStatsEndpoint:
@@ -490,7 +493,9 @@ class TestTasksWithCompany:
 
         r = client.get(f"/api/v1/companies/{cid}/tasks")
         assert r.status_code == 200
-        assert len(r.json()) == 2
+        data = r.json()
+        assert data["total"] == 2
+        assert len(data["items"]) == 2
 
     def test_list_company_tasks_404(self, client):
         """GET /companies/9999/tasks — 404."""
@@ -507,8 +512,9 @@ class TestTasksWithCompany:
 
         r = client.get(f"/api/v1/companies/{cid}/tasks?status=pending")
         assert r.status_code == 200
-        assert len(r.json()) == 1
-        assert r.json()[0]["title"] == "Pending"
+        data = r.json()
+        assert data["total"] == 1
+        assert data["items"][0]["title"] == "Pending"
 
     def test_pagination_total_correct(self, client, db_session):
         """total в GET /tasks считается корректно при JOIN."""
@@ -660,10 +666,12 @@ class TestCitiesAndRegions:
     """S1.1: GET /cities и GET /regions."""
 
     def test_cities_empty(self, client):
-        """Пустая БД — пустой список."""
+        """Пустая БД — пустой список городов."""
         r = client.get("/api/v1/cities")
         assert r.status_code == 200
-        assert r.json() == []
+        data = r.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_cities_returns_unique(self, client, db_session):
         """Две компании в одном городе — один город в списке."""
@@ -674,7 +682,8 @@ class TestCitiesAndRegions:
 
         r = client.get("/api/v1/cities")
         assert r.status_code == 200
-        cities = r.json()
+        data = r.json()
+        cities = data["items"]
         assert len(cities) == 2
         assert "Казань" in cities
         assert "Москва" in cities
@@ -686,13 +695,15 @@ class TestCitiesAndRegions:
         db_session.commit()
 
         r = client.get("/api/v1/cities")
-        cities = r.json()
-        assert cities == ["Астрахань", "Ярославль"]
+        data = r.json()
+        assert data["items"] == ["Астрахань", "Ярославль"]
 
     def test_regions_empty(self, client):
         r = client.get("/api/v1/regions")
         assert r.status_code == 200
-        assert r.json() == []
+        data = r.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_regions_returns_unique(self, client, db_session):
         create_company(db_session, region="Московская обл.")
@@ -701,7 +712,8 @@ class TestCitiesAndRegions:
         db_session.commit()
 
         r = client.get("/api/v1/regions")
-        regions = r.json()
+        data = r.json()
+        regions = data["items"]
         assert len(regions) == 2
         assert "Татарстан" in regions
         assert "Московская обл." in regions
@@ -868,7 +880,7 @@ class TestCampaignPatchAndDelete:
 
         r = client.patch(f"/api/v1/campaigns/{cid}", json={"name": "New Name"})
         assert r.status_code == 409
-        assert "running" in r.json()["detail"]
+        assert "running" in r.json()["error"]
 
     def test_patch_completed_campaign_rejected(self, client, db_session):
         """Нельзя обновить завершённую кампанию."""
@@ -944,7 +956,7 @@ class TestTemplateChannelFilter:
 
         r = client.get("/api/v1/templates?channel=email")
         assert r.status_code == 200
-        templates = r.json()
+        templates = r.json()["items"]
         assert len(templates) >= 1
         assert all(t["channel"] == "email" for t in templates)
 
@@ -952,7 +964,7 @@ class TestTemplateChannelFilter:
         """Фильтр по channel=tg — только tg-шаблоны."""
         r = client.get("/api/v1/templates?channel=tg")
         assert r.status_code == 200
-        templates = r.json()
+        templates = r.json()["items"]
         assert len(templates) >= 1
         assert all(t["channel"] == "tg" for t in templates)
 
@@ -960,7 +972,9 @@ class TestTemplateChannelFilter:
         """Фильтр по каналу без результатов — пустой список."""
         r = client.get("/api/v1/templates?channel=wa")
         assert r.status_code == 200
-        assert r.json() == []
+        data = r.json()
+        assert data["items"] == []
+        assert data["total"] == 0
 
     def test_filter_invalid_channel(self, client):
         """Невалидный channel — 422."""
@@ -971,7 +985,9 @@ class TestTemplateChannelFilter:
         """Без фильтра — все шаблоны."""
         r = client.get("/api/v1/templates")
         assert r.status_code == 200
-        assert len(r.json()) >= 2  # cold_email_1 + tg_intro из conftest
+        data = r.json()
+        assert data["total"] >= 2  # cold_email_1 + tg_intro из conftest
+        assert len(data["items"]) >= 2
 
 
 class TestExportCsv:
@@ -1025,7 +1041,7 @@ class TestCreateCampaignTemplateValidation:
             "template_name": "nonexistent_template",
         })
         assert r.status_code == 404
-        assert "Template" in r.json()["detail"]
+        assert "Template" in r.json()["error"]
 
     def test_create_campaign_valid_template(self, client):
         """Существующий шаблон — 201."""
@@ -1035,3 +1051,353 @@ class TestCreateCampaignTemplateValidation:
         })
         assert r.status_code == 201
         assert r.json()["id"] is not None
+
+
+# ============================================================
+# Phase 3: API — недостающие эндпоинты для фронтенда
+# ============================================================
+
+
+class TestPipelineStatus:
+    """Phase 3.1: GET /pipeline/status — статус пайплайна по городам."""
+
+    def test_pipeline_status_empty(self, client):
+        """Пустая БД — total_cities=0, cities=[]."""
+        r = client.get("/api/v1/pipeline/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_cities"] == 0
+        assert data["cities"] == []
+
+    def test_pipeline_status_with_data(self, client, db_session):
+        """Город с enriched компаниями — stage=enriched, is_running=False."""
+        create_company(db_session, city="Омск", segment="A")
+        create_company(db_session, city="Омск", segment="B")
+        db_session.commit()
+
+        r = client.get("/api/v1/pipeline/status")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total_cities"] >= 1
+
+        omsk = next((c for c in data["cities"] if c["city"] == "Омск"), None)
+        assert omsk is not None
+        assert omsk["stage"] == "enriched"
+        assert omsk["is_running"] is False
+        assert omsk["company_count"] >= 2
+        assert omsk["enriched_count"] >= 2
+        assert omsk["enrichment_progress"] > 0
+
+    def test_pipeline_status_is_running_default(self, client, db_session):
+        """is_running=False по умолчанию (нет запущенных пайплайнов)."""
+        create_company(db_session, city="Казань")
+        db_session.commit()
+
+        r = client.get("/api/v1/pipeline/status")
+        assert r.status_code == 200
+        for city in r.json()["cities"]:
+            assert city["is_running"] is False
+
+    def test_pipeline_status_limit(self, client, db_session):
+        """limit=1 — только один город в ответе."""
+        create_company(db_session, city="Астрахань")
+        create_company(db_session, city="Ярославль")
+        db_session.commit()
+
+        r = client.get("/api/v1/pipeline/status?limit=1")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["returned"] <= 1
+
+    def test_pipeline_status_segments(self, client, db_session):
+        """segments dict содержит распределение по сегментам."""
+        create_company(db_session, city="Тверь", segment="A")
+        create_company(db_session, city="Тверь", segment="A")
+        create_company(db_session, city="Тверь", segment="B")
+        db_session.commit()
+
+        r = client.get("/api/v1/pipeline/status")
+        tver = next((c for c in r.json()["cities"] if c["city"] == "Тверь"), None)
+        assert tver is not None
+        assert tver["segments"].get("A", 0) == 2
+        assert tver["segments"].get("B", 0) == 1
+
+
+class TestPipelineCities:
+    """Phase 3.1: GET /pipeline/cities — справочник городов."""
+
+    def test_pipeline_cities_empty(self, client):
+        """Пустая БД — пустой список."""
+        r = client.get("/api/v1/pipeline/cities")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] == 0
+        assert data["cities"] == []
+
+    def test_pipeline_cities_returns_ref(self, client, db_session):
+        """Города из cities_ref таблицы (если есть)."""
+        from granite.database import CityRefRow
+        city = CityRefRow(name="Омск", region="Омская обл.", is_populated=True)
+        db_session.add(city)
+        db_session.commit()
+
+        r = client.get("/api/v1/pipeline/cities")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] >= 1
+        names = [c["name"] for c in data["cities"]]
+        assert "Омск" in names
+
+    def test_pipeline_cities_fields(self, client, db_session):
+        """Поля name, region, is_populated, is_doppelganger."""
+        from granite.database import CityRefRow
+        db_session.add(CityRefRow(
+            name="Москва", region="Москва", is_populated=True, is_doppelganger=False,
+        ))
+        db_session.commit()
+
+        r = client.get("/api/v1/pipeline/cities")
+        cities = r.json()["cities"]
+        msk = next((c for c in cities if c["name"] == "Москва"), None)
+        assert msk is not None
+        assert msk["region"] == "Москва"
+        assert msk["is_populated"] is True
+        assert msk["is_doppelganger"] is False
+
+
+class TestSimilarCompanies:
+    """Phase 3.3: GET /companies/{id}/similar — похожие компании."""
+
+    def test_similar_no_matches(self, client, db_session):
+        """Компания без совпадений — similar=[], total=0."""
+        cid = create_company(db_session, city="Омск", name_best="Уникальная")
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/similar")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["company_id"] == cid
+        assert data["similar"] == []
+        assert data["total"] == 0
+
+    def test_similar_shared_phone(self, client, db_session):
+        """Компании с общим телефоном — similar по shared_phone."""
+        cid1 = create_company(
+            db_session, city="Омск", name_best="Компания А",
+            phones=["79001234567", "79009999999"],
+        )
+        cid2 = create_company(
+            db_session, city="Омск", name_best="Компания Б",
+            phones=["79001234567"],
+        )
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid1}/similar")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] >= 1
+        similar_ids = [s["id"] for s in data["similar"]]
+        assert cid2 in similar_ids
+
+        # match_reason должен содержать shared_phone
+        sim = next(s for s in data["similar"] if s["id"] == cid2)
+        assert "shared_phone" in sim["match_reason"]
+
+    def test_similar_shared_domain(self, client, db_session):
+        """Компании с общим доменом — similar по shared_domain."""
+        cid1 = create_company(
+            db_session, city="Казань", name_best="Филиал 1",
+            website="https://granit.ru/about",
+        )
+        cid2 = create_company(
+            db_session, city="Омск", name_best="Филиал 2",
+            website="https://granit.ru/contacts",
+        )
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid1}/similar")
+        assert r.status_code == 200
+        data = r.json()
+        similar_ids = [s["id"] for s in data["similar"]]
+        assert cid2 in similar_ids
+
+    def test_similar_company_not_found(self, client):
+        """Несуществующая компания — 404."""
+        r = client.get("/api/v1/companies/9999/similar")
+        assert r.status_code == 404
+
+    def test_similar_limit_param(self, client, db_session):
+        """limit ограничивает количество результатов."""
+        # Создаём компанию и несколько "похожих" через общий телефон
+        cid = create_company(
+            db_session, city="Москва", name_best="Главная",
+            phones=["79001112233"],
+        )
+        for i in range(5):
+            create_company(
+                db_session, city="Москва", name_best=f"Дубль {i}",
+                phones=["79001112233"],
+            )
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/similar?limit=2")
+        assert r.status_code == 200
+        data = r.json()
+        assert len(data["similar"]) <= 2
+
+    def test_similar_response_schema(self, client, db_session):
+        """Проверяем поля ответа: company_id, similar, total."""
+        cid = create_company(db_session)
+        db_session.commit()
+
+        r = client.get(f"/api/v1/companies/{cid}/similar")
+        data = r.json()
+        assert "company_id" in data
+        assert "similar" in data
+        assert "total" in data
+
+
+class TestMergeCompanies:
+    """Phase 3.4: PATCH /companies/{id}/merge — слияние компаний."""
+
+    def test_merge_basic(self, client, db_session):
+        """Простое слияние двух компаний."""
+        target_id = create_company(
+            db_session, city="Омск", name_best="Target",
+            phones=["79001111111"], emails=["info@target.ru"],
+        )
+        source_id = create_company(
+            db_session, city="Омск", name_best="Source",
+            phones=["79002222222"], emails=["info@source.ru"],
+        )
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{target_id}/merge", json={
+            "source_ids": [source_id],
+        })
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+        # Проверяем, что target унаследовал телефоны и emails source
+        # Обновляем объекты из БД (API работает через другую сессию)
+        from granite.database import CompanyRow
+        db_session.expire_all()
+        target = db_session.get(CompanyRow, target_id)
+        assert "79002222222" in (target.phones or [])
+        assert "info@source.ru" in (target.emails or [])
+
+        # Source помечен как merged
+        source = db_session.get(CompanyRow, source_id)
+        assert source.merged_into == target_id
+        assert source.deleted_at is not None
+
+    def test_merge_self_ignored(self, client, db_session):
+        """Слияние саму с собой игнорируется."""
+        cid = create_company(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{cid}/merge", json={
+            "source_ids": [cid],
+        })
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+    def test_merge_target_not_found(self, client):
+        """Target не найден — 404."""
+        r = client.patch("/api/v1/companies/9999/merge", json={
+            "source_ids": [1],
+        })
+        assert r.status_code == 404
+
+    def test_merge_source_not_found_skipped(self, client, db_session):
+        """Несуществующий source_id пропускается, не ломает запрос."""
+        target_id = create_company(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{target_id}/merge", json={
+            "source_ids": [99999],
+        })
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+    def test_merge_dedup_phones(self, client, db_session):
+        """При слиянии дублирующиеся телефоны не добавляются."""
+        target_id = create_company(
+            db_session, phones=["79001111111", "79003333333"],
+        )
+        source_id = create_company(
+            db_session, phones=["79001111111", "79004444444"],
+        )
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{target_id}/merge", json={
+            "source_ids": [source_id],
+        })
+        assert r.status_code == 200
+
+        from granite.database import CompanyRow
+        db_session.expire_all()
+        target = db_session.get(CompanyRow, target_id)
+        # 79001111111 не дублируется
+        phone_count = (target.phones or []).count("79001111111")
+        assert phone_count == 1
+        # 79004444444 добавлен
+        assert "79004444444" in (target.phones or [])
+
+    def test_merge_dedup_emails(self, client, db_session):
+        """При слиянии дублирующиеся email не добавляются."""
+        target_id = create_company(
+            db_session, emails=["info@target.ru", "common@test.ru"],
+        )
+        source_id = create_company(
+            db_session, emails=["common@test.ru", "info@source.ru"],
+        )
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{target_id}/merge", json={
+            "source_ids": [source_id],
+        })
+        assert r.status_code == 200
+
+        from granite.database import CompanyRow
+        db_session.expire_all()
+        target = db_session.get(CompanyRow, target_id)
+        common_count = (target.emails or []).count("common@test.ru")
+        assert common_count == 1
+        assert "info@source.ru" in (target.emails or [])
+
+    def test_merge_merged_from_recorded(self, client, db_session):
+        """merged_from записывается в target."""
+        target_id = create_company(db_session)
+        source_id = create_company(db_session)
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{target_id}/merge", json={
+            "source_ids": [source_id],
+        })
+        assert r.status_code == 200
+
+        from granite.database import CompanyRow
+        db_session.expire_all()
+        target = db_session.get(CompanyRow, target_id)
+        assert source_id in (target.merged_from or [])
+
+    def test_merge_multiple_sources(self, client, db_session):
+        """Слияние нескольких source в один target."""
+        target_id = create_company(
+            db_session, phones=["79001111111"],
+        )
+        s1 = create_company(db_session, phones=["79002222222"])
+        s2 = create_company(db_session, phones=["79003333333"])
+        db_session.commit()
+
+        r = client.patch(f"/api/v1/companies/{target_id}/merge", json={
+            "source_ids": [s1, s2],
+        })
+        assert r.status_code == 200
+
+        from granite.database import CompanyRow
+        db_session.expire_all()
+        target = db_session.get(CompanyRow, target_id)
+        assert "79002222222" in (target.phones or [])
+        assert "79003333333" in (target.phones or [])

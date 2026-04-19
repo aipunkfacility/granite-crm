@@ -9,7 +9,7 @@ from granite.api.deps import get_db
 from granite.api.schemas import (
     CreateTaskRequest, UpdateTaskRequest,
     OkWithIdResponse, OkResponse,
-    TaskDetailResponse, PaginatedResponse,
+    TaskResponse, PaginatedResponse,
 )
 from granite.database import CrmTaskRow, CompanyRow
 
@@ -51,7 +51,7 @@ def create_task(company_id: int, data: CreateTaskRequest, db: Session = Depends(
     return OkWithIdResponse(ok=True, id=task.id)
 
 
-@router.get("/tasks", response_model=PaginatedResponse)
+@router.get("/tasks", response_model=PaginatedResponse[TaskResponse])
 def list_tasks(
     db: Session = Depends(get_db),
     status: Optional[str] = None,
@@ -104,13 +104,19 @@ def list_tasks(
     }
 
 
-@router.get("/companies/{company_id}/tasks", response_model=list[TaskDetailResponse])
+@router.get("/companies/{company_id}/tasks", response_model=PaginatedResponse[TaskResponse])
 def list_company_tasks(
     company_id: int,
     db: Session = Depends(get_db),
     status: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
 ):
-    """Задачи конкретной компании."""
+    """Задачи конкретной компании с пагинацией.
+
+    Phase 2.2: Возвращает PaginatedResponse[TaskResponse] вместо list[TaskDetailResponse].
+    Поля company_id/company_name/company_city заполняются из контекста URL.
+    """
     company = db.get(CompanyRow, company_id)
     if not company:
         raise HTTPException(404, "Company not found")
@@ -118,20 +124,35 @@ def list_company_tasks(
     q = db.query(CrmTaskRow).filter_by(company_id=company_id)
     if status:
         q = q.filter_by(status=status)
-    tasks = q.order_by(CrmTaskRow.due_date.asc().nullslast()).all()
 
-    return [
-        {
-            "id": t.id,
-            "title": t.title,
-            "task_type": t.task_type,
-            "priority": t.priority,
-            "status": t.status,
-            "due_date": t.due_date.isoformat() if t.due_date else None,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-        }
-        for t in tasks
-    ]
+    total = q.count()
+    rows = (
+        q.order_by(CrmTaskRow.due_date.asc().nullslast())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    return {
+        "items": [
+            {
+                "id": t.id,
+                "company_id": company_id,
+                "company_name": company.name_best,
+                "company_city": company.city,
+                "title": t.title,
+                "task_type": t.task_type,
+                "priority": t.priority,
+                "status": t.status,
+                "due_date": t.due_date.isoformat() if t.due_date else None,
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+            }
+            for t in rows
+        ],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+    }
 
 
 @router.patch("/tasks/{task_id}", response_model=OkResponse)

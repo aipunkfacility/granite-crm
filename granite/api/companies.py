@@ -1,6 +1,6 @@
 """Companies API: список, карточка, обновление CRM-полей, similar, merge."""
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, text as sa_text
@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from granite.api.deps import get_db
 from granite.api.schemas import (
     UpdateCompanyRequest, CompanyResponse, OkResponse,
-    PaginatedResponse, MergeRequest,
+    PaginatedResponse, MergeRequest, SimilarCompaniesResponse,
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
@@ -31,6 +31,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
         "name": company.name_best,
         "phones": company.phones or [],
         "website": company.website,
+        "address": company.address or None,
         "emails": company.emails or [],
         "city": company.city,
         "region": getattr(company, "region", ""),
@@ -55,10 +56,10 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
     }
 
 
-@router.get("/companies", response_model=PaginatedResponse)
+@router.get("/companies", response_model=PaginatedResponse[CompanyResponse])
 def list_companies(
     db: Session = Depends(get_db),
-    city: Optional[List[str]] = Query(None),
+    city: Annotated[Optional[List[str]], Query()] = None,
     region: Optional[str] = None,
     segment: Optional[str] = None,
     funnel_stage: Optional[str] = None,
@@ -181,7 +182,7 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
     return {"ok": True}
 
 
-@router.get("/companies/{company_id}/similar")
+@router.get("/companies/{company_id}/similar", response_model=SimilarCompaniesResponse)
 def get_similar_companies(
     company_id: int,
     db: Session = Depends(get_db),
@@ -346,12 +347,16 @@ def merge_companies(
     return {"ok": True, "message": f"Слито {merged_count} компаний в #{company_id}"}
 
 
-@router.get("/cities")
-def list_cities(db: Session = Depends(get_db)):
+@router.get("/cities", response_model=PaginatedResponse[str])
+def list_cities(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(500, ge=1, le=2000),
+):
     """Список уникальных городов для фильтра на фронтенде.
 
     Возвращает города, в которых есть хотя бы одна компания.
-    Сортировка по алфавиту.
+    Сортировка по алфавиту. PaginatedResponse для единообразия API.
     """
     rows = (
         db.query(CompanyRow.city)
@@ -360,15 +365,23 @@ def list_cities(db: Session = Depends(get_db)):
         .order_by(CompanyRow.city)
         .all()
     )
-    return [r[0] for r in rows]
+    all_cities = [r[0] for r in rows]
+    total = len(all_cities)
+    start = (page - 1) * per_page
+    items = all_cities[start:start + per_page]
+    return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
-@router.get("/regions")
-def list_regions(db: Session = Depends(get_db)):
+@router.get("/regions", response_model=PaginatedResponse[str])
+def list_regions(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(500, ge=1, le=2000),
+):
     """Список уникальных регионов для фильтра на фронтенде.
 
     Возвращает регионы, в которых есть хотя бы одна компания.
-    Сортировка по алфавиту.
+    Сортировка по алфавиту. PaginatedResponse для единообразия API.
     """
     rows = (
         db.query(CompanyRow.region)
@@ -377,4 +390,8 @@ def list_regions(db: Session = Depends(get_db)):
         .order_by(CompanyRow.region)
         .all()
     )
-    return [r[0] for r in rows]
+    all_regions = [r[0] for r in rows]
+    total = len(all_regions)
+    start = (page - 1) * per_page
+    items = all_regions[start:start + per_page]
+    return {"items": items, "total": total, "page": page, "per_page": per_page}

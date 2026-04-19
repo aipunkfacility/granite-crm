@@ -1,12 +1,12 @@
 """Follow-up очередь: кому нужно написать сегодня."""
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
-from granite.api.schemas import PaginatedResponse
+from granite.api.schemas import FollowupItemResponse, PaginatedResponse
 from granite.database import CompanyRow, EnrichedCompanyRow, CrmContactRow
 
 __all__ = ["router"]
@@ -23,10 +23,10 @@ STAGE_NEXT_ACTION = {
 }
 
 
-@router.get("/followup", response_model=PaginatedResponse)
+@router.get("/followup", response_model=PaginatedResponse[FollowupItemResponse])
 def get_followup_queue(
     db: Session = Depends(get_db),
-    city: Optional[List[str]] = Query(None),
+    city: Annotated[Optional[List[str]], Query()] = None,
     segment: Optional[str] = Query(None, pattern="^[ABCD]$"),
     limit: int = Query(None, ge=1, le=500),
     per_page: int = Query(100, ge=1, le=500),

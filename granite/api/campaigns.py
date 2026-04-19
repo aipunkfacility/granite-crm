@@ -14,7 +14,7 @@ from granite.api.deps import get_db
 from granite.api.schemas import (
     CreateCampaignRequest, UpdateCampaignRequest, OkResponse,
     OkWithIdResponse, CampaignResponse, CampaignDetailResponse,
-    CampaignStatsResponse, PaginatedResponse,
+    CampaignStatsResponse, PaginatedResponse, StaleCampaignsResponse,
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
@@ -65,18 +65,26 @@ def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     return OkWithIdResponse(ok=True, id=campaign.id)
 
 
-@router.get("/campaigns", response_model=list[CampaignResponse])
-def list_campaigns(db: Session = Depends(get_db)):
-    campaigns = db.query(CrmEmailCampaignRow).order_by(CrmEmailCampaignRow.created_at.desc()).all()
-    return [
+@router.get("/campaigns", response_model=PaginatedResponse[CampaignResponse])
+def list_campaigns(
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+):
+    """Список кампаний с пагинацией. Сортировка: новые первые."""
+    q = db.query(CrmEmailCampaignRow).order_by(CrmEmailCampaignRow.created_at.desc())
+    total = q.count()
+    rows = q.offset((page - 1) * per_page).limit(per_page).all()
+    items = [
         {
             "id": c.id, "name": c.name, "template_name": c.template_name,
             "status": c.status, "total_sent": c.total_sent,
             "total_opened": c.total_opened, "total_replied": c.total_replied,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         }
-        for c in campaigns
+        for c in rows
     ]
+    return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
 def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
@@ -135,11 +143,12 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)
 def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
-    """Детали кампании + предпросмотр получателей."""
+    """Детали кампании + предпросмотр получателей + статистика."""
     campaign = db.get(CrmEmailCampaignRow, campaign_id)
     if not campaign:
         raise HTTPException(404, "Campaign not found")
     recipients = _get_campaign_recipients(campaign, db)
+    open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
     return {
         "id": campaign.id, "name": campaign.name,
         "template_name": campaign.template_name,
@@ -147,7 +156,11 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
         "filters": campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}"),
         "total_sent": campaign.total_sent,
         "total_opened": campaign.total_opened,
+        "total_replied": campaign.total_replied,
+        "open_rate": open_rate,
         "preview_recipients": len(recipients),
+        "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
+        "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
     }
 
 
@@ -402,7 +415,7 @@ def campaign_stats(campaign_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/campaigns/stale")
+@router.post("/campaigns/stale", response_model=StaleCampaignsResponse)
 def check_stale_campaigns(db: Session = Depends(get_db)):
     """D1: Сбросить застрявшие кампании (status=running без активности).
 

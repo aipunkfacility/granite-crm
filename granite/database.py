@@ -52,6 +52,7 @@ class CompanyRow(Base):
     __tablename__ = "companies"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    merged_into = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
     merged_from = Column(JSON, default=list)  # list[int]
     name_best = Column(String, nullable=False)
     phones = Column(JSON, default=list)

@@ -14,6 +14,8 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text as sa_text
 from loguru import logger
 
+from granite.api.schemas import ErrorResponse
+
 # AUDIT #10: Rate limiting через in-memory счётчик.
 # Для production рекомендуется заменить на slowapi + Redis.
 import time
@@ -102,7 +104,71 @@ def _get_cors_origins() -> list[str]:
     return list(_DEFAULT_CORS_ORIGINS)
 
 
-app = FastAPI(title="Granite CRM API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Granite CRM API", version="0.2.0", lifespan=lifespan)
+
+
+# Phase 1.3: Стандартизированный exception handler для HTTPException.
+# Все ошибки API возвращаются в формате ErrorResponse:
+# {"error": "<сообщение>", "code": "<КОД>", "detail": null}
+# Код ошибки маппится по HTTP-статусу, позволяя фронтенду программно
+# обрабатывать сценарии без парсинга detail-строки.
+_HTTP_STATUS_CODES = {
+    400: "BAD_REQUEST",
+    401: "UNAUTHORIZED",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    409: "CONFLICT",
+    422: "VALIDATION_ERROR",
+    429: "RATE_LIMITED",
+    500: "INTERNAL_ERROR",
+}
+
+
+@app.exception_handler(Exception)
+async def standard_error_handler(request: Request, exc: Exception):
+    """Глобальный fallback-обработчик для неперехваченных ошибок."""
+    logger.exception(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content=ErrorResponse(
+            error="Internal server error",
+            code="INTERNAL_ERROR",
+            detail=str(exc) if os.environ.get("DEBUG") else None,
+        ).model_dump(),
+    )
+
+
+# Специфичные обработчики для HTTPException и RequestValidationError.
+# FastAPI вызывает их до generic Exception handler.
+from fastapi.exceptions import HTTPException as FastAPIHTTPException
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(FastAPIHTTPException)
+async def http_exception_handler(request: Request, exc: FastAPIHTTPException):
+    """Обработчик HTTPException — возвращает ErrorResponse."""
+    code = _HTTP_STATUS_CODES.get(exc.status_code, "INTERNAL_ERROR")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=ErrorResponse(
+            error=str(exc.detail),
+            code=code,
+            detail=None,
+        ).model_dump(),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Обработчик ошибок валидации запроса — возвращает ErrorResponse."""
+    return JSONResponse(
+        status_code=422,
+        content=ErrorResponse(
+            error="Validation error",
+            code="VALIDATION_ERROR",
+            detail=exc.errors(),
+        ).model_dump(),
+    )
 
 # AUDIT #10: Rate limiting middleware (in-memory).
 # Лимиты по умолчанию: send=10/мин, run campaign=3/мин, export=20/мин.
@@ -164,9 +230,10 @@ async def rate_limit_middleware(request: Request, call_next):
                 if len(timestamps) >= max_requests:
                     return JSONResponse(
                         status_code=429,
-                        content={
-                            "detail": f"Rate limit exceeded: {max_requests} requests per {window_sec}s",
-                        },
+                        content=ErrorResponse(
+                            error=f"Rate limit exceeded: {max_requests} requests per {window_sec}s",
+                            code="RATE_LIMITED",
+                        ).model_dump(),
                     )
                 timestamps.append(now)
                 _rate_limit_store[bucket_key] = timestamps
@@ -214,7 +281,10 @@ async def api_key_auth_middleware(request: Request, call_next):
     if not provided_key or not hmac.compare_digest(provided_key, expected_key):
         return JSONResponse(
             status_code=401,
-            content={"detail": "Invalid or missing API key. Set X-API-Key header."},
+            content=ErrorResponse(
+                error="Invalid or missing API key. Set X-API-Key header.",
+                code="UNAUTHORIZED",
+            ).model_dump(),
         )
 
     return await call_next(request)
