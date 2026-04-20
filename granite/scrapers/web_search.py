@@ -42,9 +42,53 @@ except ImportError:
 _search_lock = threading.Lock()
 
 # ── Кэш недоступных доменов (таймаут/403) — не ретраить в рамках сессии ──
-_FAILED_DOMAINS: dict[str, float] = {}  # domain -> timestamp
-_FAILED_DOMAINS_LOCK = threading.Lock()
 _FAILED_DOMAINS_TTL_DEFAULT = 600  # 10 минут
+
+
+class FailedDomainCache:
+    """Потокобезопасный кэш недоступных доменов с TTL и ограничением размера (P-8).
+
+    Инкапсулирует _FAILED_DOMAINS dict + lock в класс для:
+    - Подготовки к multiprocessing ( singleton → DI в будущем)
+    - Явного управления TTL и max_size
+    - Обратной совместимости через module-level функции
+    """
+
+    def __init__(self, ttl: int = _FAILED_DOMAINS_TTL_DEFAULT, max_size: int = 5000):
+        self._cache: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self.ttl = ttl
+        self.max_size = max_size
+
+    def is_failed(self, domain: str) -> bool:
+        """Проверить, был ли домен недавно недоступен."""
+        with self._lock:
+            ts = self._cache.get(domain)
+            return bool(ts and (time.time() - ts) < self.ttl)
+
+    def mark_failed(self, domain: str) -> None:
+        """Запомнить домен как недоступный.
+
+        FIX 4.9: Lazy cleanup при превышении лимита.
+        Удаляет expired-записи вместо бесконечного роста словаря.
+        """
+        with self._lock:
+            self._cache[domain] = time.time()
+            if len(self._cache) > self.max_size:
+                now = time.time()
+                expired = [d for d, ts in self._cache.items()
+                           if (now - ts) >= self.ttl]
+                for d in expired:
+                    del self._cache[d]
+
+    def clear(self) -> None:
+        """Очистить кэш (для тестов)."""
+        with self._lock:
+            self._cache.clear()
+
+
+# Модульный singleton для обратной совместимости
+_failed_domain_cache = FailedDomainCache()
 
 
 def get_failed_domain_ttl(config: dict) -> int:
@@ -53,29 +97,13 @@ def get_failed_domain_ttl(config: dict) -> int:
 
 
 def is_domain_failed(domain: str, ttl: int = _FAILED_DOMAINS_TTL_DEFAULT) -> bool:
-    """Проверить, был ли домен недавно недоступен."""
-    with _FAILED_DOMAINS_LOCK:
-        ts = _FAILED_DOMAINS.get(domain)
-        if ts and (time.time() - ts) < ttl:
-            return True
-        return False
+    """Проверить, был ли домен недавно недоступен (backward-compat)."""
+    return _failed_domain_cache.is_failed(domain)
 
 
-def mark_domain_failed(domain: str):
-    """Запомнить домен как недоступный.
-
-    FIX 4.9: Lazy cleanup при превышении лимита.
-    Удаляет expired-записи вместо бесконечного роста словаря.
-    """
-    _MAX_FAILED_DOMAINS = 5000
-    with _FAILED_DOMAINS_LOCK:
-        _FAILED_DOMAINS[domain] = time.time()
-        if len(_FAILED_DOMAINS) > _MAX_FAILED_DOMAINS:
-            now = time.time()
-            expired = [d for d, ts in _FAILED_DOMAINS.items()
-                       if (now - ts) >= _FAILED_DOMAINS_TTL_DEFAULT]
-            for d in expired:
-                del _FAILED_DOMAINS[d]
+def mark_domain_failed(domain: str) -> None:
+    """Запомнить домен как недоступный (backward-compat)."""
+    _failed_domain_cache.mark_failed(domain)
 
 # ── Русские TLD, которым доверяем без дополнительных проверок ──────────
 _TRUSTED_TLDS = {".ru", ".su"}
@@ -263,6 +291,8 @@ class WebSearchScraper(BaseScraper):
         "aol.com",
         "login.aol.com",
         "mail.aol.com",
+        "jsprav.ru",   # обрабатывается JspravScraper, поддомены блокируются через endswith()
+        "yell.ru",     # disabled (enabled: false), дубли не нужны
         # ── Спорт / ставки / прогнозы ──
         "livesport.ru",
         "vprognoze.ru",
@@ -667,7 +697,10 @@ class WebSearchScraper(BaseScraper):
     # ═══════════════════════════════════════════════════════════════════
 
     def scrape(self) -> list[RawCompany]:
-        companies = []
+        # ═══════════════════════════════════════════════════════════════
+        #  Проход 1: сбор URL из поиска + дедупликация
+        # ═══════════════════════════════════════════════════════════════
+        search_results = []
         seen_urls = set()
 
         for query in self.queries:
@@ -687,53 +720,63 @@ class WebSearchScraper(BaseScraper):
                 if url in seen_urls:
                     continue
                 seen_urls.add(url)
-
-                companies.append(
-                    RawCompany(
-                        source=Source.WEB_SEARCH,
-                        source_url=url,
-                        name=title,
-                        phones=[],
-                        address_raw="",
-                        website=url,
-                        emails=[],
-                        city=self.city,
-                        region=self.city_config.get("region", ""),
-                    )
-                )
+                search_results.append(item)
 
             adaptive_delay(min_sec=2.0, max_sec=5.0)
 
-        logger.info(f"  WebSearch: найдено {len(companies)} компаний (поиск)")
+        logger.info(f"  WebSearch: найдено {len(search_results)} URL (поиск)")
 
-        # Детальный сбор со всех уникальных сайтов
+        # ═══════════════════════════════════════════════════════════════
+        #  Проход 2: скрейпинг сайтов + мягкая фильтрация (P-3)
+        # ═══════════════════════════════════════════════════════════════
+        companies = []
         seen_domains = set()
         enriched = 0
-        for company in companies:
-            if not company.website:
-                continue
-            domain = extract_domain(company.website)
-            if not domain or domain in seen_domains:
-                continue
-            seen_domains.add(domain)
+        skipped_unavailable = 0
 
-            logger.info(f"  Scrape: {company.website}")
-            details = self._scrape_details(company.website)
-            if details:
-                company.phones = normalize_phones(
-                    company.phones + details.get("phones", [])
-                )
-                company.emails = list(set(company.emails + details.get("emails", [])))
-                if not company.address_raw and details.get("addresses"):
-                    company.address_raw = details["addresses"][0]
-                # Обновляем имя если текущее — SEO-заголовок, а из страницы извлечено реальное название
-                if details.get("company_name") and is_seo_title(company.name):
-                    company.name = details["company_name"]
-                enriched += 1
+        for item in search_results:
+            domain = extract_domain(item["url"])
+            if domain and domain in seen_domains:
+                continue
 
+            details = self._scrape_details(item["url"])
             adaptive_delay(min_sec=1.0, max_sec=2.5)
 
-        logger.info(f"  WebSearch: обогащено {enriched}/{len(seen_domains)} сайтов")
+            # Мягкий фильтр (P-3): отсекаем только полностью недоступные ресурсы.
+            # Сайты с website, но без контактов — СОХРАНЯЕМ для enrichment
+            # (MessengerScanner и tg_finder найдут контакты позже).
+            if not details:
+                skipped_unavailable += 1
+                continue
+
+            if domain:
+                seen_domains.add(domain)
+            enriched += 1
+
+            # Имя компании: предпочтение названию из страницы, если title — SEO-мусор
+            company_name = details.get("company_name") or item["title"]
+            if is_seo_title(company_name) and details.get("company_name"):
+                company_name = details["company_name"]
+
+            companies.append(
+                RawCompany(
+                    source=Source.WEB_SEARCH,
+                    source_url=item["url"],
+                    name=company_name,
+                    phones=normalize_phones(details.get("phones", [])),
+                    address_raw=details.get("addresses", [""])[0] if details.get("addresses") else "",
+                    website=item["url"],
+                    emails=details.get("emails", []),
+                    city=self.city,
+                    region=self.city_config.get("region", ""),
+                )
+            )
+
+        logger.info(
+            f"  WebSearch: обогащено {enriched}, "
+            f"недоступно {skipped_unavailable}, "
+            f"итого {len(companies)} компаний"
+        )
 
         # Фильтр по российскому телефону ВЫКЛЮЧЕН.
         # Раньше: компании без найденного телефона отбрасывались (30-50% потерь).

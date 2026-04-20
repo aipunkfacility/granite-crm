@@ -1,91 +1,22 @@
 # scrapers/jsprav.py — рефакторинг scripts/scrape_fast.py (JSON-LD, быстрая версия)
 import re
 import base64
+import random
 import requests
 import json
 import time
 from urllib.parse import urlparse, urlunparse
 from bs4 import BeautifulSoup
-from granite.scrapers.base import BaseScraper
+from granite.scrapers.jsprav_base import JspravBaseScraper, JSPRAV_CATEGORY
 from granite.models import RawCompany, Source
 from granite.utils import normalize_phone, normalize_phones, extract_domain, extract_emails, slugify, get_random_ua, adaptive_delay, _sanitize_url_for_log, classify_messenger
 from loguru import logger
 
-JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
 
-
-class JspravScraper(BaseScraper):
+class JspravScraper(JspravBaseScraper):
     """Скрепер jsprav.ru через JSON-LD — быстрый, не требует Playwright."""
 
-    def __init__(
-        self,
-        config: dict,
-        city: str,
-        categories: list[str] | None = None,
-        subdomain: str | None = None,
-    ):
-        super().__init__(config, city)
-        self.source_config = config.get("sources", {}).get("jsprav", {})
-        self.subdomain_map = self.source_config.get("subdomain_map", {})
-        self._cached_subdomain = subdomain
-        if categories is not None:
-            self.categories = categories
-        else:
-            self.categories = [JSPRAV_CATEGORY]
-
-        self._city_lower = city.lower().strip()
-        self._declared_total = None  # для Playwright fallback: сколько всего компаний
-        self._needs_playwright = False  # устанавливается в scrape() если нужно добрать через PW
-
-    def _get_subdomain(self) -> str:
-        if self._cached_subdomain:
-            return self._cached_subdomain
-        city_lower = self._city_lower
-        if city_lower in self.subdomain_map:
-            return self.subdomain_map[city_lower]
-        base = slugify(self.city)
-        if base.endswith("iy"):
-            base = base[:-2] + "ij"
-        return base
-
-    def _is_local(self, address: dict) -> bool:
-        """Проверяет, относится ли компания к искомому городу."""
-        locality = address.get("addressLocality", "")
-        if not locality:
-            return True
-        loc_lower = locality.lower().strip()
-        if loc_lower == self._city_lower:
-            return True
-        if self._city_lower.startswith(loc_lower) or loc_lower.startswith(
-            self._city_lower
-        ):
-            shorter = min(len(self._city_lower), len(loc_lower))
-            longer = max(len(self._city_lower), len(loc_lower))
-            if shorter * 100 / longer >= 70:
-                return True
-        if len(loc_lower) >= 5:  # FIX 4.2: минимальная длина для stem-сравнения
-            stem = loc_lower.rstrip("аеоуияью")
-            if stem and len(stem) >= 5 and stem == self._city_lower.rstrip("аеоуияью"):
-                return True
-        return False
-
-    def _parse_total_from_summary(self, soup) -> int | None:
-        """Ищет в саммари количество компаний для города."""
-        benefits = soup.find("div", class_="cat-benefits")
-        if not benefits:
-            return None
-        for li in benefits.find_all("li"):
-            text = li.get_text(strip=True)
-            m = re.search(r"(\d+)\s+компани", text)
-            if m:
-                return int(m.group(1))
-        return None
-
-    @staticmethod
-    def _extract_page_num(url: str) -> int:
-        """Извлекает номер страницы из URL."""
-        m = re.search(r"page-?(\d+)", url) or re.search(r"page=(\d+)", url)
-        return int(m.group(1)) if m else 1
+    _source = Source.JSPRAV
 
     def _get_next_page_url(self, soup, base_dir: str, page_num: int) -> str | None:
         """Ищет кнопку 'Показать ещё' и берёт URL из data-url.
@@ -108,87 +39,6 @@ class JspravScraper(BaseScraper):
         )
         return fallback
 
-    def _parse_companies_from_soup(self, soup, seen_urls: set) -> list[RawCompany]:
-        """Парсит JSON-LD из soup, фильтрует дубли (по URL) и чужой город."""
-        companies = []
-        for script in soup.find_all("script", type="application/ld+json"):
-            try:
-                raw = script.string
-                if not raw:
-                    continue
-                data = json.loads(raw)
-                if data.get("@type") != "ItemList":
-                    continue
-                for item in data.get("itemListElement", []):
-                    c = item.get("item", {})
-                    if c.get("@type") != "LocalBusiness":
-                        continue
-                    name = c.get("name", "")
-                    if not name:
-                        continue
-
-                    addr = c.get("address", {})
-
-                    # Дубль по URL организации
-                    org_url = c.get("url", "")
-                    if org_url and org_url in seen_urls:
-                        continue
-
-                    # Фильтр по городу
-                    if not self._is_local(addr):
-                        continue
-
-                    if org_url:
-                        seen_urls.add(org_url)
-
-                    same = c.get("sameAs", [])
-                    tel = c.get("telephone", [])
-                    if isinstance(tel, str):
-                        tel = [tel]
-                    phones = normalize_phones(tel)
-                    if isinstance(same, str):
-                        website = same if same else None
-                    else:
-                        website = same[0] if same else None
-
-                    geo = None
-                    if c.get("geo"):
-                        try:
-                            lat_raw = c["geo"].get("latitude")
-                            lon_raw = c["geo"].get("longitude")
-                            if lat_raw is not None and lon_raw is not None:
-                                lat = float(lat_raw)
-                                lon = float(lon_raw)
-                                geo = [lat, lon]
-                        except (ValueError, TypeError):
-                            pass
-
-                    # ── Email ──
-                    # JSON-LD может содержать поле "email"
-                    item_emails = c.get("email", [])
-                    if isinstance(item_emails, str):
-                        item_emails = [item_emails]
-                    elif not isinstance(item_emails, list):
-                        item_emails = []
-
-                    companies.append(
-                        RawCompany(
-                            source=Source.JSPRAV,
-                            source_url=org_url,  # URL detail-страницы компании
-                            name=name,
-                            phones=phones,
-                            address_raw=f"{addr.get('streetAddress', '')}, "
-                            f"{addr.get('addressLocality', '')}".strip(", "),
-                            website=website,
-                            emails=item_emails,
-                            city=self.city,
-                            geo=geo,
-                        )
-                    )
-            except (json.JSONDecodeError, KeyError, AttributeError):
-                continue
-        return companies
-
     def scrape(self) -> list[RawCompany]:
         companies = []
         subdomain = self._get_subdomain()
@@ -199,8 +49,8 @@ class JspravScraper(BaseScraper):
             "User-Agent": get_random_ua()
         }
 
+        seen_urls = set()
         for category in self.categories:
-            seen_urls = set()
             companies_before = len(companies)
             declared_total = None
             url = f"https://{subdomain}.jsprav.ru/{category}/"
@@ -213,17 +63,33 @@ class JspravScraper(BaseScraper):
                 last_page_num = page_num
                 logger.info(f"  JSprav: {_sanitize_url_for_log(url)}")
 
-                # Ретраи при таймауте/ошибках сети
+                # Ретраи при таймауте/ошибках сети + 429/503 backoff (P-6)
                 r = None
-                for attempt in range(3):
+                rate_retry = 0
+                for attempt in range(10):  # увеличено: 3 retries + backoff
                     try:
                         r = requests.get(url, timeout=60, headers=ua)
+                        if r.status_code in (429, 503):
+                            rate_retry += 1
+                            backoff_base = self.source_config.get("backoff_base", 5)
+                            backoff_max = self.source_config.get("backoff_max", 60)
+                            wait = min(backoff_max, backoff_base * (2 ** rate_retry)) + random.uniform(0, 5)
+                            logger.warning(
+                                f"  JSprav: HTTP {r.status_code}, backoff {wait:.0f}с "
+                                f"(попытка {rate_retry})"
+                            )
+                            time.sleep(wait)
+                            r = None  # retry
+                            continue
+                        # Успешный запрос — сбрасываем счётчик
+                        rate_retry = 0
                         break
                     except (requests.Timeout, requests.ConnectionError) as e:
                         logger.warning(
                             f"  JSprav: попытка {attempt + 1}/3 не удалась: {e}"
                         )
                         time.sleep(3)
+                        break  # после timeout/connection error — не retry бесконечно
 
                 try:
                     if r is None:
@@ -449,7 +315,3 @@ class JspravScraper(BaseScraper):
         result["emails"] = extract_emails(r.text)
 
         return result
-
-    # LOW-7: _classify_messenger вынесен в granite.utils.classify_messenger.
-    # Оставляем alias для обратной совместимости внутренних вызовов.
-    _classify_messenger = staticmethod(classify_messenger)

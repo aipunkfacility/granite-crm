@@ -182,7 +182,9 @@ class ScrapingPhase:
                         jsprav_pw = JspravPlaywrightScraper(**pw_kwargs)
                     pw_results = jsprav_pw.run()
                     # Дедуплируем: исключаем компании, уже найденные JspravScraper
-                    # Используем URL и телефон для точного matching (а не только имя)
+                    # P-4: Приоритетный ключ — source_url (URL detail-страницы, уникален).
+                    # Fallback 1 — домен сайта, Fallback 2 — телефон.
+                    seen_source_urls = {c.source_url for c in city_results if c.source_url}
                     seen_domains = set()
                     seen_phones = set()
                     for c in city_results:
@@ -193,10 +195,15 @@ class ScrapingPhase:
                     new_results = []
                     for c in pw_results:
                         is_dup = False
-                        if c.website:
+                        # Первичный ключ — source_url
+                        if c.source_url and c.source_url in seen_source_urls:
+                            is_dup = True
+                        # Fallback 1 — домен сайта
+                        if not is_dup and c.website:
                             pw_domain = extract_domain(c.website)
                             if pw_domain and pw_domain in seen_domains:
                                 is_dup = True
+                        # Fallback 2 — телефон
                         if not is_dup:
                             for p in c.phones:
                                 if p in seen_phones:

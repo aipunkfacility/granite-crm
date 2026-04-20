@@ -189,6 +189,38 @@ class TestJspravScraper:
         assert JspravScraper._extract_page_num("https://site.ru/category/?page=5") == 5
         assert JspravScraper._extract_page_num("https://site.ru/category/") == 1
 
+    def test_seen_urls_cross_category(self, config):
+        """P-9: seen_urls scoped перед циклом категорий — компания в двух категориях парсится один раз."""
+        # Проверяем что seen_urls вынесен перед for category —
+        # если одна и та же компания появится в двух категориях, она не дублируется
+        scraper = JspravScraper(config, "Астрахань")
+        from bs4 import BeautifulSoup
+
+        jsonld = '''{
+            "@type": "ItemList",
+            "itemListElement": [{
+                "@type": "ListItem",
+                "item": {
+                    "@type": "LocalBusiness",
+                    "name": "Гранит-Мастер",
+                    "telephone": ["+7 (903) 123-45-67"],
+                    "address": {"@type": "PostalAddress", "addressLocality": "Астрахань"},
+                    "url": "https://granit-master.ru"
+                }
+            }]
+        }'''
+
+        html = f'<script type="application/ld+json">{jsonld}</script>'
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Парсим один и тот же soup дважды с одним и тем же seen_urls
+        seen_urls = set()
+        companies_1 = scraper._parse_companies_from_soup(soup, seen_urls=seen_urls)
+        companies_2 = scraper._parse_companies_from_soup(soup, seen_urls=seen_urls)
+
+        assert len(companies_1) == 1
+        assert len(companies_2) == 0  # дубль отклонён — seen_urls помнит URL
+
 
 class TestJspravPlaywrightScraper:
 

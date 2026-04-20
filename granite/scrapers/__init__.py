@@ -1,4 +1,5 @@
 from granite.scrapers.base import BaseScraper
+from granite.scrapers.jsprav_base import JspravBaseScraper
 from granite.scrapers.jsprav import JspravScraper
 from granite.scrapers.jsprav_playwright import JspravPlaywrightScraper
 from granite.scrapers.dgis import DgisScraper
@@ -7,6 +8,7 @@ from granite.scrapers.web_search import WebSearchScraper
 
 __all__ = [
     "BaseScraper",
+    "JspravBaseScraper",
     "JspravScraper",
     "JspravPlaywrightScraper",
     "DgisScraper",

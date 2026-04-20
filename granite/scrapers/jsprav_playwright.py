@@ -5,15 +5,13 @@
 import re
 import base64
 import json
-from granite.scrapers.base import BaseScraper
+from granite.scrapers.jsprav_base import JspravBaseScraper
 from granite.models import RawCompany, Source
-from granite.utils import normalize_phones, extract_emails, adaptive_delay, slugify, _sanitize_url_for_log, classify_messenger
+from granite.utils import normalize_phones, extract_emails, adaptive_delay, _sanitize_url_for_log
 from loguru import logger
 
-JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
 
-
-class JspravPlaywrightScraper(BaseScraper):
+class JspravPlaywrightScraper(JspravBaseScraper):
     """Playwright-версия JSprav.
 
     Режимы:
@@ -25,6 +23,8 @@ class JspravPlaywrightScraper(BaseScraper):
     (jsprav.ru отдаёт только первые 5 страниц через статический HTML).
     """
 
+    _source = Source.JSPRAV_PW
+
     def __init__(
         self,
         config: dict,
@@ -35,52 +35,10 @@ class JspravPlaywrightScraper(BaseScraper):
         subdomain: str | None = None,
         target_count: int | None = None,
     ):
-        super().__init__(config, city)
+        super().__init__(config, city, categories=categories, subdomain=subdomain)
         self.page = playwright_page
         self.mode = mode  # "click_more" or "deep"
-        self.source_config = config.get("sources", {}).get("jsprav", {})
-        self.subdomain_map = self.source_config.get("subdomain_map", {})
-        self._cached_subdomain = subdomain
-        if categories:
-            self.categories = categories
-        else:
-            self.categories = self.source_config.get(
-                "categories", [JSPRAV_CATEGORY]
-            )
-        self._city_lower = city.lower().strip()
         self.target_count = target_count  # если задан — стоп после набора
-
-    def _get_subdomain(self) -> str:
-        if self._cached_subdomain:
-            return self._cached_subdomain
-        city_lower = self._city_lower
-        if city_lower in self.subdomain_map:
-            return self.subdomain_map[city_lower]
-        base = slugify(self.city)
-        if base.endswith("iy"):
-            base = base[:-2] + "ij"
-        return base
-
-    def _is_local(self, address: dict) -> bool:
-        """Проверяет, относится ли компания к искомому городу."""
-        locality = address.get("addressLocality", "")
-        if not locality:
-            return True
-        loc_lower = locality.lower().strip()
-        if loc_lower == self._city_lower:
-            return True
-        if self._city_lower.startswith(loc_lower) or loc_lower.startswith(
-            self._city_lower
-        ):
-            shorter = min(len(self._city_lower), len(loc_lower))
-            longer = max(len(self._city_lower), len(loc_lower))
-            if shorter * 100 / longer >= 70:
-                return True
-        if len(loc_lower) >= 3:
-            stem = loc_lower.rstrip("аеоуияью")
-            if stem and stem == self._city_lower.rstrip("аеоуияью"):
-                return True
-        return False
 
     # ═══════════════════════════════════════════════════════════════════
     #  РЕЖИМ: click_more — быстрый сбор через JSON-LD + Playwright
@@ -98,8 +56,8 @@ class JspravPlaywrightScraper(BaseScraper):
             logger.warning(f"Invalid subdomain '{subdomain}' for city '{self.city}'")
             return []
 
+        seen_urls = set()
         for category in self.categories:
-            seen_urls = set()
             companies_before = len(companies)
             base_url = f"https://{subdomain}.jsprav.ru/{category}/"
             logger.info(f"  JSprav PW (click_more): {base_url}")
@@ -165,10 +123,21 @@ class JspravPlaywrightScraper(BaseScraper):
             except Exception as e:
                 logger.error(f"  JSprav PW error ({category}): {e}")
 
+        # ═══════════════════════════════════════════════════════════════
+        #  Enrichment: ОДИН РАЗ после сбора всех JSON-LD (P-5)
+        # ═══════════════════════════════════════════════════════════════
+        if companies:
+            companies = self._enrich_from_detail_pages(companies)
+
         return companies
 
     def _parse_jsonld_from_page(self, seen_urls: set) -> list[RawCompany]:
-        """Парсит JSON-LD из текущего состояния страницы Playwright."""
+        """Парсит JSON-LD из текущего состояния страницы Playwright.
+
+        Использует общий _parse_jsonld_item из JspravBaseScraper для парсинга
+        отдельных JSON-LD элементов. extract_emails=False — PW извлекает email
+        из page content на этапе enrichment.
+        """
         companies = []
         scripts = self.page.query_selector_all('script[type="application/ld+json"]')
 
@@ -182,62 +151,13 @@ class JspravPlaywrightScraper(BaseScraper):
                     continue
                 for item in data.get("itemListElement", []):
                     c = item.get("item", {})
-                    if c.get("@type") != "LocalBusiness":
-                        continue
-                    name = c.get("name", "")
-                    if not name:
-                        continue
-
-                    addr = c.get("address", {})
-                    org_url = c.get("url", "")
-                    if org_url and org_url in seen_urls:
-                        continue
-
-                    if not self._is_local(addr):
-                        continue
-
-                    if org_url:
-                        seen_urls.add(org_url)
-
-                    same = c.get("sameAs", [])
-                    tel = c.get("telephone", [])
-                    if isinstance(tel, str):
-                        tel = [tel]
-                    phones = normalize_phones(tel)
-                    if isinstance(same, str):
-                        website = same if same else None
-                    else:
-                        website = same[0] if same else None
-
-                    geo = None
-                    if c.get("geo"):
-                        try:
-                            lat_raw = c["geo"].get("latitude")
-                            lon_raw = c["geo"].get("longitude")
-                            if lat_raw is not None and lon_raw is not None:
-                                geo = [float(lat_raw), float(lon_raw)]
-                        except (ValueError, TypeError):
-                            pass
-
-                    companies.append(
-                        RawCompany(
-                            source=Source.JSPRAV_PW,
-                            source_url=org_url,  # URL detail-страницы компании
-                            name=name,
-                            phones=phones,
-                            address_raw=f"{addr.get('streetAddress', '')}, "
-                            f"{addr.get('addressLocality', '')}".strip(", "),
-                            website=website,
-                            emails=[],
-                            city=self.city,
-                            geo=geo,
-                        )
+                    company = self._parse_jsonld_item(
+                        c, seen_urls, extract_emails=False
                     )
+                    if company is not None:
+                        companies.append(company)
             except (json.JSONDecodeError, KeyError, AttributeError):
                 continue
-
-        # ── Enrichment detail-страниц (мессенджеры из base64 data-link) ──
-        companies = self._enrich_from_detail_pages(companies)
 
         return companies
 
@@ -271,7 +191,6 @@ class JspravPlaywrightScraper(BaseScraper):
                 self.page.wait_for_load_state("domcontentloaded", timeout=15000)
 
                 page_content = self.page.content()
-                soup = self.page.query_selector("body")
 
                 # Мессенджеры и сайт из base64 data-link
                 messengers = {}
@@ -318,9 +237,6 @@ class JspravPlaywrightScraper(BaseScraper):
             f"с мессенджерами"
         )
         return companies
-
-    # LOW-7: _classify_messenger вынесен в granite.utils.classify_messenger.
-    _classify_messenger = staticmethod(classify_messenger)
 
     # ═══════════════════════════════════════════════════════════════════
     #  РЕЖИМ: deep — обход каждой страницы компании

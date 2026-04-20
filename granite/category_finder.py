@@ -212,8 +212,15 @@ def find_jsprav(city: str, config: dict, region: str | None = None) -> dict:
 def _load_cache() -> dict:
     path = Path(CACHE_PATH)
     if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            logger.warning(f"Кэш категорий повреждён ({e}), пересоздаём")
+            # Бэкапим битый файл и начинаем с чистого кэша
+            backup = path.with_suffix(".yaml.bak")
+            path.replace(backup)
+            logger.info(f"Битый кэш → {backup}")
     return {}
 
 
@@ -237,12 +244,14 @@ def discover_categories(cities: list[str], config: dict, region: str | None = No
     with _cache_lock:
         cache = _load_cache()
         found_any = False
+        save_interval = 25  # сохранять на диск каждые N новых городов
+        new_count = 0
 
-        for city in cities:
+        for i, city in enumerate(cities):
             logger.info(f"  Поиск категорий: {city}")
 
-            cached = cache.get("jsprav", {}).get(city, [])
-            if cached:
+            cached = cache.get("jsprav", {}).get(city)
+            if cached is not None:
                 logger.info(f"    jsprav {city}: из кэша — {cached}")
                 continue
 
@@ -258,7 +267,22 @@ def discover_categories(cities: list[str], config: dict, region: str | None = No
                     "subdomain"
                 ]
                 found_any = True
+                new_count += 1
+            else:
+                # Кэшируем негативный результат навсегда — город без категории
+                cache.setdefault("jsprav", {})[city] = []
+                if result.get("subdomain"):
+                    cache.setdefault("_subdomains", {}).setdefault("jsprav", {})[city] = result["subdomain"]
+                found_any = True
+                new_count += 1
 
+            # Инкрементальное сохранение: каждые save_interval новых городов
+            if new_count >= save_interval:
+                _save_cache(cache)
+                logger.info(f"Кэш категорий: сохранено {new_count} новых ({i + 1}/{len(cities)})")
+                new_count = 0
+
+        # Финальное сохранение
         if found_any:
             _save_cache(cache)
             logger.info(f"Кэш категорий обновлён: {CACHE_PATH}")
@@ -271,8 +295,10 @@ def discover_categories(cities: list[str], config: dict, region: str | None = No
 def get_categories(
     cache: dict, source: str, city: str, fallback: list[str] | None = None
 ) -> list[str]:
-    found = cache.get(source, {}).get(city, [])
-    return found if found else (fallback or [])
+    found = cache.get(source, {}).get(city)
+    if found is not None:
+        return found
+    return fallback or []
 
 
 def get_subdomain(
