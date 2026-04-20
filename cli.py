@@ -66,6 +66,7 @@ def run(
     force: bool = typer.Option(False, "--force", "-f", help="Очистить старые данные и начать заново"),
     no_scrape: bool = typer.Option(False, "--no-scrape", help="Пропустить фазу парсинга (использовать кэш)"),
     re_enrich: bool = typer.Option(False, "--re-enrich", help="Перезапустить только обогащение (сохранить scrape+dedup)"),
+    resume: bool = typer.Option(False, "--resume", "-r", help="Пропустить завершённые города, продолжить с места остановки"),
     city_list: Path = typer.Option(None, "--city-list", "-l",
         help="Файл со списком городов (по одному на строку)"),
 ):
@@ -98,24 +99,59 @@ def run(
     else:
         target_cities = [city]
 
-    # FIX 1.7: Задержка между городами для предотвращения rate-limit (429).
-    # DDG и другие поисковики блокируют при слишком частых запросах.
-    # Настраивается через config: scraping.inter_city_delay (секунды).
+    # Задержка между городами для предотвращения rate-limit (429).
+    # Настраивается через config: scraping.inter_city_delay (секунды, 0 = без паузы).
     import time
-    inter_city_delay = config.get("scraping", {}).get("inter_city_delay", 10)
+    inter_city_delay = config.get("scraping", {}).get("inter_city_delay", 2)
+
+    # --resume: пропустить города, которые уже полностью обработаны,
+    # и начать с первого незавершённого.
+    if resume:
+        original_count = len(target_cities)
+        remaining = []
+        for c in target_cities:
+            stage = manager.checkpoints.get_stage(c)
+            if stage == "enriched" and not manager.checkpoints.needs_enrich_resume(c):
+                continue  # полностью готово — пропускаем
+            remaining.append(c)
+        skipped = original_count - len(remaining)
+        if skipped > 0:
+            print_status(f"--resume: пропускаю {skipped} завершённых городов, остаётся {len(remaining)}", "info")
+        target_cities = remaining
+        if not target_cities:
+            print_status("Все города уже обработаны — нечего делать", "success")
+            db.engine.dispose()
+            return
+
+    # Счётчик реально обработанных городов (для паузы только между ними)
+    processed_count = 0
+    skipped_count = 0
+    total = len(target_cities)
 
     for i, c in enumerate(target_cities):
         try:
-            if i > 0 and inter_city_delay > 0:
+            result = manager.run_city(
+                c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich,
+                quiet_skip=True,
+            )
+            if result is False:
+                # Город пропущен (уже обработан)
+                skipped_count += 1
+                continue
+
+            processed_count += 1
+            # Пауза только между реально обработанными городами
+            if processed_count > 0 and inter_city_delay > 0 and i < total - 1:
                 print_status(
-                    f"Пауза {inter_city_delay}с перед городом {c} (rate-limit)",
+                    f"Пауза {inter_city_delay}с перед следующим городом ({i+1}/{total})",
                     "info",
                 )
                 time.sleep(inter_city_delay)
-            manager.run_city(c, force=force, run_scrapers=not no_scrape, re_enrich=re_enrich)
         except PipelineCriticalError:
             print_status(f"Критическая ошибка для города {c}. Остановка.", "error")
             raise typer.Exit(1)
+
+    print_status(f"Готово: обработано {processed_count}, пропущено {skipped_count}", "success")
     db.engine.dispose()
 
 @app.command()
@@ -362,6 +398,46 @@ def db_check():
     except Exception as e:
         print_status(f"Ошибка проверки: {e}", "error")
         raise typer.Exit(1)
+
+
+@app.command()
+def precheck(
+    city: str = typer.Argument(None, help="Город для проверки, или 'all' (по умолчанию)"),
+    force: bool = typer.Option(False, "--force", help="Перепроверить даже закэшированные города"),
+):
+    """Предзаполнить кэш категорий jsprav для всех городов.
+
+    Первый запуск занимает 18-28 минут (1098 городов × 2-3 запроса).
+    Повторные запуски — мгновенно (из кэша).
+    """
+    config = load_config()
+    setup_logging(config)
+
+    from granite.pipeline.region_resolver import RegionResolver
+    from granite.category_finder import discover_categories, _load_cache, _save_cache
+    resolver = RegionResolver(config)
+
+    if city and city.lower() != "all":
+        cities = [city]
+    else:
+        cities = resolver.get_all_cities()
+        print_status(f"Всего городов: {len(cities)}", "info")
+
+    if force:
+        cache = _load_cache()
+        removed = 0
+        for c in cities:
+            if cache.get("jsprav", {}).pop(c, None) is not None:
+                removed += 1
+        if removed:
+            _save_cache(cache)
+            print_status(f"--force: очищено {removed} записей из кэша", "info")
+
+    cache = discover_categories(cities, config)
+
+    positive = sum(1 for v in cache.get("jsprav", {}).values() if v)
+    negative = sum(1 for v in cache.get("jsprav", {}).values() if v == [])
+    print_status(f"Результат: {positive} с категорией, {negative} без категории, всего {positive + negative}", "success")
 
 
 @app.command()

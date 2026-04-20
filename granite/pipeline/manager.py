@@ -94,39 +94,64 @@ class PipelineManager:
         return self._reverse_lookup
 
     def run_city(self, city: str, force: bool = False,
-                 run_scrapers: bool = True, re_enrich: bool = False):
+                 run_scrapers: bool = True, re_enrich: bool = False,
+                 quiet_skip: bool = False):
         """Запуск полного цикла для города (или всех городов региона).
 
         city может быть:
           - названием города (скрапинг одного города)
           - названием региона (скрапинг всех городов региона)
           - 'all' (все города)
+
+        Returns:
+            True  — город был реально обработан (одна или более фаз выполнена)
+            False — город пропущен (уже полностью завершён)
         """
-        print_status(f"Запуск конвейера для: {city}", "bold")
+        # Сначала определяем стадию — нужно до любого вывода
+        if force:
+            print_status(f"Запуск конвейера для: {city}", "bold")
+            print_status("Флаг --force: очистка старых данных...", "warning")
+            self.checkpoints.clear_city(city)
+
+        stage = self.checkpoints.get_stage(city)
+
+        # Проверяем, полностью ли завершён город (enriched, progress >= 95%).
+        # Если да — пропускаем весь пайплайн, чтобы не гонять network/scoring/export
+        # для уже обработанных городов при запуске `run all`.
+        city_already_done = (
+            stage == "enriched"
+            and not self.checkpoints.needs_enrich_resume(city)
+            and not re_enrich
+        )
+        if city_already_done:
+            if not quiet_skip:
+                print_status(f"Город {city} уже обработан — пропуск", "success")
+            return False  # сигнализируем, что город был пропущен
+
+        # Город требует работы — выводим заголовок
+        print_status(f"Запуск конвейера для: {city} [этап: {stage}]", "bold")
 
         region_cities = self.region.get_region_cities(city)
         if len(region_cities) > 1:
             print_status(f"Область включает города: {', '.join(region_cities)}", "info")
 
-        if force:
-            print_status("Флаг --force: очистка старых данных...", "warning")
-            self.checkpoints.clear_city(city)
-
         # --re-enrich: перескакиваем на обогащение, не трогаем scrape/dedup/enriched
-        stage = self.checkpoints.get_stage(city)
-        print_status(f"Определен этап старта: {stage}")
+        work_done = False  # были ли реально выполненные фазы
 
         if re_enrich:
             # Пропускаем scrape+dedup, запускаем только точечный поиск (проход 2)
             self._run_phase("обогащение (re-enrich)", lambda: self.enrichment.run_deep_enrich_existing(city))
+            work_done = True
         else:
             if stage == "start" and run_scrapers:
                 self._run_phase("скрапинг", lambda: self.scraping.run(city, region_cities))
                 stage = "scraped"
+                work_done = True
 
             if stage == "scraped":
                 self._run_phase("дедупликация", lambda: self.dedup.run(city))
                 stage = "deduped"
+                work_done = True
 
             if stage == "deduped":
                 if self.enrichment._is_async_enabled():
@@ -135,6 +160,7 @@ class PipelineManager:
                 else:
                     self._run_phase("обогащение",
                                    lambda: self.enrichment.run(city))
+                work_done = True
 
             # 1.6: Возобновление частичного обогащения
             # Если обогащение было прервано (progress < 95%), дозаполняем
@@ -146,11 +172,13 @@ class PipelineManager:
                 )
                 self._run_phase("обогащение (resume)",
                                lambda: self.enrichment.run(city, only_new=True))
+                work_done = True
 
         # Reverse lookup enrichment (между обогащением и детектором сетей)
         rl_config = self.config.get("enrichment", {}).get("reverse_lookup", {})
         if rl_config.get("enabled", False):
             self._run_phase("reverse lookup", lambda: self.reverse_lookup.run(city))
+            work_done = True
 
         # Пересчёт сетей только для текущего города/области
         print_status("Проверка филиальных сетей...", "info")
@@ -166,6 +194,7 @@ class PipelineManager:
         self._print_city_stats(city)
 
         print_status(f"Город {city} завершен!", "success")
+        return True  # сигнализируем, что город был реально обработан
 
     def _print_city_stats(self, city: str) -> None:
         """Вывод сводной статистики по городу после завершения пайплайна."""

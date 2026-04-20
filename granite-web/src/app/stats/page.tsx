@@ -23,7 +23,7 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { useState } from "react";
-import { FUNNEL_STAGES } from "@/constants/funnel";
+import { FUNNEL_STAGES, FunnelStage } from "@/constants/funnel";
 
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#64748b'];
 
@@ -38,10 +38,10 @@ export default function StatsPage() {
   // Данные для воронки
   const funnelData = stats?.by_stage 
     ? Object.entries(stats.by_stage).map(([stage, count]) => ({
-        name: FUNNEL_STAGES[stage as any]?.label || stage,
+        name: FUNNEL_STAGES[stage as FunnelStage]?.label || stage,
         count: count,
-        color: FUNNEL_STAGES[stage as any]?.color === 'blue' ? '#3b82f6' : 
-               FUNNEL_STAGES[stage as any]?.color === 'green' ? '#10b981' : '#64748b'
+        color: FUNNEL_STAGES[stage as FunnelStage]?.color === 'blue' ? '#3b82f6' : 
+               FUNNEL_STAGES[stage as FunnelStage]?.color === 'green' ? '#10b981' : '#64748b'
       })) 
     : [];
 
@@ -154,7 +154,7 @@ export default function StatsPage() {
                   outerRadius={100}
                   paddingAngle={5}
                   dataKey="value"
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 >
                   {segmentData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />

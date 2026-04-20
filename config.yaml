@@ -18,6 +18,7 @@ scraping:
   user_agent_rotation: true
   max_threads: 3
   failed_domain_cache_ttl: 600  # секунд — кэш недоступных доменов в web_search
+  inter_city_delay: 2           # секунд — пауза между городами (0 = без паузы)
 
 # ===== Настройки источников =====
 sources:
@@ -36,6 +37,9 @@ sources:
     enabled: true
     max_retries: 3
     method: "jsonld"
+    backoff_base: 5            # базовая задержка при 429/503 (секунд)
+    backoff_max: 60            # максимальная задержка при 429/503 (секунд)
+    playwright_threshold: 0.9  # порог для PW fallback (доля от declared_total)
     categories:
       - "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
     subdomain_map:

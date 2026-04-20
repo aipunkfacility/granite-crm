@@ -20,7 +20,7 @@ import {
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
-import { SEGMENT_CONFIG } from "@/constants/funnel";
+import { SEGMENT_CONFIG, Segment } from "@/constants/funnel";
 
 export default function FollowupPage() {
   const queryClient = useQueryClient();
@@ -72,7 +72,7 @@ export default function FollowupPage() {
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {items.map((item) => {
-            const segment = item.segment ? SEGMENT_CONFIG[item.segment as any] : null;
+            const segment = item.segment ? SEGMENT_CONFIG[item.segment as Segment] : null;
             
             return (
               <Card key={item.company_id} className="group hover:border-indigo-200 transition-colors">

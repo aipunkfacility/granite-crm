@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import { Company, PaginatedResponse, FunnelStage } from '@/lib/types/api';
 
 export interface FollowupItem {
-  id: number;
+  company_id: number;
   name: string;
   city: string;
   segment: string;

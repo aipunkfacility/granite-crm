@@ -1,5 +1,7 @@
 import { FunnelStage, Segment } from "@/lib/types/api";
 
+export type { FunnelStage, Segment };
+
 export const FUNNEL_STAGES: Record<FunnelStage, { label: string; color: string; variant: "outline" | "default" | "secondary" | "destructive" }> = {
   new: { label: "Новый", color: "slate", variant: "outline" },
   email_sent: { label: "Письмо отправлено", color: "blue", variant: "default" },
