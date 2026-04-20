@@ -183,6 +183,7 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
     for key, value in updates.items():
         setattr(contact, key, value)
     contact.updated_at = datetime.now(timezone.utc)
+    db.commit()
     return {"ok": True}
 
 
