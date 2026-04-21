@@ -9,6 +9,7 @@ import queue
 import threading
 from typing import Optional
 
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import StreamingResponse
 from loguru import logger
@@ -70,9 +71,19 @@ def pipeline_status(
             seg_counts[city_name] = {}
         seg_counts[city_name][segment] = cnt
 
-    # Собираем все уникальные города из всех таблиц
+    # Получаем статусы из БД (CLI-запуски)
+    db_statuses = {
+        c.name: {
+            "status": c.pipeline_status,
+            "phase": c.pipeline_phase,
+            "updated_at": c.pipeline_updated_at,
+        }
+        for c in db.query(CityRefRow).all()
+    }
+
+    # Собираем все уникальные города из всех таблиц + справочника
     all_cities = sorted(
-        set(raw_counts) | set(comp_counts) | set(enriched_counts)
+        set(raw_counts) | set(comp_counts) | set(enriched_counts) | set(db_statuses)
     )
 
     cities = []
@@ -98,15 +109,31 @@ def pipeline_status(
 
         # Проверяем, запущен ли пайплайн для этого города
         is_running = False
+        db_stat = db_statuses.get(city_name, {})
+        
+        # 1. Проверка в памяти (запущено через API)
         with _running_lock:
             thread = _running_pipelines.get(city_name)
             if thread and thread.is_alive():
                 is_running = True
+        
+        # 2. Проверка в БД (запущено через CLI)
+        if not is_running and db_stat.get("status") == "running":
+            updated_at = db_stat.get("updated_at")
+            if updated_at:
+                # Если статус обновлялся менее 10 минут назад — считаем живым
+                now = datetime.now(timezone.utc)
+                if now - updated_at.replace(tzinfo=timezone.utc) < timedelta(minutes=10):
+                    is_running = True
+        
+        # Инфо о текущей фазе (из БД)
+        phase = db_stat.get("phase") if is_running else None
 
         entry = {
             "city": city_name,
             "stage": stage,
             "is_running": is_running,
+            "phase": phase,
             "raw_count": raw,
             "company_count": comp,
             "enriched_count": enriched,

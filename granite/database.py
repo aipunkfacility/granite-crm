@@ -93,6 +93,11 @@ class CityRefRow(Base):
     region = Column(String, nullable=False, index=True)
     is_doppelganger = Column(Boolean, default=False)
     is_populated = Column(Boolean, default=False)
+    
+    # FIX: Поля для мониторинга пайплайна (CLI -> CRM API)
+    pipeline_status = Column(String, default="idle", index=True)  # idle, running, success, error
+    pipeline_phase = Column(String, nullable=True)               # scraping, dedup, etc.
+    pipeline_updated_at = Column(DateTime, nullable=True)
 
 
 class UnmatchedCityRow(Base):

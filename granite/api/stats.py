@@ -42,11 +42,15 @@ def get_stats(
     total = db.query(func.count(CompanyRow.id)).filter(*base_filter).scalar()
 
     # --- Воронка: count по funnel_stage из crm_contacts ---
+    # FIX: Используем outerjoin, чтобы учитывать компании без записи в crm_contacts как 'new'
     funnel_q = (
-        db.query(CrmContactRow.funnel_stage, func.count())
-        .join(CompanyRow, CrmContactRow.company_id == CompanyRow.id)
+        db.query(
+            func.coalesce(CrmContactRow.funnel_stage, "new").label("stage"),
+            func.count(CompanyRow.id)
+        )
+        .outerjoin(CrmContactRow, CompanyRow.id == CrmContactRow.company_id)
         .filter(*base_filter)
-        .group_by(CrmContactRow.funnel_stage)
+        .group_by(sa_text("stage"))
         .all()
     )
     funnel = {stage: cnt for stage, cnt in funnel_q}

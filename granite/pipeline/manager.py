@@ -10,9 +10,10 @@
   - pipeline/scoring_phase.py    — ScoringPhase (скоринг + сегментация)
   - pipeline/export_phase.py     — ExportPhase (CSV + пресеты)
 """
+from datetime import datetime, timezone
 import asyncio
 from loguru import logger
-from granite.database import Database
+from granite.database import Database, CityRefRow
 from granite.pipeline.checkpoint import CheckpointManager
 from granite.pipeline.status import print_status
 
@@ -113,7 +114,10 @@ class PipelineManager:
             print_status("Флаг --force: очистка старых данных...", "warning")
             self.checkpoints.clear_city(city)
 
-        stage = self.checkpoints.get_stage(city)
+        self._set_city_status(city, "running", "start")
+        
+        try:
+            stage = self.checkpoints.get_stage(city)
 
         # Проверяем, полностью ли завершён город (enriched, progress >= 95%).
         # Если да — пропускаем весь пайплайн, чтобы не гонять network/scoring/export
@@ -194,7 +198,11 @@ class PipelineManager:
         self._print_city_stats(city)
 
         print_status(f"Город {city} завершен!", "success")
+        self._set_city_status(city, "success", "done")
         return True  # сигнализируем, что город был реально обработан
+    except Exception as e:
+        self._set_city_status(city, "error", f"failed_at_{getattr(self, '_current_phase', 'unknown')}")
+        raise
 
     def _print_city_stats(self, city: str) -> None:
         """Вывод сводной статистики по городу после завершения пайплайна."""
@@ -260,6 +268,12 @@ class PipelineManager:
         Поддерживает как sync, так и async функции (detects coroutine functions
         и запускает через asyncio.run).
         """
+        # FIX: Сохраняем текущую фазу для логов/статуса
+        self._current_phase = name
+        # Пытаемся определить город из контекста (если это возможно)
+        # В PipelineManager это сложнее, так как _run_phase вызывается из run_city.
+        # Мы полагаемся на то, что run_city уже установил статус 'running'.
+        
         try:
             if asyncio.iscoroutinefunction(fn):
                 asyncio.run(fn())
@@ -271,3 +285,17 @@ class PipelineManager:
             if name in self._CRITICAL_PHASES:
                 print_status(f"Критическая фаза '{name}' не удалась. Остановка.", "error")
                 raise PipelineCriticalError(f"Критическая фаза '{name}' не удалась: {e}") from e
+
+    def _set_city_status(self, city: str, status: str, phase: str = None):
+        """Обновление статуса пайплайна в БД для отображения в CRM."""
+        try:
+            with self.db.session_scope() as session:
+                row = session.query(CityRefRow).filter_by(name=city).first()
+                if row:
+                    row.pipeline_status = status
+                    if phase:
+                        row.pipeline_phase = phase
+                    row.pipeline_updated_at = datetime.now(timezone.utc)
+                    # session.commit() сделает context manager
+        except Exception as e:
+            logger.debug(f"Не удалось обновить статус города {city}: {e}")

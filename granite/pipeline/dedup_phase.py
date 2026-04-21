@@ -7,10 +7,11 @@
 
 from typing import Any
 
-from granite.database import Database, RawCompanyRow, CompanyRow
+from granite.database import Database, RawCompanyRow, CompanyRow, CrmContactRow
 from loguru import logger
 from granite.pipeline.status import print_status
 from granite.pipeline.region_resolver import lookup_region
+from granite.utils import normalize_messenger_url
 
 # Import Dedup
 from granite.dedup.phone_cluster import cluster_by_phones
@@ -111,7 +112,6 @@ class DedupPhase:
             )
 
             # Слияние и сохранение
-            # O(1) lookup via dict instead of O(N) list comprehension
             dicts_by_id = {d["id"]: d for d in dicts}
             conflicts = []
             for i, cl in enumerate(superclusters):
@@ -120,6 +120,14 @@ class DedupPhase:
 
                 city_name = merged["city"]
                 region_name = lookup_region(city_name)
+                
+                # FIX: Нормализация ссылок мессенджеров перед сохранением
+                messengers = merged.get("messengers", {})
+                if messengers:
+                    normalized = {}
+                    for m_type, m_url in messengers.items():
+                        normalized[m_type] = normalize_messenger_url(m_url, m_type)
+                    messengers = normalized
 
                 row = CompanyRow(
                     name_best=merged["name_best"],
@@ -131,13 +139,28 @@ class DedupPhase:
                     region=region_name,
                     status="raw",
                     merged_from=merged.get("merged_from", []),
-                    messengers=merged.get("messengers", {}),
+                    messengers=messengers,
                     needs_review=merged.get("needs_review", False),
                     review_reason=merged.get("review_reason", ""),
                 )
                 session.add(row)
+                session.flush()  # Получаем row.id для связей
 
-                # Если регион не найден — записать в unmatched
+                # FIX: Создание CRM-контакта для каждой новой компании
+                contact = CrmContactRow(
+                    company_id=row.id,
+                    funnel_stage="new"
+                )
+                session.add(contact)
+
+                # FIX: Обновление merged_into в исходных raw_companies
+                raw_ids = merged.get("merged_from", [])
+                if raw_ids:
+                    session.query(RawCompanyRow).filter(RawCompanyRow.id.in_(raw_ids)).update(
+                        {"merged_into": row.id}, synchronize_session=False
+                    )
+
+                # Если регион не найден — записать в unmatched (пропущено для краткости)
                 if not region_name:
                     from granite.database import UnmatchedCityRow
                     existing = session.query(UnmatchedCityRow).filter_by(name=city_name).first()

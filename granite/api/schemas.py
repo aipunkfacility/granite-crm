@@ -32,6 +32,14 @@ class CreateTouchRequest(BaseModel):
 
 
 class UpdateCompanyRequest(BaseModel):
+    # Данные компании
+    name: Optional[str] = None
+    phones: Optional[list[str]] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    emails: Optional[list[str]] = None
+
+    # CRM-поля
     funnel_stage: Optional[str] = Field(
         None,
         pattern="^(new|email_sent|email_opened|tg_sent|wa_sent|replied|interested|not_interested|unreachable)$",
@@ -105,6 +113,21 @@ class PipelineRunRequest(BaseModel):
 class MergeRequest(BaseModel):
     """Запрос на слияние компаний."""
     source_ids: List[int] = Field(..., min_length=1, description="ID компаний для слияния в текущую")
+
+
+class ReEnrichPreviewResponse(BaseModel):
+    """Результат предпросмотра пересканирования данных."""
+    company_id: int
+    before: dict
+    after: dict
+    has_changes: bool
+
+
+class ReEnrichApplyRequest(BaseModel):
+    """Данные для применения после пересканирования."""
+    name: Optional[str] = None
+    phones: Optional[list[str]] = None
+    emails: Optional[list[str]] = None
 
 
 # ============================================================

@@ -10,12 +10,17 @@ from granite.api.deps import get_db
 from granite.api.schemas import (
     UpdateCompanyRequest, CompanyResponse, OkResponse,
     PaginatedResponse, MergeRequest, SimilarCompaniesResponse,
+    ReEnrichPreviewResponse, ReEnrichApplyRequest,
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
 )
-from granite.utils import extract_domain, normalize_phones
+from granite.utils import (
+    extract_domain, normalize_phones, fetch_page, extract_phones, 
+    extract_emails, is_seo_title,
+)
 from loguru import logger
+from bs4 import BeautifulSoup
 
 __all__ = ["router"]
 
@@ -162,14 +167,40 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/companies/{company_id}", response_model=OkResponse)
 def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = Depends(get_db)):
-    """Обновить CRM-поля компании (funnel_stage, notes, stop_automation)."""
+    """Обновить данные компании и её CRM-поля."""
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+        
     contact = db.get(CrmContactRow, company_id)
     if not contact:
         contact = CrmContactRow(company_id=company_id)
         db.add(contact)
 
+    # 1. Обновляем базовые данные (CompanyRow)
+    company_updates = data.model_dump(
+        include={"name", "phones", "website", "address", "emails"},
+        exclude_unset=True
+    )
+    if "name" in company_updates:
+        company.name_best = company_updates["name"]
+    for key, value in company_updates.items():
+        if key != "name":
+            # Нормализация телефонов при ручном вводе
+            if key == "phones" and value:
+                value = normalize_phones(value)
+            setattr(company, key, value)
+    
+    if company_updates:
+        company.updated_at = datetime.now(timezone.utc)
+
+    # 2. Обновляем CRM-поля (CrmContactRow)
+    crm_updates = data.model_dump(
+        include={"funnel_stage", "notes", "stop_automation"},
+        exclude_unset=True
+    )
     # B3: при stop_automation=True — логировать активные email_logs (не блокировать)
-    if data.stop_automation is True:
+    if crm_updates.get("stop_automation") is True:
         active_emails = db.query(CrmEmailLogRow).filter_by(
             company_id=company_id, status="sent"
         ).count()
@@ -179,10 +210,96 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
                 f"with {active_emails} sent email(s)"
             )
 
+    for key, value in crm_updates.items():
+        setattr(contact, key, value)
+    
+    if crm_updates:
+        contact.updated_at = datetime.now(timezone.utc)
+        
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/companies/{company_id}/re-enrich-preview", response_model=ReEnrichPreviewResponse)
+def re_enrich_preview(company_id: int, db: Session = Depends(get_db)):
+    """Предпросмотр обновления данных с сайта компании (скрапинг)."""
+    company = db.get(CompanyRow, company_id)
+    if not company or not company.website:
+        raise HTTPException(400, "Company website not found")
+
+    # 1. Скрапинг сайта
+    try:
+        html = fetch_page(company.website, timeout=15)
+        if not html:
+            raise HTTPException(502, f"Could not fetch {company.website}")
+    except Exception as e:
+        raise HTTPException(502, f"Error fetching website: {e}")
+
+    soup = BeautifulSoup(html, "html.parser")
+    
+    # 2. Извлечение данных (используем логику аналогичную скраперам)
+    # Имя (из Title/H1)
+    new_name = None
+    title = soup.find("title")
+    if title:
+        name_cand = title.get_text(strip=True)
+        # Очистка от SEO (базовая)
+        for sep in [" | ", " — ", " - "]:
+            if sep in name_cand:
+                name_cand = name_cand.split(sep)[0].strip()
+                break
+        if not is_seo_title(name_cand):
+            new_name = name_cand
+    
+    if not new_name:
+        h1 = soup.find("h1")
+        if h1:
+            new_name = h1.get_text(strip=True)
+
+    # Телефоны и Email
+    new_phones = normalize_phones(extract_phones(html))
+    new_emails = extract_emails(html)
+
+    before = {
+        "name": company.name_best,
+        "phones": company.phones or [],
+        "emails": company.emails or [],
+    }
+    after = {
+        "name": new_name or company.name_best,
+        "phones": list(set(before["phones"] + new_phones)),
+        "emails": list(set(before["emails"] + new_emails)),
+    }
+    
+    has_changes = (
+        after["name"] != before["name"] or 
+        len(after["phones"]) > len(before["phones"]) or
+        len(after["emails"]) > len(before["emails"])
+    )
+
+    return {
+        "company_id": company_id,
+        "before": before,
+        "after": after,
+        "has_changes": has_changes
+    }
+
+
+@router.post("/companies/{company_id}/re-enrich-apply", response_model=OkResponse)
+def re_enrich_apply(company_id: int, data: ReEnrichApplyRequest, db: Session = Depends(get_db)):
+    """Применить данные, полученные после пересканирования."""
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
-        setattr(contact, key, value)
-    contact.updated_at = datetime.now(timezone.utc)
+        if key == "name":
+            company.name_best = value
+        else:
+            setattr(company, key, value)
+
+    company.updated_at = datetime.now(timezone.utc)
     db.commit()
     return {"ok": True}
 

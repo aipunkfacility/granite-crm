@@ -7,17 +7,18 @@ from rapidfuzz import fuzz
 
 
 # ── SEO-title детектор (общий для merger.py и web_search.py) ─────────
+# FIX: Улучшена обработка слипшихся слов (характерно для SEO-мусора без пробелов)
 _SEO_TITLE_PATTERN = re.compile(
     r"(?:купить|цен[аыуе]|недорог|заказать|от производитель|"
     r"с установк|на могил|доставк|скидк|каталог|"
-    r"памятник[аиы]?\s+(?:из|в|на|от)|"
+    r"памятник[аиы]?\s*(?:из|в|на|от|и)?\s*|"  # "Памятникииз", "Памятники в"
     r"изготовлен.*(?:памятник|надгробие|гранит)|"
-    r"гранитн[ые]+\s+мастерск|"           # "Гранитные мастерские"
-    r"памятники\s+(?:в|из|на|и)\s+|"      # "Памятники в/из"
-    r"памятники\s+(?:на\s+кладбищ)|"      # "Памятники на кладбищ"
-    r"изготовление\s+памятников|"          # "Изготовление памятников"
-    r"памятники\s+и\s+надгробия|"          # "Памятники и надгробия"
-    r"производство\s+памятников)",         # "Производство памятников"
+    r"гранитн[ые]+\s*мастерск|"            # "Гранитные мастерские"
+    r"памятники\s*(?:в|из|на|и)\s*|"       # "Памятники в/из"
+    r"памятники\s*(?:на\s*кладбищ)|"       # "Памятники на кладбищ"
+    r"изготовление\s*памятников|"          # "Изготовление памятников"
+    r"памятники\s*и\s*надгробия|"          # "Памятники и надгробия"
+    r"производство\s*памятников)",         # "Производство памятников"
     re.IGNORECASE,
 )
 
@@ -31,11 +32,54 @@ def is_seo_title(name: str) -> bool:
     """
     if not name:
         return True
-    if len(name) > 80:
+    if len(name) > 100:  # Было 80, увеличил для длинных SEO-фраз
         return True
     if _SEO_TITLE_PATTERN.search(name):
         return True
+
+    # FIX: Детектор слов без пробелов (SEO-спам)
+    if len(name) > 25 and " " not in name:
+        return True
+
+    # FIX: Если слишком много пробелов или нет букв (только спецсимволы)
+    if len(re.findall(r"[а-яa-z]", name, re.I)) < 3:
+        return True
     return False
+
+
+def normalize_messenger_url(url: str, m_type: str = "telegram") -> str:
+    """Очистка ссылок мессенджеров от двойных префиксов и мусора.
+    Пример: https://t.me/https://t.me/user -> https://t.me/user
+    """
+    if not url or not isinstance(url, str):
+        return ""
+    
+    # Рекурсивно убираем префиксы, если они вложены
+    if m_type in ("tg", "telegram"):
+        patterns = [r"https?://t\.me/", r"https?://telegram\.me/", r"tg://resolve\?domain="]
+        prefix = "https://t.me/"
+    elif m_type in ("wa", "whatsapp"):
+        patterns = [r"https?://wa\.me/", r"https?://api\.whatsapp\.com/send\?phone="]
+        prefix = "https://wa.me/"
+    else:
+        return url
+
+    # Рекурсивная очистка всех известных префиксов
+    current = url
+    while True:
+        prev = current
+        for p in patterns:
+            # Убираем префикс из начала
+            current = re.sub(r"^" + p, "", current, flags=re.I)
+        # Убираем мусор
+        current = current.lstrip("/@ ")
+        if current == prev:
+            break
+            
+    if not current:
+        return ""
+        
+    return prefix + current
 
 
 # ── A-7: Детектор имен агрегаторов ──────────────────────────────────────────
