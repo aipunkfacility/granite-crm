@@ -38,6 +38,25 @@ def is_seo_title(name: str) -> bool:
     return False
 
 
+# ── A-7: Детектор имен агрегаторов ──────────────────────────────────────────
+# Список названий брендов-агрегаторов, которые ошибочно попадают в поле 'name'
+_AGGREGATOR_NAMES = frozenset({
+    "uslugio", "услугио", "zoon", "зун", "yell", "елл", "jsprav",
+    "pqd", "пкд", "orgpage", "оргпейдж", "spravka inform", "справка информ",
+    "2gis", "2гис", "yandex", "яндекс", "google", "гугл", "avito", "авито",
+})
+
+
+def is_aggregator_name(name: str) -> bool:
+    """Проверяет, является ли имя названием самого агрегатора, а не компании.
+    Например: "Uslugio", "Zoon", "PQD".
+    """
+    if not name:
+        return False
+    n = name.lower().strip()
+    return n in _AGGREGATOR_NAMES
+
+
 # ── A-5: Географическая валидация телефонов ────────────────────────────────
 # DEF-коды для определения «местный» телефон или нет.
 # Используются и в web_search.py (_is_local_phone), и в merger.py

@@ -1,5 +1,5 @@
 # dedup/merger.py
-from granite.utils import pick_best_value, extract_street, normalize_phone, sanitize_filename, is_seo_title, is_non_local_phone
+from granite.utils import pick_best_value, extract_street, normalize_phone, sanitize_filename, is_seo_title, is_non_local_phone, is_aggregator_name
 from loguru import logger
 import os
 
@@ -129,10 +129,19 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
         # Новая логика: если есть не-SEO варианты — берём самое длинное из них.
         # Если все SEO — берём самое короткое (ближе к реальному названию).
         "name_best": (
+            # 1. Приоритет: не-SEO и не-агрегаторское имя (самое длинное)
             max(
-                (n for n in (r.get("name", "") for r in cluster_records) if n and not is_seo_title(n)),
+                (n for n in (r.get("name", "") for r in cluster_records) 
+                 if n and not is_seo_title(n) and not is_aggregator_name(n)),
                 key=len, default=None
             )
+            # 2. Если все SEO — берём не-агрегаторское самое короткое (ближе к сути)
+            or min(
+                (n for n in (r.get("name", "") for r in cluster_records) 
+                 if n and not is_aggregator_name(n)),
+                key=len, default=None
+            )
+            # 3. Fallback: самое короткое из всего что есть
             or min(
                 (n for n in (r.get("name", "") for r in cluster_records) if n),
                 key=len, default=""

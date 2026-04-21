@@ -1,8 +1,6 @@
 # tests/test_utils.py
 import pytest
-from granite.utils import normalize_phone, normalize_phones, extract_emails, \
-    compare_names, extract_street, extract_domain, pick_best_value, is_safe_url, is_safe_link_url, \
-    slugify, sanitize_filename
+    slugify, sanitize_filename, is_aggregator_name
 
 
 class TestNormalizePhone:
@@ -316,3 +314,22 @@ class TestIsSafeLinkUrl:
 
     def test_no_hostname_blocked(self):
         assert is_safe_link_url("http://") is False
+class TestIsAggregatorName:
+    """Tests for is_aggregator_name() — filtering out technical aggregator brand names."""
+
+    def test_known_aggregator(self):
+        assert is_aggregator_name("Uslugio") is True
+        assert is_aggregator_name("zoon") is True
+        assert is_aggregator_name("  PQD  ") is True
+
+    def test_russian_aggregator(self):
+        assert is_aggregator_name("Услугио") is True
+        assert is_aggregator_name("Зун") is True
+
+    def test_real_company_name(self):
+        assert is_aggregator_name("Гранит-Мастер") is False
+        assert is_aggregator_name("ИП Иванов") is False
+
+    def test_empty(self):
+        assert is_aggregator_name("") is False
+        assert is_aggregator_name(None) is False

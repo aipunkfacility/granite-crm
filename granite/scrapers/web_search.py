@@ -206,7 +206,7 @@ _RU_KEYWORDS = re.compile(
 )
 
 # ── SEO-title детектор: импортируем из utils.py (общий с merger.py) ──
-from granite.utils import is_seo_title
+from granite.utils import is_seo_title, is_aggregator_name
 
 
 # ── Негатив-фильтр: мусорные темы в title ────────────────────────────────
@@ -581,6 +581,7 @@ class WebSearchScraper(BaseScraper):
                             name = name.strip()
                             if (3 < len(name) < 80
                                     and not is_seo_title(name)
+                                    and not is_aggregator_name(name)
                                     and not self._is_city_page_name(name)):
                                 return name
             except (json.JSONDecodeError, TypeError, AttributeError):
@@ -592,6 +593,7 @@ class WebSearchScraper(BaseScraper):
             name = og["content"].strip()
             if (3 < len(name) < 80
                     and not is_seo_title(name)
+                    and not is_aggregator_name(name)
                     and not self._is_city_page_name(name)):
                 return name
 
@@ -605,6 +607,7 @@ class WebSearchScraper(BaseScraper):
                     break
             if (3 < len(title_text) < 80
                     and not is_seo_title(title_text)
+                    and not is_aggregator_name(title_text)
                     and not self._is_city_page_name(title_text)):
                 return title_text
 
@@ -614,6 +617,7 @@ class WebSearchScraper(BaseScraper):
             name = h1.get_text(strip=True)
             if (3 < len(name) < 60
                     and not is_seo_title(name)
+                    and not is_aggregator_name(name)
                     and not self._is_city_page_name(name)):
                 return name
 
@@ -1006,7 +1010,7 @@ class WebSearchScraper(BaseScraper):
 
             # Имя компании: предпочтение названию из страницы, если title — SEO-мусор
             company_name = details.get("company_name") or item["title"]
-            if is_seo_title(company_name) and details.get("company_name"):
+            if (is_seo_title(company_name) or is_aggregator_name(company_name)) and details.get("company_name"):
                 company_name = details["company_name"]
 
             company = RawCompany(

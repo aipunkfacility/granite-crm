@@ -11,6 +11,7 @@ from granite.exporters.csv import CsvExporter
 from granite.exporters.markdown import MarkdownExporter
 from granite.config_validator import validate_config as _validate_config
 from granite.pipeline.status import print_status
+from granite.dedup.network_filter import detect_and_mark_aggregators
 
 app = typer.Typer(help="Granite Workshops DB - Сбор и обогащение базы ритуальных мастерских")
 
@@ -549,6 +550,21 @@ def cities_status():
 
     print(f"\nВсего городов: {len(results)}")
     print("  + = enriched  * = populated (переназначенный)")
+    db.engine.dispose()
+
+
+@app.command()
+def scan_networks():
+    """А-6: Глобальный поиск агрегаторских сетей (3+ города) и их маркировка."""
+    config = load_config()
+    setup_logging(config)
+    db = Database(config_path=_config_path)
+    
+    modified = detect_and_mark_aggregators(db)
+    if modified > 0:
+        print_status(f"Успешно: помечено {modified} записей как сети/агрегаторы", "success")
+    else:
+        print_status("Сетей или новых агрегаторов не обнаружено", "info")
     db.engine.dispose()
 
 
