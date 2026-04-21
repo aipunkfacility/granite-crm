@@ -38,8 +38,14 @@ def is_seo_title(name: str) -> bool:
         return True
 
     # FIX: Детектор слов без пробелов (SEO-спам)
+    # Если во всей строке нет пробела
     if len(name) > 25 and " " not in name:
         return True
+        
+    # FIX: Детектор слишком длинных "слов" (слипшиеся слова типа ПамятникиНаЗаказ)
+    for word in name.split():
+        if len(word) > 20 and not word.startswith("http"):
+            return True
 
     # FIX: Если слишком много пробелов или нет букв (только спецсимволы)
     if len(re.findall(r"[а-яa-z]", name, re.I)) < 3:
@@ -78,6 +84,14 @@ def normalize_messenger_url(url: str, m_type: str = "telegram") -> str:
             
     if not current:
         return ""
+        
+    # FIX: Для WhatsApp убираем всё кроме цифр (текст сообщения, лишние параметры)
+    if m_type in ("wa", "whatsapp"):
+        current = re.sub(r"\D", "", current)
+        if not current: return ""
+        # Если случайно осталось 8 в начале (российский формат) — меняем на 7
+        if current.startswith("8") and len(current) == 11:
+            current = "7" + current[1:]
         
     return prefix + current
 

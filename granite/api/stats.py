@@ -21,6 +21,12 @@ __all__ = ["router"]
 router = APIRouter()
 
 
+FUNNEL_ORDER = [
+    "new", "email_sent", "email_opened", "tg_sent", "wa_sent",
+    "replied", "interested", "not_interested", "unreachable",
+]
+
+
 @router.get("/stats", response_model=StatsResponse)
 def get_stats(
     db: Session = Depends(get_db),
@@ -50,10 +56,12 @@ def get_stats(
         )
         .outerjoin(CrmContactRow, CompanyRow.id == CrmContactRow.company_id)
         .filter(*base_filter)
-        .group_by(sa_text("stage"))
+        .group_by(func.coalesce(CrmContactRow.funnel_stage, "new"))
         .all()
     )
-    funnel = {stage: cnt for stage, cnt in funnel_q}
+    # FIX: Заполняем все стадии воронки нулями, если данных нет
+    counts = {stage: cnt for stage, cnt in funnel_q}
+    funnel = {stage: counts.get(stage, 0) for stage in FUNNEL_ORDER}
 
     # --- Сегменты: count по segment из enriched_companies ---
     segment_q = (
@@ -63,7 +71,7 @@ def get_stats(
         .group_by(EnrichedCompanyRow.segment)
         .all()
     )
-    segments = {seg: cnt for seg, cnt in segment_q}
+    segments = {seg or "D": cnt for seg, cnt in segment_q}
 
     # --- Топ-10 городов ---
     city_q = (
@@ -77,13 +85,16 @@ def get_stats(
     top_cities = [{"city": c, "count": n} for c, n in city_q]
 
     # --- Мессенджеры и email ---
-    # Telegram: JOIN enriched_companies + json_extract (SQLite 3.38+)
+    # Telegram: проверяем и в CompanyRow (базовый) и в EnrichedCompanyRow (обогащённый)
+    # SQLite json_extract() корректно работает с JSON полями.
     with_telegram = (
         db.query(func.count(CompanyRow.id))
         .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
         .filter(
-            sa_text("json_extract(enriched_companies.messengers, '$.telegram') IS NOT NULL"),
-            sa_text("json_extract(enriched_companies.messengers, '$.telegram') != ''"),
+            (sa_text("json_extract(companies.messengers, '$.telegram') IS NOT NULL") & 
+             sa_text("json_extract(companies.messengers, '$.telegram') != ''")) |
+            (sa_text("json_extract(enriched_companies.messengers, '$.telegram') IS NOT NULL") & 
+             sa_text("json_extract(enriched_companies.messengers, '$.telegram') != ''")),
             *base_filter,
         )
         .scalar()
@@ -93,8 +104,10 @@ def get_stats(
         db.query(func.count(CompanyRow.id))
         .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
         .filter(
-            sa_text("json_extract(enriched_companies.messengers, '$.whatsapp') IS NOT NULL"),
-            sa_text("json_extract(enriched_companies.messengers, '$.whatsapp') != ''"),
+            (sa_text("json_extract(companies.messengers, '$.whatsapp') IS NOT NULL") & 
+             sa_text("json_extract(companies.messengers, '$.whatsapp') != ''")) |
+            (sa_text("json_extract(enriched_companies.messengers, '$.whatsapp') IS NOT NULL") & 
+             sa_text("json_extract(enriched_companies.messengers, '$.whatsapp') != ''")),
             *base_filter,
         )
         .scalar()

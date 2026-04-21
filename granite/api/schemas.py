@@ -38,6 +38,7 @@ class UpdateCompanyRequest(BaseModel):
     website: Optional[str] = None
     address: Optional[str] = None
     emails: Optional[list[str]] = None
+    messengers: Optional[dict[str, str]] = None
 
     # CRM-поля
     funnel_stage: Optional[str] = Field(
@@ -128,6 +129,9 @@ class ReEnrichApplyRequest(BaseModel):
     name: Optional[str] = None
     phones: Optional[list[str]] = None
     emails: Optional[list[str]] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    messengers: Optional[dict[str, str]] = None
 
 
 # ============================================================

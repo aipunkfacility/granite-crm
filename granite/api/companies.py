@@ -191,7 +191,30 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
                 value = normalize_phones(value)
             setattr(company, key, value)
     
-    if company_updates:
+    # 1.1 Обновляем messengers (EnrichedCompanyRow)
+    if data.messengers is not None:
+        enriched = db.get(EnrichedCompanyRow, company_id)
+        if not enriched:
+            enriched = EnrichedCompanyRow(
+                id=company_id, 
+                city=company.city, 
+                region=company.region,
+                messengers={}
+            )
+            db.add(enriched)
+        
+        # Нормализация мессенджеров при ручном вводе
+        from granite.utils import normalize_messenger_url
+        normalized = {}
+        for m_type, m_url in data.messengers.items():
+            if m_url:
+                normalized[m_type] = normalize_messenger_url(m_url, m_type)
+        
+        enriched.messengers = normalized
+        # Также дублируем в базовую таблицу для целостности (stats/funnel)
+        company.messengers = normalized
+
+    if company_updates or data.messengers is not None:
         company.updated_at = datetime.now(timezone.utc)
 
     # 2. Обновляем CRM-поля (CrmContactRow)
@@ -296,6 +319,19 @@ def re_enrich_apply(company_id: int, data: ReEnrichApplyRequest, db: Session = D
     for key, value in updates.items():
         if key == "name":
             company.name_best = value
+        elif key == "messengers":
+            # Нормализация мессенджеров
+            from granite.utils import normalize_messenger_url
+            normalized = {}
+            for m_type, m_url in value.items():
+                if m_url:
+                    normalized[m_type] = normalize_messenger_url(m_url, m_type)
+            
+            company.messengers = normalized
+            # Обновляем также в обогащенной таблице
+            enriched = db.get(EnrichedCompanyRow, company_id)
+            if enriched:
+                enriched.messengers = normalized
         else:
             setattr(company, key, value)
 
