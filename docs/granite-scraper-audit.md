@@ -601,7 +601,10 @@ def scan_for_networks_global(self, threshold: int = 3) -> int:
   └── A-8: Глобальный scan_for_networks — [DONE] 2026-04-21
   └── A-5: Адресная гео-валидация и перенос флагов — [DONE] 2026-04-21
   └── Оптимизация поиска (City First) — [DONE] 2026-04-21
-```
+  └── Нормализация URL к корню домена (dedup_phase + PATCH API) — [DONE] 2026-04-21
+  └── Синхронизация `region` при изменении `city` через API — [DONE] 2026-04-21
+  └── Увеличение лимита выдачи в `/pipeline/status` до 2000 — [DONE] 2026-04-21
+  └── Добавлено поле `city` в UI (CompanyEditDialog) — [DONE] 2026-04-21
 
 **Итого:** ~5-7 дней работы.
 
