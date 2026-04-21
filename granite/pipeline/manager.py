@@ -119,90 +119,91 @@ class PipelineManager:
         try:
             stage = self.checkpoints.get_stage(city)
 
-        # Проверяем, полностью ли завершён город (enriched, progress >= 95%).
-        # Если да — пропускаем весь пайплайн, чтобы не гонять network/scoring/export
-        # для уже обработанных городов при запуске `run all`.
-        city_already_done = (
-            stage == "enriched"
-            and not self.checkpoints.needs_enrich_resume(city)
-            and not re_enrich
-        )
-        if city_already_done:
-            if not quiet_skip:
-                print_status(f"Город {city} уже обработан — пропуск", "success")
-            return False  # сигнализируем, что город был пропущен
+            # Проверяем, полностью ли завершён город (enriched, progress >= 95%).
+            # Если да — пропускаем весь пайплайн, чтобы не гонять network/scoring/export
+            # для уже обработанных городов при запуске `run all`.
+            city_already_done = (
+                stage == "enriched"
+                and not self.checkpoints.needs_enrich_resume(city)
+                and not re_enrich
+            )
+            if city_already_done:
+                if not quiet_skip:
+                    print_status(f"Город {city} уже обработан — пропуск", "success")
+                self._set_city_status(city, "success", "done")
+                return False  # сигнализируем, что город был пропущен
 
-        # Город требует работы — выводим заголовок
-        print_status(f"Запуск конвейера для: {city} [этап: {stage}]", "bold")
+            # Город требует работы — выводим заголовок
+            print_status(f"Запуск конвейера для: {city} [этап: {stage}]", "bold")
 
-        region_cities = self.region.get_region_cities(city)
-        if len(region_cities) > 1:
-            print_status(f"Область включает города: {', '.join(region_cities)}", "info")
+            region_cities = self.region.get_region_cities(city)
+            if len(region_cities) > 1:
+                print_status(f"Область включает города: {', '.join(region_cities)}", "info")
 
-        # --re-enrich: перескакиваем на обогащение, не трогаем scrape/dedup/enriched
-        work_done = False  # были ли реально выполненные фазы
+            # --re-enrich: перескакиваем на обогащение, не трогаем scrape/dedup/enriched
+            work_done = False  # были ли реально выполненные фазы
 
-        if re_enrich:
-            # Пропускаем scrape+dedup, запускаем только точечный поиск (проход 2)
-            self._run_phase("обогащение (re-enrich)", lambda: self.enrichment.run_deep_enrich_existing(city))
-            work_done = True
-        else:
-            if stage == "start" and run_scrapers:
-                self._run_phase("скрапинг", lambda: self.scraping.run(city, region_cities))
-                stage = "scraped"
+            if re_enrich:
+                # Пропускаем scrape+dedup, запускаем только точечный поиск (проход 2)
+                self._run_phase("обогащение (re-enrich)", lambda: self.enrichment.run_deep_enrich_existing(city))
+                work_done = True
+            else:
+                if stage == "start" and run_scrapers:
+                    self._run_phase("скрапинг", lambda: self.scraping.run(city, region_cities))
+                    stage = "scraped"
+                    work_done = True
+
+                if stage == "scraped":
+                    self._run_phase("дедупликация", lambda: self.dedup.run(city))
+                    stage = "deduped"
+                    work_done = True
+
+                if stage == "deduped":
+                    if self.enrichment._is_async_enabled():
+                        self._run_phase("обогащение (async)",
+                                       lambda: self.enrichment.run_async(city))
+                    else:
+                        self._run_phase("обогащение",
+                                       lambda: self.enrichment.run(city))
+                    work_done = True
+
+                # 1.6: Возобновление частичного обогащения
+                # Если обогащение было прервано (progress < 95%), дозаполняем
+                elif stage == "enriched" and self.checkpoints.needs_enrich_resume(city):
+                    progress = self.checkpoints.get_enrichment_progress(city)
+                    print_status(
+                        f"Обнаружено неполное обогащение ({progress * 100:.0f}%), возобновление...",
+                        "warning",
+                    )
+                    self._run_phase("обогащение (resume)",
+                                   lambda: self.enrichment.run(city, only_new=True))
+                    work_done = True
+
+            # Reverse lookup enrichment (между обогащением и детектором сетей)
+            rl_config = self.config.get("enrichment", {}).get("reverse_lookup", {})
+            if rl_config.get("enabled", False):
+                self._run_phase("reverse lookup", lambda: self.reverse_lookup.run(city))
                 work_done = True
 
-            if stage == "scraped":
-                self._run_phase("дедупликация", lambda: self.dedup.run(city))
-                stage = "deduped"
-                work_done = True
+            # Пересчёт сетей только для текущего города/области
+            print_status("Проверка филиальных сетей...", "info")
+            self._run_phase("сетей", lambda: self.network_detector.scan_for_networks(threshold=2, city=city))
 
-            if stage == "deduped":
-                if self.enrichment._is_async_enabled():
-                    self._run_phase("обогащение (async)",
-                                   lambda: self.enrichment.run_async(city))
-                else:
-                    self._run_phase("обогащение",
-                                   lambda: self.enrichment.run(city))
-                work_done = True
+            # Пересчет скоринга (т.к. мы обновили is_network)
+            self._run_phase("скоринг", lambda: self.scoring.run(city))
 
-            # 1.6: Возобновление частичного обогащения
-            # Если обогащение было прервано (progress < 95%), дозаполняем
-            elif stage == "enriched" and self.checkpoints.needs_enrich_resume(city):
-                progress = self.checkpoints.get_enrichment_progress(city)
-                print_status(
-                    f"Обнаружено неполное обогащение ({progress * 100:.0f}%), возобновление...",
-                    "warning",
-                )
-                self._run_phase("обогащение (resume)",
-                               lambda: self.enrichment.run(city, only_new=True))
-                work_done = True
+            # Автоэкспорт
+            self._run_phase("экспорт", lambda: self.export.run(city))
 
-        # Reverse lookup enrichment (между обогащением и детектором сетей)
-        rl_config = self.config.get("enrichment", {}).get("reverse_lookup", {})
-        if rl_config.get("enabled", False):
-            self._run_phase("reverse lookup", lambda: self.reverse_lookup.run(city))
-            work_done = True
+            # 1.8: Сводная статистика по завершении города
+            self._print_city_stats(city)
 
-        # Пересчёт сетей только для текущего города/области
-        print_status("Проверка филиальных сетей...", "info")
-        self._run_phase("сетей", lambda: self.network_detector.scan_for_networks(threshold=2, city=city))
-
-        # Пересчет скоринга (т.к. мы обновили is_network)
-        self._run_phase("скоринг", lambda: self.scoring.run(city))
-
-        # Автоэкспорт
-        self._run_phase("экспорт", lambda: self.export.run(city))
-
-        # 1.8: Сводная статистика по завершении города
-        self._print_city_stats(city)
-
-        print_status(f"Город {city} завершен!", "success")
-        self._set_city_status(city, "success", "done")
-        return True  # сигнализируем, что город был реально обработан
-    except Exception as e:
-        self._set_city_status(city, "error", f"failed_at_{getattr(self, '_current_phase', 'unknown')}")
-        raise
+            print_status(f"Город {city} завершен!", "success")
+            self._set_city_status(city, "success", "done")
+            return True  # сигнализируем, что город был реально обработан
+        except Exception as e:
+            self._set_city_status(city, "error", f"failed_at_{getattr(self, '_current_phase', 'unknown')}")
+            raise
 
     def _print_city_stats(self, city: str) -> None:
         """Вывод сводной статистики по городу после завершения пайплайна."""
