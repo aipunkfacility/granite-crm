@@ -41,6 +41,30 @@ export interface Company {
   updated_at: string;
 }
 
+export interface ReEnrichData {
+  name: string;
+  phones: string[];
+  emails: string[];
+  website?: string | null;
+  address?: string | null;
+}
+
+export interface ReEnrichPreviewResponse {
+  company_id: number;
+  before: ReEnrichData;
+  after: ReEnrichData;
+  has_changes: boolean;
+}
+
+export interface ReEnrichApplyRequest {
+  name?: string;
+  phones?: string[];
+  emails?: string[];
+  website?: string;
+  address?: string;
+  messengers?: Record<string, string>;
+}
+
 export interface FollowupItem {
   company_id: number;
   name: string;
@@ -77,9 +101,10 @@ export interface PaginatedResponse<T> {
 
 export interface Stats {
   total_companies: number;
-  by_segment: Record<string, number>;
-  by_stage: Record<string, number>;
+  funnel: Record<string, number>;
+  segments: Record<string, number>;
   with_telegram: number;
+  with_whatsapp: number;
   with_email: number;
-  top_cities: Record<string, number>;
+  top_cities: { city: string, count: number }[];
 }

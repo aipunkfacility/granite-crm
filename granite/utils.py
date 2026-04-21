@@ -60,24 +60,27 @@ def normalize_messenger_url(url: str, m_type: str = "telegram") -> str:
     if not url or not isinstance(url, str):
         return ""
     
-    # Рекурсивно убираем префиксы, если они вложены
+    # Паттерны для очистки
+    tg_patterns = [r"https?://t\.me/", r"https?://telegram\.me/", r"tg://resolve\?domain="]
+    wa_patterns = [r"https?://wa\.me/", r"https?://api\.whatsapp\.com/send\?phone=", r"https?://api\.whatsapp\.com/send/\?phone="]
+    
+    current = url.strip()
+    
     if m_type in ("tg", "telegram"):
-        patterns = [r"https?://t\.me/", r"https?://telegram\.me/", r"tg://resolve\?domain="]
+        pattern = "(?:" + "|".join(tg_patterns) + ")"
         prefix = "https://t.me/"
     elif m_type in ("wa", "whatsapp"):
-        patterns = [r"https?://wa\.me/", r"https?://api\.whatsapp\.com/send\?phone="]
-        prefix = "https://wa.me/"
+        pattern = "(?:" + "|".join(wa_patterns) + ")"
+        # Пользователь предпочитает длинный формат api.whatsapp.com
+        prefix = "https://api.whatsapp.com/send?phone="
     else:
         return url
 
-    # Рекурсивная очистка всех известных префиксов
-    current = url
+    # Рекурсивная очистка всех известных префиксов из начала строки
     while True:
         prev = current
-        for p in patterns:
-            # Убираем префикс из начала
-            current = re.sub(r"^" + p, "", current, flags=re.I)
-        # Убираем мусор
+        # Убираем все варианты префиксов из начала
+        current = re.sub(r"^" + pattern, "", current, flags=re.I)
         current = current.lstrip("/@ ")
         if current == prev:
             break
@@ -85,11 +88,12 @@ def normalize_messenger_url(url: str, m_type: str = "telegram") -> str:
     if not current:
         return ""
         
-    # FIX: Для WhatsApp убираем всё кроме цифр (текст сообщения, лишние параметры)
+    # Для WhatsApp оставляем только цифры в "хвосте" ссылки
     if m_type in ("wa", "whatsapp"):
+        # Убираем всё кроме цифр в ID (чтобы отсечь &text= и прочее, если было)
         current = re.sub(r"\D", "", current)
         if not current: return ""
-        # Если случайно осталось 8 в начале (российский формат) — меняем на 7
+        # Нормализация кода РФ (8 -> 7)
         if current.startswith("8") and len(current) == 11:
             current = "7" + current[1:]
         
@@ -416,6 +420,28 @@ def extract_domain(url: str) -> str | None:
         return domain if domain else None
     except Exception as e:
         logger.debug(f"extract_domain failed for '{url}': {e}")
+        return None
+
+
+def normalize_website_to_root(url: str) -> str | None:
+    """Нормализация URL сайта к корню домена без path/query/fragment.
+
+    Пример: https://diabaz-lux.ru/zakazat-pamyatnik → https://diabaz-lux.ru/
+    Пример: diabaz-lux.ru → https://diabaz-lux.ru/
+    """
+    if not url or not isinstance(url, str):
+        return None
+    url = url.strip()
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url if "://" in url else f"https://{url}")
+        netloc = parsed.netloc.lower()
+        if not netloc or "." not in netloc:
+            return None
+        scheme = parsed.scheme or "https"
+        return f"{scheme}://{netloc}/"
+    except Exception:
         return None
 
 

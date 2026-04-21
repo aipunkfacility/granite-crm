@@ -42,8 +42,18 @@ export const fetchCompany = async (id: number): Promise<Company> => {
   return data;
 };
 
-export const updateCompany = async (id: number, updates: Partial<Company>): Promise<Company> => {
+export const updateCompany = async (id: number, updates: Partial<Company>): Promise<{ ok: boolean }> => {
   // Убрали ведущий слэш
-  const { data } = await apiClient.patch<Company>(`companies/${id}`, updates);
+  const { data } = await apiClient.patch<{ ok: boolean }>(`companies/${id}`, updates);
+  return data;
+};
+
+export const reEnrichPreview = async (id: number): Promise<any> => {
+  const { data } = await apiClient.post(`companies/${id}/re-enrich-preview`);
+  return data;
+};
+
+export const reEnrichApply = async (id: number, updates: any): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.post(`companies/${id}/re-enrich-apply`, updates);
   return data;
 };

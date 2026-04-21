@@ -36,8 +36,8 @@ export default function StatsPage() {
   if (!stats) return <div className="p-8">Нет данных для отображения</div>;
 
   // Данные для воронки
-  const funnelData = stats?.by_stage 
-    ? Object.entries(stats.by_stage).map(([stage, count]) => ({
+  const funnelData = stats?.funnel 
+    ? Object.entries(stats.funnel).map(([stage, count]) => ({
         name: FUNNEL_STAGES[stage as FunnelStage]?.label || stage,
         count: count,
         color: FUNNEL_STAGES[stage as FunnelStage]?.color === 'blue' ? '#3b82f6' : 
@@ -46,8 +46,8 @@ export default function StatsPage() {
     : [];
 
   // Данные для сегментов
-  const segmentData = stats?.by_segment 
-    ? Object.entries(stats.by_segment).map(([seg, count]) => ({
+  const segmentData = stats?.segments 
+    ? Object.entries(stats.segments).map(([seg, count]) => ({
         name: `Сегмент ${seg}`,
         value: count
       })) 
@@ -79,33 +79,32 @@ export default function StatsPage() {
 
       {/* Основные цифры */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-indigo-600 text-white border-none">
+        <Card className="bg-indigo-600 text-white border-none shadow-lg">
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase opacity-80">Всего компаний</p>
-            <p className="text-3xl font-bold mt-1">{stats?.total_companies.toLocaleString()}</p>
+            <p className="text-3xl font-bold mt-1">{stats?.total_companies?.toLocaleString() ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-xs font-medium uppercase text-slate-500">С Telegram</p>
-            <p className="text-3xl font-bold mt-1 text-sky-600">{stats?.with_telegram.toLocaleString()}</p>
+            <p className="text-xs font-medium uppercase text-slate-500">С мессенджерами</p>
+            <p className="text-2xl font-bold mt-1 text-sky-600">
+              TG: {stats?.with_telegram ?? 0} | WA: {stats?.with_whatsapp ?? 0}
+            </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase text-slate-500">С Email</p>
-            <p className="text-3xl font-bold mt-1 text-indigo-600">{stats?.with_email.toLocaleString()}</p>
+            <p className="text-3xl font-bold mt-1 text-indigo-600">{stats?.with_email?.toLocaleString() ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase text-slate-500">Конверсия (Ответы)</p>
             <p className="text-3xl font-bold mt-1 text-emerald-600">
-              {stats?.by_stage?.replied ?? 0}
-
+              {stats?.funnel?.replied ?? 0}
             </p>
-
-
           </CardContent>
         </Card>
       </div>

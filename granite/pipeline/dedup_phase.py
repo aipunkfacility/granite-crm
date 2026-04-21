@@ -11,7 +11,7 @@ from granite.database import Database, RawCompanyRow, CompanyRow, CrmContactRow
 from loguru import logger
 from granite.pipeline.status import print_status
 from granite.pipeline.region_resolver import lookup_region
-from granite.utils import normalize_messenger_url
+from granite.utils import normalize_messenger_url, normalize_website_to_root
 
 # Import Dedup
 from granite.dedup.phone_cluster import cluster_by_phones
@@ -129,11 +129,15 @@ class DedupPhase:
                         normalized[m_type] = normalize_messenger_url(m_url, m_type)
                     messengers = normalized
 
+                # FIX: Нормализация URL сайта к корню домена
+                raw_website = merged.get("website")
+                clean_website = normalize_website_to_root(raw_website) if raw_website else None
+
                 row = CompanyRow(
                     name_best=merged["name_best"],
                     phones=merged["phones"],
                     address=merged["address"],
-                    website=merged["website"],
+                    website=clean_website,
                     emails=merged["emails"],
                     city=city_name,
                     region=region_name,

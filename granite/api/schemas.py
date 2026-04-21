@@ -38,6 +38,7 @@ class UpdateCompanyRequest(BaseModel):
     website: Optional[str] = None
     address: Optional[str] = None
     emails: Optional[list[str]] = None
+    city: Optional[str] = None
     messengers: Optional[dict[str, str]] = None
 
     # CRM-поля

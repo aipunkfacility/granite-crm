@@ -185,9 +185,11 @@ class PipelineManager:
                 self._run_phase("reverse lookup", lambda: self.reverse_lookup.run(city))
                 work_done = True
 
-            # Пересчёт сетей только для текущего города/области
-            print_status("Проверка филиальных сетей...", "info")
-            self._run_phase("сетей", lambda: self.network_detector.scan_for_networks(threshold=2, city=city))
+            # FIX: Сети ищем ГЛОБАЛЬНО (city=None), т.к. сеть — это один домен/телефон
+            # в разных городах. Поиск по одному городу никогда не найдёт сеть
+            # (в одном городе обычно одна запись компании).
+            print_status("Проверка филиальных сетей (глобально)...", "info")
+            self._run_phase("сетей", lambda: self.network_detector.scan_for_networks(threshold=2, city=None))
 
             # Пересчет скоринга (т.к. мы обновили is_network)
             self._run_phase("скоринг", lambda: self.scoring.run(city))

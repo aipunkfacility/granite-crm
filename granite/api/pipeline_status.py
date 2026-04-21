@@ -33,7 +33,7 @@ _running_lock = threading.Lock()
 @router.get("/pipeline/status", response_model=PipelineStatusResponse)
 def pipeline_status(
     request: Request,
-    limit: int = Query(50, ge=1, le=500, description="Максимум городов в ответе"),
+    limit: int = Query(2000, ge=1, le=5000, description="Максимум городов в ответе"),
     db=Depends(get_db),
 ):
     """Статус пайплайна по городам.

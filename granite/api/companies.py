@@ -179,17 +179,39 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
 
     # 1. Обновляем базовые данные (CompanyRow)
     company_updates = data.model_dump(
-        include={"name", "phones", "website", "address", "emails"},
+        include={"name", "phones", "website", "address", "emails", "city"},
         exclude_unset=True
     )
     if "name" in company_updates:
         company.name_best = company_updates["name"]
     for key, value in company_updates.items():
-        if key != "name":
+        if key == "name":
+            pass  # уже обработано выше
+        elif key == "phones" and value:
             # Нормализация телефонов при ручном вводе
-            if key == "phones" and value:
-                value = normalize_phones(value)
+            setattr(company, key, normalize_phones(value))
+        elif key == "website" and value:
+            # FIX: нормализуем URL к корню домена
+            from urllib.parse import urlparse
+            parsed = urlparse(value if "://" in value else f"https://{value}")
+            root = f"{parsed.scheme}://{parsed.netloc}/"
+            setattr(company, key, root)
+            # Синхронизируем в EnrichedCompanyRow
+            enriched_row = db.get(EnrichedCompanyRow, company_id)
+            if enriched_row:
+                enriched_row.website = root
+        else:
             setattr(company, key, value)
+            # Если меняем город — синхронизируем регион и в EnrichedCompanyRow тоже
+            if key == "city":
+                from granite.pipeline.region_resolver import lookup_region
+                new_region = lookup_region(value) or ""
+                company.region = new_region
+                
+                enriched_row = db.get(EnrichedCompanyRow, company_id)
+                if enriched_row:
+                    enriched_row.city = value
+                    enriched_row.region = new_region
     
     # 1.1 Обновляем messengers (EnrichedCompanyRow)
     if data.messengers is not None:
