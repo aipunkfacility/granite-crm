@@ -153,6 +153,12 @@ def run(
             raise typer.Exit(1)
 
     print_status(f"Готово: обработано {processed_count}, пропущено {skipped_count}", "success")
+    
+    # A-8: Глобальный сканер сетей и агрегаторов после пакетной обработки
+    if processed_count > 1 or city.lower() == "all" or city_list:
+        print_status("A-8: Запуск глобальной детекции сетей после пакетной обработки...", "info")
+        detect_and_mark_aggregators(db)
+
     db.engine.dispose()
 
 @app.command()

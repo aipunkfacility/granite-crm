@@ -598,7 +598,9 @@ def scan_for_networks_global(self, threshold: int = 3) -> int:
   └── A-7: Расширить is_seo_title() и добавить is_aggregator_name() — 0.5 дня
 
 Этап 4 (P3, 1 день):
-  └── A-8: Глобальный scan_for_networks — 1 день
+  └── A-8: Глобальный scan_for_networks — [DONE] 2026-04-21
+  └── A-5: Адресная гео-валидация и перенос флагов — [DONE] 2026-04-21
+  └── Оптимизация поиска (City First) — [DONE] 2026-04-21
 ```
 
 **Итого:** ~5-7 дней работы.

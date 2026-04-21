@@ -1,6 +1,10 @@
 # tests/test_utils.py
 import pytest
-    slugify, sanitize_filename, is_aggregator_name
+from granite.utils import (
+    normalize_phone, normalize_phones, extract_emails, compare_names,
+    extract_domain, pick_best_value, is_safe_url, is_safe_link_url,
+    extract_street, slugify, sanitize_filename, is_aggregator_name
+)
 
 
 class TestNormalizePhone:

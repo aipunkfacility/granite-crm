@@ -36,6 +36,8 @@ class RawCompanyRow(Base):
     geo = Column(String, nullable=True)  # "lat,lon"
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
     scraped_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    needs_review = Column(Boolean, default=False)
+    review_reason = Column(String, default="")
     city = Column(String, nullable=False, index=True)
     region = Column(String, nullable=False, index=True, default="")
     # FIX K6: Добавлен ondelete="SET NULL" — при удалении компании

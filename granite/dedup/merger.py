@@ -157,8 +157,8 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
         "emails": all_emails,
         "messengers": merged_messengers,
         "city": cluster_records[0].get("city", ""),
-        "needs_review": False,
-        "review_reason": "",
+        "needs_review": any(r.get("needs_review", False) for r in cluster_records),
+        "review_reason": " ".join(sorted(set(r.get("review_reason", "") for r in cluster_records if r.get("review_reason")))).strip(),
     }
 
     # Очищаем пустые website
@@ -220,7 +220,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
     if len(set(cities)) > 1:
         merged["needs_review"] = True
         if merged.get("review_reason"):
-            merged["review_reason"] = merged["review_reason"] + " different_cities"
+            merged["review_reason"] = (merged["review_reason"] + " different_cities").strip()
         else:
             merged["review_reason"] = "different_cities"
 
@@ -233,7 +233,7 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
             merged["needs_review"] = True
             reason = "all_non_local_phones"
             if merged.get("review_reason"):
-                merged["review_reason"] = merged["review_reason"] + f" {reason}"
+                merged["review_reason"] = (merged["review_reason"] + f" {reason}").strip()
             else:
                 merged["review_reason"] = reason
             logger.debug(

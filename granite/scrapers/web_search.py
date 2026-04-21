@@ -953,7 +953,8 @@ class WebSearchScraper(BaseScraper):
         seen_urls = set()
 
         for query in self.queries:
-            search_query = f"{query} {self.city}"
+            # A-1/A-3: Город в начале запроса для лучшей локализации DDG
+            search_query = f"{self.city} {query}"
             logger.info(f"  WebSearch: {search_query}")
 
             web_results = self._search(search_query)
@@ -1028,11 +1029,23 @@ class WebSearchScraper(BaseScraper):
             # A-5: Географическая валидация телефонов
             # Если ВСЕ телефоны не-локальные — это признак агрегатора
             # (федеральный колл-центр с московским номером для провинциального города).
-            # Помечаем для ручной проверки на этапе дедупликации.
             if company.phones and all(is_non_local_phone(p, self.city) for p in company.phones):
                 logger.info(
                     f"  A-5: Все телефоны не-локальные для {self.city}: {company.name[:50]}"
                 )
+                company.needs_review = True
+                company.review_reason = "non_local_phones"
+
+            # A-5: Валидация адресов (Address Detection)
+            # Ищем упоминания ДРУГИХ городов в контактной зоне
+            foreign_city = self._extract_contact_city(details.get("_raw_html", ""))
+            if foreign_city:
+                logger.info(
+                    f"  A-5: Найден чужой город ({foreign_city}) на странице {company.name[:50]}"
+                )
+                company.needs_review = True
+                reason = f"foreign_city_address({foreign_city})"
+                company.review_reason = (company.review_reason + " " + reason).strip()
 
             companies.append(company)
 
@@ -1117,11 +1130,38 @@ class WebSearchScraper(BaseScraper):
 
         return self._extract_contacts(html)
 
+    def _extract_contact_city(self, html: str) -> str | None:
+        """A-5: Пытается найти город в контактной информации страницы.
+        
+        Использует self._foreign_city_roots для детекции упоминаний других городов.
+        """
+        if not html or not self._foreign_city_roots:
+            return None
+            
+        # Ограничиваем поиск "контактной зоной" (футер или блок контактов)
+        # Если не нашли явных блоков, берем весь текст
+        soup = BeautifulSoup(html, "html.parser")
+        contact_zone = soup.find(["footer", "address"]) or soup.find(id=re.compile(r"contact|footer", re.I)) or soup
+        text = contact_zone.get_text(separator=" ").lower()
+        
+        for root in self._foreign_city_roots:
+            pos = text.find(root)
+            if pos != -1:
+                # Простейшая проверка границ слова
+                if pos == 0 or not text[pos - 1].isalpha():
+                    # Проверяем, что это не наш город (на случай если корни похожи)
+                    # Но foreign_city_roots уже отфильтрованы по региону.
+                    from granite.pipeline.region_resolver import build_city_lookup
+                    lookup, _ = build_city_lookup()
+                    return lookup.get(root, root)
+                    
+        return None
+
     def _extract_contacts(self, html: str) -> dict | None:
         """Извлечение контактов из HTML."""
         soup = BeautifulSoup(html, "html.parser")
 
-        data_out: dict = {"phones": [], "emails": [], "addresses": [], "company_name": None}
+        data_out: dict = {"phones": [], "emails": [], "addresses": [], "company_name": None, "_raw_html": html}
 
         # A-4: Извлечение имени через приоритетную цепочку
         data_out["company_name"] = self._extract_company_name(soup)

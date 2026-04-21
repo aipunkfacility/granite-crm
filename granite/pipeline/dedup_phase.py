@@ -87,6 +87,8 @@ class DedupPhase:
                         "geo": r.geo,
                         "messengers": messengers,
                         "city": r.city,
+                        "needs_review": r.needs_review or False,
+                        "review_reason": r.review_reason or "",
                     }
                 )
 

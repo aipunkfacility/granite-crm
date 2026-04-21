@@ -30,6 +30,8 @@ class RawCompany(BaseModel):
     website: str | None = None
     emails: list[str] = Field(default_factory=list)
     geo: list[float] | None = None  # [lat, lon]
+    needs_review: bool = False
+    review_reason: str = ""
 
     @field_validator('geo', mode='before')
     @classmethod
