@@ -182,11 +182,13 @@ uv run cli.py api [--port ПОРТ] [--reload]
 | **Компании** | | |
 | `GET` | `/companies` | Список (пагинация, фильтры, сортировка) |
 | `GET` | `/companies/{id}` | Карточка компании |
-| `PATCH` | `/companies/{id}` | Обновить CRM-поля |
+| `PATCH` | `/companies/{id}` | Обновить данные и CRM-поля |
+| `POST` | `/companies/{id}/re-enrich-preview` | Предпросмотр данных с сайта (скрапинг) |
+| `POST` | `/companies/{id}/re-enrich-apply` | Применить данные после пересканирования |
 | `GET` | `/companies/{id}/similar` | Похожие компании |
 | `PATCH` | `/companies/{id}/merge` | Слияние компаний |
-| `GET` | `/cities` | Список городов |
-| `GET` | `/regions` | Список регионов |
+| `GET` | `/cities` | Список уникальных городов |
+| `GET` | `/regions` | Список уникальных регионов |
 | **Касания** | | |
 | `POST` | `/companies/{id}/touches` | Записать касание |
 | `GET` | `/companies/{id}/touches` | История касаний |
