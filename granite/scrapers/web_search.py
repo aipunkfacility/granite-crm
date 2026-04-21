@@ -6,7 +6,10 @@ import re
 import threading
 import time
 import warnings
+from pathlib import Path
 from urllib.parse import urlparse
+
+import yaml
 
 from bs4 import BeautifulSoup
 
@@ -21,6 +24,7 @@ from granite.utils import (
     fetch_page,
     adaptive_delay,
     get_random_ua,
+    is_non_local_phone,
 )
 from loguru import logger
 
@@ -40,6 +44,75 @@ except ImportError:
 
 # Глобальный lock для сериализации поисковых запросов (DDG rate-limit)
 _search_lock = threading.Lock()
+
+# ── A-3: Runtime-детектор агрегаторов (домен в N+ городах) ──
+_MULTI_CITY_DOMAIN_CACHE: dict[str, set[str]] = {}  # domain → set of cities
+_MULTI_CITY_LOCK = threading.Lock()
+_MULTI_CITY_THRESHOLD_DEFAULT = 3  # домен в 3+ городах = агрегатор
+
+
+def _register_domain_city(domain: str, city: str, threshold: int = _MULTI_CITY_THRESHOLD_DEFAULT) -> bool:
+    """Регистрирует пару домен-город. Возвращает True если домен превысил порог (агрегатор)."""
+    if not domain:
+        return False
+    with _MULTI_CITY_LOCK:
+        if domain not in _MULTI_CITY_DOMAIN_CACHE:
+            _MULTI_CITY_DOMAIN_CACHE[domain] = set()
+        _MULTI_CITY_DOMAIN_CACHE[domain].add(city.lower())
+        count = len(_MULTI_CITY_DOMAIN_CACHE[domain])
+        if count >= threshold and count == threshold:
+            logger.warning(
+                f"  A-3: Автодетектор: домен {domain} найден в {count} городах — агрегатор!"
+            )
+            return True
+        return count >= threshold
+
+
+def _get_multi_city_domains() -> dict[str, set[str]]:
+    """Возвращает копию кэша обнаруженных агрегаторов."""
+    with _MULTI_CITY_LOCK:
+        return {d: set(cities) for d, cities in _MULTI_CITY_DOMAIN_CACHE.items()
+                if len(cities) >= _MULTI_CITY_THRESHOLD_DEFAULT}
+
+
+def _clear_multi_city_cache():
+    """Очищает кэш (для тестов)."""
+    with _MULTI_CITY_LOCK:
+        _MULTI_CITY_DOMAIN_CACHE.clear()
+
+
+def _load_detected_aggregators() -> None:
+    """A-3: Загружает ранее обнаруженные агрегаторы из data/detected_aggregators.yaml.
+
+    Без этого кэш пуст после каждого перезапуска процесса, и агрегаторы,
+    уже обнаруженные в предыдущих запусках, снова проходят через фильтр,
+    пока не наберут threshold городов заново.
+    """
+    path = Path(__file__).parent.parent / "data" / "detected_aggregators.yaml"
+    if not path.exists():
+        return
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        if not isinstance(data, dict):
+            return
+        loaded = 0
+        with _MULTI_CITY_LOCK:
+            for domain, cities in data.items():
+                if not isinstance(cities, list):
+                    continue
+                city_set = {c.lower() for c in cities if isinstance(c, str)}
+                if len(city_set) >= _MULTI_CITY_THRESHOLD_DEFAULT:
+                    _MULTI_CITY_DOMAIN_CACHE[domain] = city_set
+                    loaded += 1
+        if loaded:
+            logger.info(f"  A-3: Загружено {loaded} агрегаторов из {path}")
+    except Exception as e:
+        logger.warning(f"  A-3: Не удалось загрузить агрегаторы из {path}: {e}")
+
+
+# Загружаем ранее обнаруженные агрегаторы при импорте модуля
+_load_detected_aggregators()
 
 # ── Кэш недоступных доменов (таймаут/403) — не ретраить в рамках сессии ──
 _FAILED_DOMAINS_TTL_DEFAULT = 600  # 10 минут
@@ -453,6 +526,108 @@ class WebSearchScraper(BaseScraper):
         # Используется в _is_relevant_url() чтобы отсеивать результаты
         # вида "Гранитная мастерская в Москве" при скрапинге Абазы.
         self._foreign_city_roots = self._build_foreign_city_roots()
+        # A-3: Порог детектора агрегаторов из конфига
+        self._aggregator_threshold = self.source_config.get("aggregator_threshold", _MULTI_CITY_THRESHOLD_DEFAULT)
+
+    # ── A-3: Сохранение обнаруженных агрегаторов ──
+
+    def _save_detected_aggregators(self) -> None:
+        """A-3: Сохраняет обнаруженные агрегаторы в data/detected_aggregators.yaml."""
+        multi_city = _get_multi_city_domains()
+        if not multi_city:
+            return
+        path = Path(__file__).parent.parent / "data" / "detected_aggregators.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {domain: sorted(cities) for domain, cities in sorted(multi_city.items())}
+        with open(path, "w", encoding="utf-8") as f:
+            yaml.dump(data, f, allow_unicode=True, default_flow_style=False)
+        logger.info(f"  A-3: Сохранено {len(multi_city)} обнаруженных агрегаторов в {path}")
+
+    # ── A-4: Извлечение имени компании ──
+
+    def _is_city_page_name(self, name: str) -> bool:
+        """Проверяет, содержит ли имя целевой город (с падежами).
+
+        "Памятники в Абазе" → True, "Гранит-Мастер" → False
+        """
+        if not name or not self.city:
+            return False
+        city_lower = self.city.lower()
+        name_lower = name.lower()
+        # Проверяем корень города (без окончания)
+        city_stem = city_lower.rstrip("аеоуияью")
+        if len(city_stem) >= 3 and city_stem in name_lower:
+            return True
+        if city_lower in name_lower:
+            return True
+        return False
+
+    def _extract_company_name(self, soup) -> str | None:
+        """A-4: Извлечение имени компании с приоритетной цепочкой.
+
+        Приоритет: JSON-LD Organization → og:site_name → <title> до разделителя → <h1>
+        Каждый уровень проверяется на is_seo_title() и _is_city_page_name().
+        Возвращает None если реальное имя не найдено.
+        """
+        # 1. JSON-LD Organization / LocalBusiness / Brand
+        for script in soup.select("script[type='application/ld+json']"):
+            try:
+                data = json.loads(script.string)
+                items = data if isinstance(data, list) else [data]
+                for item in items:
+                    if isinstance(item, dict) and item.get("@type") in ("Organization", "LocalBusiness", "Brand"):
+                        name = item.get("name") or item.get("legalName")
+                        if name:
+                            name = name.strip()
+                            if (3 < len(name) < 80
+                                    and not is_seo_title(name)
+                                    and not self._is_city_page_name(name)):
+                                return name
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+
+        # 2. og:site_name
+        og = soup.find("meta", attrs={"property": "og:site_name"})
+        if og and og.get("content"):
+            name = og["content"].strip()
+            if (3 < len(name) < 80
+                    and not is_seo_title(name)
+                    and not self._is_city_page_name(name)):
+                return name
+
+        # 3. <title> до разделителя
+        title_tag = soup.find("title")
+        if title_tag:
+            title_text = title_tag.get_text(strip=True)
+            for sep in [" | ", " — ", " - ", "–", "·"]:
+                if sep in title_text:
+                    title_text = title_text.split(sep)[0].strip()
+                    break
+            if (3 < len(title_text) < 80
+                    and not is_seo_title(title_text)
+                    and not self._is_city_page_name(title_text)):
+                return title_text
+
+        # 4. <h1> — короткий, без SEO-паттернов
+        h1 = soup.find("h1")
+        if h1:
+            name = h1.get_text(strip=True)
+            if (3 < len(name) < 60
+                    and not is_seo_title(name)
+                    and not self._is_city_page_name(name)):
+                return name
+
+        return None
+
+    # ── A-5: Географическая валидация телефонов ──
+
+    def _is_local_phone(self, phone: str) -> bool:
+        """A-5: Проверяет, является ли телефон локальным для скрапинга.
+
+        Делегирует к is_non_local_phone() из utils.py.
+        Возвращает True если телефон локальный (OK), False если не-локальный.
+        """
+        return not is_non_local_phone(phone, self.city)
 
     def _is_skip_domain(self, url: str) -> bool:
         """Проверяет, нужно ли пропустить URL (каталоги, соцсети, мусор).
@@ -809,6 +984,12 @@ class WebSearchScraper(BaseScraper):
             if domain and domain in seen_domains:
                 continue
 
+            # A-3: Регистрируем домен+город, пропускаем автодетектированных агрегаторов
+            if domain and _register_domain_city(domain, self.city, self._aggregator_threshold):
+                logger.debug(f"  A-3: пропуск {domain} (автодетектор: агрегатор)")
+                skipped_unavailable += 1
+                continue
+
             details = self._scrape_details(item["url"])
             adaptive_delay(min_sec=1.0, max_sec=2.5)
 
@@ -828,8 +1009,7 @@ class WebSearchScraper(BaseScraper):
             if is_seo_title(company_name) and details.get("company_name"):
                 company_name = details["company_name"]
 
-            companies.append(
-                RawCompany(
+            company = RawCompany(
                     source=Source.WEB_SEARCH,
                     source_url=item["url"],
                     name=company_name,
@@ -840,7 +1020,17 @@ class WebSearchScraper(BaseScraper):
                     city=self.city,
                     region=self.city_config.get("region", ""),
                 )
-            )
+
+            # A-5: Географическая валидация телефонов
+            # Если ВСЕ телефоны не-локальные — это признак агрегатора
+            # (федеральный колл-центр с московским номером для провинциального города).
+            # Помечаем для ручной проверки на этапе дедупликации.
+            if company.phones and all(is_non_local_phone(p, self.city) for p in company.phones):
+                logger.info(
+                    f"  A-5: Все телефоны не-локальные для {self.city}: {company.name[:50]}"
+                )
+
+            companies.append(company)
 
         logger.info(
             f"  WebSearch: обогащено {enriched}, "
@@ -872,6 +1062,20 @@ class WebSearchScraper(BaseScraper):
                 logger.info(
                     f"  WebSearch: отфильтровано {before - len(companies)} без российских телефонов"
                 )
+
+        # A-3: Удаляем компании, чьи домены оказались агрегаторами
+        # (домены, которые появились в >=threshold городах за эту сессию)
+        multi_city = _get_multi_city_domains()
+        if multi_city:
+            before_a3 = len(companies)
+            companies = [c for c in companies
+                        if extract_domain(c.website or c.source_url or "") not in multi_city]
+            removed_a3 = before_a3 - len(companies)
+            if removed_a3:
+                logger.info(f"  A-3: Удалено {removed_a3} компаний-агрегаторов (мульти-город)")
+
+        # A-3: Сохраняем обнаруженные агрегаторы
+        self._save_detected_aggregators()
 
         return companies
 
@@ -915,42 +1119,8 @@ class WebSearchScraper(BaseScraper):
 
         data_out: dict = {"phones": [], "emails": [], "addresses": [], "company_name": None}
 
-        # 0. Извлечение названия компании (приоритет: JSON-LD > og:site_name > h1)
-        _seo_words = ("купить", "цен", "недорог", "заказать", "от производителя",
-                      "с установк", "на могил", "доставк", "скидк")
-
-        # JSON-LD: Organization / LocalBusiness
-        for script in soup.select("script[type='application/ld+json']"):
-            try:
-                data = json.loads(script.string)
-                items = data if isinstance(data, list) else [data]
-                for item in items:
-                    if isinstance(item, dict) and item.get("@type") in ("Organization", "LocalBusiness", "Brand"):
-                        name = item.get("name") or item.get("legalName")
-                        if name and 3 < len(name.strip()) < 80:
-                            data_out["company_name"] = name.strip()
-                            break
-                if data_out["company_name"]:
-                    break
-            except (json.JSONDecodeError, TypeError, AttributeError):
-                pass
-
-        # og:site_name
-        if not data_out["company_name"]:
-            og = soup.find("meta", attrs={"property": "og:site_name"})
-            if og and og.get("content"):
-                name = og["content"].strip()
-                if 3 < len(name) < 80 and not any(w in name.lower() for w in _seo_words):
-                    data_out["company_name"] = name
-
-        # <h1> — короткий, без SEO-паттернов
-        if not data_out["company_name"]:
-            h1 = soup.find("h1")
-            if h1:
-                name = h1.get_text(strip=True)
-                if (3 < len(name) < 60
-                        and not any(w in name.lower() for w in _seo_words)):
-                    data_out["company_name"] = name
+        # A-4: Извлечение имени через приоритетную цепочку
+        data_out["company_name"] = self._extract_company_name(soup)
 
         # 1. Телефоны из tel: ссылок
         for tel_link in soup.select('a[href^="tel:"]'):

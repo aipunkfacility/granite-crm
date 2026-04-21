@@ -9,9 +9,15 @@ from rapidfuzz import fuzz
 # ── SEO-title детектор (общий для merger.py и web_search.py) ─────────
 _SEO_TITLE_PATTERN = re.compile(
     r"(?:купить|цен[аыуе]|недорог|заказать|от производитель|"
-    r"с установк|на могил|доставк|скидк|"
+    r"с установк|на могил|доставк|скидк|каталог|"
     r"памятник[аиы]?\s+(?:из|в|на|от)|"
-    r"изготовлен.*(?:памятник|надгробие|гранит))",
+    r"изготовлен.*(?:памятник|надгробие|гранит)|"
+    r"гранитн[ые]+\s+мастерск|"           # "Гранитные мастерские"
+    r"памятники\s+(?:в|из|на|и)\s+|"      # "Памятники в/из"
+    r"памятники\s+(?:на\s+кладбищ)|"      # "Памятники на кладбищ"
+    r"изготовление\s+памятников|"          # "Изготовление памятников"
+    r"памятники\s+и\s+надгробия|"          # "Памятники и надгробия"
+    r"производство\s+памятников)",         # "Производство памятников"
     re.IGNORECASE,
 )
 
@@ -30,6 +36,60 @@ def is_seo_title(name: str) -> bool:
     if _SEO_TITLE_PATTERN.search(name):
         return True
     return False
+
+
+# ── A-5: Географическая валидация телефонов ────────────────────────────────
+# DEF-коды для определения «местный» телефон или нет.
+# Используются и в web_search.py (_is_local_phone), и в merger.py
+# (merge_cluster — маркировка needs_review при не-локальных телефонах).
+
+_MOSCOW_DEF_CODES = frozenset({"495", "499", "498"})
+_SPB_DEF_CODES = frozenset({"812"})
+_FEDERAL_DEF_CODES = frozenset({"800"})
+
+
+def is_non_local_phone(phone: str, city: str) -> bool:
+    """A-5: Проверяет, является ли телефон НЕ-локальным для данного города.
+
+    Возвращает True если телефон явно из другого региона:
+    - Московский DEF (495/499/498) для не-Москвы → True
+    - Питерский DEF (812) для не-СПб → True
+    - Федеральный (800) → False (всегда OK)
+    - Мобильные и прочие → False (не подозрительно)
+
+    Args:
+        phone: Номер в формате E.164 (11 цифр, начинается с 7)
+        city: Название города скрейпинга
+
+    Returns:
+        True если телефон подозрительно не-локальный, False если OK или неизвестно.
+    """
+    if not phone or len(phone) != 11 or not phone.startswith("7"):
+        return False  # неизвестный формат — не помечаем
+    def_code = phone[1:4]
+    city_lower = city.lower() if city else ""
+
+    # Федеральный номер — всегда OK
+    if def_code in _FEDERAL_DEF_CODES:
+        return False
+
+    # Москва — московские коды ок
+    if city_lower.startswith("москв") and def_code in _MOSCOW_DEF_CODES:
+        return False
+
+    # СПб — питерские коды ок
+    if (city_lower.startswith("санкт-петербург") or city_lower.startswith("петербург")) and def_code in _SPB_DEF_CODES:
+        return False
+
+    # Московский DEF для не-Москвы → подозрительно
+    if def_code in _MOSCOW_DEF_CODES:
+        return True
+
+    # Питерский DEF для не-СПб → подозрительно
+    if def_code in _SPB_DEF_CODES:
+        return True
+
+    return False  # все остальные коды — норм
 
 
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception

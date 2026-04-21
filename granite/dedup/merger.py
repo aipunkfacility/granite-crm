@@ -1,5 +1,5 @@
 # dedup/merger.py
-from granite.utils import pick_best_value, extract_street, normalize_phone, sanitize_filename, is_seo_title
+from granite.utils import pick_best_value, extract_street, normalize_phone, sanitize_filename, is_seo_title, is_non_local_phone
 from loguru import logger
 import os
 
@@ -214,6 +214,23 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
             merged["review_reason"] = merged["review_reason"] + " different_cities"
         else:
             merged["review_reason"] = "different_cities"
+
+    # A-5: Если все телефоны не-локальные для города кластера → подозрение на агрегатор
+    # Москovsky/piter DEF для провинциального города = колл-центр, не мастерская
+    cluster_city = merged.get("city", "")
+    if cluster_city and all_phones:
+        non_local_count = sum(1 for p in all_phones if is_non_local_phone(p, cluster_city))
+        if non_local_count == len(all_phones) and len(all_phones) > 0:
+            merged["needs_review"] = True
+            reason = "all_non_local_phones"
+            if merged.get("review_reason"):
+                merged["review_reason"] = merged["review_reason"] + f" {reason}"
+            else:
+                merged["review_reason"] = reason
+            logger.debug(
+                f"merge_cluster: A-5 помечено needs_review — "
+                f"{len(all_phones)} не-локальных телефонов для {cluster_city}"
+            )
 
     return merged
 
