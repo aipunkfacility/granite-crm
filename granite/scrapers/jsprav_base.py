@@ -8,6 +8,13 @@ from granite.utils import normalize_phones, slugify, classify_messenger
 
 JSPRAV_CATEGORY = "izgotovlenie-i-ustanovka-pamyatnikov-i-nadgrobij"
 
+# ── A-2: Разрешённые категории jsprav — только изготовление памятников ──
+# Ритуальные агентства (ritualnye-uslugi) отсекаются — они не ЦА.
+# 38% jsprav-записей были ритуальными агентствами без изготовления памятников.
+JSPRAV_ALLOWED_CATEGORIES = frozenset({
+    JSPRAV_CATEGORY,
+})
+
 
 class JspravBaseScraper(BaseScraper):
     """Общий базовый класс для JspravScraper и JspravPlaywrightScraper.
@@ -34,7 +41,17 @@ class JspravBaseScraper(BaseScraper):
         self.subdomain_map = self.source_config.get("subdomain_map", {})
         self._cached_subdomain = subdomain
         if categories is not None:
-            self.categories = categories
+            # A-2: Фильтруем категории, оставляя только разрешённые
+            filtered = [c for c in categories if c in JSPRAV_ALLOWED_CATEGORIES]
+            if filtered:
+                self.categories = filtered
+            else:
+                from loguru import logger as _logger
+                _logger.warning(
+                    f"JSprav {city}: все переданные категории не в JSPRAV_ALLOWED_CATEGORIES, "
+                    f"используем дефолт: {self.JSPRAV_CATEGORY}"
+                )
+                self.categories = [self.JSPRAV_CATEGORY]
         else:
             self.categories = [self.JSPRAV_CATEGORY]
 

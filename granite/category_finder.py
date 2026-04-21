@@ -8,6 +8,7 @@ import requests
 from pathlib import Path
 from loguru import logger
 from granite.utils import is_safe_url
+from granite.scrapers.jsprav_base import JSPRAV_ALLOWED_CATEGORIES
 
 __all__ = [
     "CACHE_PATH",
@@ -262,7 +263,9 @@ def discover_categories(cities: list[str], config: dict, region: str | None = No
                 continue
 
             if result.get("categories"):
-                cache.setdefault("jsprav", {})[city] = result["categories"]
+                # A-2: Фильтруем категории, оставляя только разрешённые
+                allowed = [c for c in result["categories"] if c in JSPRAV_ALLOWED_CATEGORIES]
+                cache.setdefault("jsprav", {})[city] = allowed
                 cache.setdefault("_subdomains", {}).setdefault("jsprav", {})[city] = result[
                     "subdomain"
                 ]

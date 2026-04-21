@@ -354,6 +354,76 @@ class WebSearchScraper(BaseScraper):
         "wikipedia.org",
         "wikidata.org",
         "wikimedia.org",
+        # ── Агрегаторы памятников (один сайт → страницы по всем городам РФ) ──
+        # Аудит A-1: эти домены создают страницы-каталоги для каждого города
+        # с федеральными контактами (колл-центр), а не реальными местными мастерскими.
+        # Паттерн: tsargranit.ru/abaza.html, alshei.ru/abakan.html и т.д.
+        "tsargranit.ru",              # 59 городов
+        "alshei.ru",                  # 51 город
+        "mipomnim.ru",                # 48 городов
+        "uznm.ru",                    # 36 городов
+        "v-granit.ru",                # 30 городов
+        "spravker.ru",                # справочник, 46 записей
+        "monuments.su",               # 33 города
+        "masterskay-granit.ru",       # 26 городов
+        "gr-anit.ru",                 # 26 городов
+        "nbs-granit.ru",              # 24 города
+        "xn--d1aigketcf.xn--p1ai",   # 23 города (памятники.рф)
+        "granit-pamiatnik.ru",        # 19 городов
+        "postament.ru",               # 18 городов
+        "uslugio.com",                # справочник, 17 городов
+        "pamiatnikiizgranita.ru",     # 17 городов
+        "monuments39.ru",             # 17 городов
+        "asgranit.ru",                # 16 городов
+        "diabazstone.ru",             # 16 городов (проверить — возможно реальная сеть)
+        "zoon.ru",                    # справочник, 16 городов
+        "pomnivsegda.ru",             # 17 городов
+        "izgotovleniepamyatnikov.ru", # 15 городов
+        "seprava.ru",                 # 15 городов
+        "pamatniki.ru",               # 13 городов
+        "pqd.ru",                     # агрегатор-справочник, 13 городов
+        "thezeitgeistmovement.ru",    # 13 городов
+        "artgranit33.ru",             # 12 городов
+        "granit33market.ru",          # 11 городов
+        "rosreestrr.ru",              # 10 городов
+        "granitunas.ru",              # 10 городов
+        "fabrika-vek.ru",             # 10 городов
+        "mapage.ru",                  # справочник
+        "orgpage.ru",                 # справочник
+        "totadres.ru",                # справочник
+        "kamelotstone.ru",            # сеть с city-страницами
+        "kamenpamyati.ru",            # 9 городов
+        "home-granit.ru",             # 9 городов
+        "ritualst.ru",                # 8 городов
+        "gidgranit.ru",               # 8 городов
+        "luxritual.ru",               # 8 городов
+        "granitreal.ru",              # 8 городов
+        "okultureno.ru",              # 8 городов
+        "granit-art.ru",              # 7 городов
+        "vekgranit.ru",               # 7 городов
+        "artmemorials.ru",            # 7 городов
+        "dymovskiy.ru",               # 7 городов
+        "bizorg.su",                  # справочник, 5 городов
+        "best-monuments.ru",          # 5 городов
+        "eurogranite.ru",             # 5 городов
+        "e-memorial.ru",              # 5 городов
+        "granitmasterplus.ru",        # 5 городов
+        "grad-ex.ru",                 # 5 городов
+        "planetagranita.ru",          # 5 городов
+        "kamengorod.ru",              # 5 городов
+        "ritual-reestr.ru",           # 6 городов
+        "pamyatnik-online.ru",        # 6 городов
+        "pamiatniky.ru",              # 6 городов
+        "ritualsp.ru",                # 5 городов
+        "ritualagency.ru",            # 5 городов
+        "ripme.ru",                   # 5 городов
+        "ratusha-pamyatniki.ru",      # 5 городов
+        "masternovikov.ru",           # 5 городов
+        "izgotovleniye-pamyatnikov.ru",  # 5 городов
+        "sitc.ru",                    # 6 городов
+        # ── Данила-Мастер — реальная франшиза, НЕ блокируем ──
+        # Субдомены (abaza.danila-master.ru) — реальные локальные точки
+        # с разными контактами. Обработка через is_network=True в A-6.
     ]
 
     def __init__(self, config: dict, city: str):
