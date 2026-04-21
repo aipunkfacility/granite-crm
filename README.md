@@ -10,13 +10,14 @@
 2. Подтягивает все населённые пункты этой области (из `data/regions.yaml`)
 3. Автоматически ищет поддомены и категории на jsprav.ru через API (`/api/cities/`)
 4. Парсит каждый город из источников: jsprav, web_search (DuckDuckGo), 2GIS (Crawlee/API), yell (Crawlee)
-5. Дедуплицирует — сливает дубли по телефону и сайту (Union-Find)
-6. **Обогащение, проход 1** — сканирует сайты на мессенджеры, ищет Telegram по телефону и названию, определяет CMS (sync через ThreadPoolExecutor или async через httpx)
-7. **Обогащение, проход 2** — для компаний без сайта/email: поиск через web_search (DuckDuckGo) с заполнением недостающих полей
-8. **Reverse Lookup** — для компаний с малым количеством данных: поиск в 2GIS и Yell по имени/телефону, дополнение контактов
-9. Детекция филиальных сетей (один домен или телефон у 2+ компаний в пределах области)
-10. Определяет сегмент (A/B/C/D) по скорингу
-11. Экспортирует в CSV или Markdown
+5. **Географическая валидация (A-5)** — проверяет соответствие адреса найденной компании целевому городу. Подозрительные записи помечаются флагом `needs_review`.
+6. Дедуплицирует — сливает дубли по телефону и сайту (Union-Find)
+7. **Обогащение, проход 1** — сканирует сайты на мессенджеры, ищет Telegram по телефону и названию, определяет CMS (sync через ThreadPoolExecutor или async через httpx)
+8. **Обогащение, проход 2** — для компаний без сайта/email: поиск через web_search (DuckDuckGo) с заполнением недостающих полей
+9. **Reverse Lookup** — для компаний с малым количеством данных: поиск в 2GIS и Yell по имени/телефону, дополнение контактов
+10. **Детекция сетей (A-6/A-8)** — поиск филиалов и агрегаторов (один домен у 3+ городов).
+11. Определяет сегмент (A/B/C/D) по скорингу
+12. Экспортирует в CSV или Markdown
 
 Всё локально. Никаких GitHub Actions, никаких облачных сервисов.
 
@@ -57,51 +58,51 @@ cp .env.example .env
 
 ```bash
 # Использовать альтернативный конфиг (по умолчанию: config.yaml)
-python cli.py -c config.prod.yaml run "Астрахань"
+uv run cli.py -c config.prod.yaml run "Астрахань"
 
 # Одна область (все города парсятся автоматически)
-python cli.py run "Ростов-на-Дону"
+uv run cli.py run "Ростов-на-Дону"
 
 # С очисткой старых данных
-python cli.py run "Ростов-на-Дону" --force
+uv run cli.py run "Ростов-на-Дону" --force
 
 # Пропустить парсинг, только дедупликация и обогащение
-python cli.py run "Ростов-на-Дону" --no-scrape
+uv run cli.py run "Ростов-на-Дону" --no-scrape
 
 # Перезапустить только точечное обогащение (сохранить scrape+dedup, заполнить пустые website/email)
-python cli.py run "Ростов-на-Дону" --re-enrich
+uv run cli.py run "Ростов-на-Дону" --re-enrich
 
 # Все города из конфига
-python cli.py run all
+uv run cli.py run all
 
 # Экспорт
-python cli.py export "Ростов-на-Дону" --format csv
-python cli.py export "Ростов-на-Дону" --format md
+uv run cli.py export "Ростов-на-Дону" --format csv
+uv run cli.py export "Ростов-на-Дону" --format md
 
 # Экспорт по пресету
-python cli.py export-preset "Ростов-на-Дону" hot_leads
+uv run cli.py export-preset "Ростов-на-Дону" hot_leads
 ```
 
 ### Управление базой данных (Alembic миграции)
 
 ```bash
 # Проверить, нужна ли миграция
-python cli.py db check
+uv run cli.py db check
 
 # Создать миграцию (после изменения моделей в database.py)
-python cli.py db migrate "add last_contacted_at to companies"
+uv run cli.py db migrate "add last_contacted_at to companies"
 
 # Применить миграцию
-python cli.py db upgrade head
+uv run cli.py db upgrade head
 
 # Откатить на одну версию назад
-python cli.py db downgrade -1
+uv run cli.py db downgrade -1
 
 # История миграций
-python cli.py db history -v
+uv run cli.py db history -v
 
 # Текущая версия схемы
-python cli.py db current
+uv run cli.py db current
 
 # Пометить существующую БД как актуальную (для миграции на Alembic)
 python cli.py db stamp head
@@ -310,9 +311,9 @@ SQLite с WAL-режимом (параллельные записи без "data
 
 | Таблица | Назначение | Записей |
 |---------|-----------|---------|
-| **`raw_companies`** | Сырые данные из скреперов (source, name, phones, website, emails, city) | Много (дубли) |
-| **`companies`** | После дедупликации (merged_from, name_best, phones, website, emails, messengers) | Уникальные |
-| **`enriched_companies`** | Обогащённые данные (messengers, tg_trust, cms, crm_score, segment, is_network). Связь 1:1 с `companies` по `id` (FK с `ON DELETE CASCADE`) | = companies |
+| **`raw_companies`** | Сырые данные (source, name, website, city/region, needs_review) | Много (дубли) |
+| **`companies`** | Уникальные (merged_from, name_best, city/region, needs_review, deleted_at) | Уникальные |
+| **`enriched_companies`** | Обогащённые данные (is_network, crm_score, segment, region) | = companies |
 | **`crm_contacts`** | CRM-воронка компании (funnel_stage, email/TG/WA метрики, notes, stop_automation). FK → companies | ≤ companies |
 | **`crm_touches`** | Лог касаний: каждое отправленное/полученное сообщение (channel, direction, body) | > companies |
 | **`crm_templates`** | Шаблоны сообщений с плейсхолдерами `{from_name}`, `{city}`, `{company_name}` | Настраивается |
@@ -336,12 +337,12 @@ crm_tasks.company_id ───────→ companies.id         (many-to-one,
 Схема БД версионирована через Alembic. При изменении ORM-моделей в `granite/database.py` создайте миграцию:
 
 ```bash
-python cli.py db check          # проверить, есть ли изменения
-python cli.py db migrate "... " # создать миграцию
-python cli.py db upgrade head   # применить
+uv run cli.py db check          # проверить, есть ли изменения
+uv run cli.py db migrate "... " # создать миграцию
+uv run cli.py db upgrade head   # применить
 ```
 
-Автоматически: `Database()` вызывает `alembic upgrade head` при инициализации, поэтому при обычном запуске (`python cli.py run ...`) миграции применяются сами.
+Автоматически: `Database()` вызывает `alembic upgrade head` при инициализации, поэтому при обычном запуске (`uv run cli.py run ...`) миграции применяются сами.
 
 ### Работа с БД в коде
 
@@ -378,8 +379,8 @@ with db.session_scope() as session:
 Проект включает REST API для управления CRM-данными. Запуск:
 
 ```bash
-python cli.py api --port 8000
-python cli.py api --port 8000 --reload   # hot-reload для разработки
+uv run cli.py api --port 8000
+uv run cli.py api --port 8000 --reload   # hot-reload для разработки
 ```
 
 Или напрямую: `uvicorn granite.api.app:app --reload`
@@ -547,8 +548,8 @@ run "Астрахань"
 | `full_dump` | Все обогащённые компании |
 
 ```bash
-python cli.py export-preset "Волгоград" hot_leads
-python cli.py export-preset all with_telegram
+uv run cli.py export-preset "Волгоград" hot_leads
+uv run cli.py export-preset all with_telegram
 ```
 
 ## Troubleshooting
@@ -587,7 +588,7 @@ grep "ERROR" data/logs/granite.log
 Чекпоинты работают автоматически. Просто запустите снова:
 
 ```bash
-python cli.py run "Астрахань"
+uv run cli.py run "Астрахань"
 ```
 
 Он продолжит с того места, где остановился.
@@ -595,14 +596,14 @@ python cli.py run "Астрахань"
 Принудительно начать с нуля:
 
 ```bash
-python cli.py run "Астрахань" --force
+uv run cli.py run "Астрахань" --force
 ```
 
 ### Как проверить статус города
 
 ```bash
 # Через экспорт (пустой = не обработан)
-python cli.py export "Астрахань" --format csv
+uv run cli.py export "Астрахань" --format csv
 
 # Или через БД напрямую
 sqlite3 data/granite.db "SELECT COUNT(*) FROM companies WHERE city='Астрахань';"
