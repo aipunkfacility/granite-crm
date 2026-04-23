@@ -62,7 +62,7 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
 
   const field = (id: string, label: string, key: keyof typeof formData, placeholder?: string) => (
     <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{label}</Label>
+      <Label htmlFor={id} className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</Label>
       <Input
         id={id}
         value={formData[key]}
@@ -74,12 +74,12 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
-        <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-white">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 backdrop-blur-sm p-4">
+      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-border">
+        <div className="p-6 border-b bg-gradient-to-r from-primary/10 to-card">
           {/* V-05: font-semibold вместо font-bold */}
-          <h2 className="text-xl font-semibold text-indigo-900">Редактирование компании</h2>
-          <p className="text-sm text-slate-500 mt-0.5">{company.name} · {company.city}</p>
+          <h2 className="text-xl font-semibold text-primary">Редактирование компании</h2>
+          <p className="text-sm text-muted-foreground mt-0.5">{company.name} · {company.city}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -96,7 +96,7 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
 
           <div className="pt-3 border-t space-y-3">
             {/* V-07: text-slate-400 → text-slate-500 на лейблах */}
-            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Мессенджеры</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Мессенджеры</p>
             <div className="grid grid-cols-2 gap-3">
               {field('tg', 'Telegram', 'telegram', '@username или ссылка')}
               {field('wa', 'WhatsApp', 'whatsapp', '+79001234567 или ссылка')}
@@ -104,7 +104,7 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
           </div>
         </form>
 
-        <div className="p-5 border-t bg-slate-50 flex justify-end gap-3">
+        <div className="p-5 border-t bg-muted flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose} type="button">Отмена</Button>
           {/* V-04: убран хардкод bg-indigo-600 — variant="default" теперь indigo через --primary */}
           <Button

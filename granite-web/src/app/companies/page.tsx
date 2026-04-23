@@ -5,7 +5,7 @@ import { CompaniesPageContent } from "./companies-content";
 
 export default function CompaniesPage() {
   return (
-    <Suspense fallback={<div className="p-8 text-slate-400">Загрузка фильтров...</div>}>
+    <Suspense fallback={<div className="p-8 text-muted-foreground">Загрузка фильтров...</div>}>
       <CompaniesPageContent />
     </Suspense>
   );

@@ -24,20 +24,20 @@ import {
 import { useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { FUNNEL_STAGES, FunnelStage } from "@/constants/funnel";
 
-/* V-12: #ef4444 → #E11D48 (Rose), #64748b → #8B5CF6 (violet) */
-const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#E11D48', '#8B5CF6'];
+/* Semantic palette: primary, success, warning, destructive, accent-purple */
+const COLORS = ['#5B6ABF', '#2B9E6F', '#C49008', '#DC2643', '#8B5ABF'];
 
-/* V-11: полный маппинг цветов воронки — холодный→тёплый градиент */
+/* Semantic palette for funnel — HEX for recharts (always rendered inside Card with bg-card) */
 const FUNNEL_COLORS: Record<string, string> = {
-  slate: '#94A3B8',   // new — нейтральный
-  blue: '#3B82F6',    // email_sent
-  indigo: '#6366F1',  // email_opened
-  violet: '#8B5CF6',  // tg_sent
-  green: '#10B981',   // wa_sent
-  emerald: '#059669', // interested
-  teal: '#14B8A6',    // replied
-  orange: '#F59E0B',  // not_interested
-  red: '#EF4444',     // unreachable
+  slate: '#7A756E',   // muted-foreground (light) / #9DA1A9 (dark handled by CSS)
+  blue: '#2E7DB5',    // info
+  indigo: '#5B6ABF',  // primary
+  violet: '#8B5ABF',  // accent-purple
+  green: '#2B9E6F',   // success
+  emerald: '#1A8060', // success darker
+  teal: '#0D7A6C',    // success teal
+  orange: '#C49008',  // warning
+  red: '#DC2643',     // destructive
 };
 
 /**
@@ -85,7 +85,7 @@ export default function StatsPage() {
     ? Object.entries(stats.funnel).map(([stage, count]) => ({
         name: FUNNEL_STAGES[stage as FunnelStage]?.label || stage,
         count: count,
-        color: FUNNEL_COLORS[FUNNEL_STAGES[stage as FunnelStage]?.color] || '#94A3B8'
+        color: FUNNEL_COLORS[FUNNEL_STAGES[stage as FunnelStage]?.color] || '#7A756E'
       }))
     : [];
 
@@ -105,9 +105,9 @@ export default function StatsPage() {
       <div className="flex items-center justify-between">
         <div>
           {/* V-05: font-semibold вместо font-bold */}
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Аналитика</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">Аналитика</h1>
           {/* V-27: подзаголовок text-sm */}
-          <p className="text-sm text-slate-500">Общая статистика базы и эффективность воронки продаж.</p>
+          <p className="text-sm text-muted-foreground">Общая статистика базы и эффективность воронки продаж.</p>
         </div>
 
         <div className="w-64">
@@ -127,7 +127,7 @@ export default function StatsPage() {
 
       {/* Основные цифры */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="bg-indigo-600 text-white border-none shadow-lg">
+        <Card className="bg-primary text-primary-foreground border-none shadow-lg">
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase opacity-80">Всего компаний</p>
             <p className="text-3xl font-semibold mt-1">{stats?.total_companies?.toLocaleString() ?? 0}</p>
@@ -135,22 +135,22 @@ export default function StatsPage() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-xs font-medium uppercase text-slate-500">С мессенджерами</p>
-            <p className="text-2xl font-semibold mt-1 text-sky-600">
+            <p className="text-xs font-medium uppercase text-muted-foreground">С мессенджерами</p>
+            <p className="text-2xl font-semibold mt-1 text-info">
               TG: {stats?.with_telegram ?? 0} | WA: {stats?.with_whatsapp ?? 0}
             </p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-xs font-medium uppercase text-slate-500">С Email</p>
-            <p className="text-3xl font-semibold mt-1 text-indigo-600">{stats?.with_email?.toLocaleString() ?? 0}</p>
+            <p className="text-xs font-medium uppercase text-muted-foreground">С Email</p>
+            <p className="text-3xl font-semibold mt-1 text-primary">{stats?.with_email?.toLocaleString() ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <p className="text-xs font-medium uppercase text-slate-500">Конверсия (Ответы)</p>
-            <p className="text-3xl font-semibold mt-1 text-emerald-600">
+            <p className="text-xs font-medium uppercase text-muted-foreground">Конверсия (Ответы)</p>
+            <p className="text-3xl font-semibold mt-1 text-success">
               {stats?.funnel?.replied ?? 0}
             </p>
           </CardContent>

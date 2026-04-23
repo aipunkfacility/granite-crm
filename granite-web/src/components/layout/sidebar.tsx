@@ -12,6 +12,7 @@ import {
   LayoutDashboard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 const navigation = [
   { name: 'Компании', href: '/companies', icon: Building2 },
@@ -26,10 +27,9 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <div className="flex h-full w-60 flex-col border-r bg-slate-50/50">
-      <div className="flex h-16 items-center border-b px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold text-indigo-600">
-          {/* V-18: h-6 w-6 → h-5 w-5 (20px) */}
+    <div className="flex h-full w-60 flex-col border-r border-border bg-sidebar">
+      <div className="flex h-16 items-center border-b border-border px-6">
+        <Link href="/" className="flex items-center gap-2 font-semibold text-sidebar-primary">
           <LayoutDashboard className="h-5 w-5" />
           <span>Granite CRM</span>
         </Link>
@@ -44,14 +44,14 @@ export function Sidebar() {
               className={cn(
                 'group flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors',
                 isActive
-                  ? 'bg-indigo-50 text-indigo-600'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  ? 'bg-sidebar-accent text-sidebar-primary'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
               )}
             >
               <item.icon
                 className={cn(
                   'mr-3 h-5 w-5 flex-shrink-0',
-                  isActive ? 'text-indigo-600' : 'text-slate-400 group-hover:text-slate-500'
+                  isActive ? 'text-sidebar-primary' : 'text-sidebar-foreground/40 group-hover:text-sidebar-foreground/70'
                 )}
                 aria-hidden="true"
               />
@@ -60,8 +60,9 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="border-t p-4">
-        <div className="rounded-lg bg-indigo-600 p-4 text-white">
+      <div className="border-t border-border p-3 space-y-2">
+        <ThemeToggle />
+        <div className="rounded-lg bg-sidebar-primary p-3 text-sidebar-primary-foreground">
           <p className="text-xs font-semibold uppercase tracking-wider opacity-75">Статус</p>
           <p className="mt-1 text-sm font-medium">Backend: Online</p>
         </div>

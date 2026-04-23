@@ -85,22 +85,22 @@ export function CompaniesPageContent() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           {/* V-05: h1 font-semibold вместо font-bold */}
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground">
             Компании
             {activeCount > 0 && (
-              <span className="ml-2 inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-sm font-medium text-indigo-700">
+              <span className="ml-2 inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-sm font-medium text-primary">
                 {activeCount} фильтр.
               </span>
             )}
           </h1>
           {/* V-27: подзаголовок text-sm */}
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-muted-foreground">
             Управление базой потенциальных клиентов и стадиями воронки.
           </p>
         </div>
 
         <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Поиск по названию..."
             className="pl-10"
@@ -139,12 +139,12 @@ export function CompaniesPageContent() {
             onSelectCompany={handleSelectCompany}
           />
 
-          <div className="flex items-center justify-end text-sm text-slate-500 py-4">
+          <div className="flex items-center justify-end text-sm text-muted-foreground py-4">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
-                className="rounded border bg-white px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+                className="rounded border bg-card px-3 py-1 hover:bg-muted/50 disabled:opacity-50"
               >
                 Назад
               </button>
@@ -152,7 +152,7 @@ export function CompaniesPageContent() {
               <button
                 onClick={() => setPage(p => p + 1)}
                 disabled={!data?.items || data.items.length < 50}
-                className="rounded border bg-white px-3 py-1 hover:bg-slate-50 disabled:opacity-50"
+                className="rounded border bg-card px-3 py-1 hover:bg-muted/50 disabled:opacity-50"
               >
                 Вперед
               </button>

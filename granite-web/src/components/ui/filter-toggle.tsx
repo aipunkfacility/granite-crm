@@ -35,10 +35,10 @@ export function FilterToggle({ label, value, onChange }: FilterToggleProps) {
 
   /* V-17, V-19: red → rose (destructive palette #E11D48) */
   const buttonClass = value === undefined
-    ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white'
+    ? 'border-border text-foreground hover:border-border bg-card'
     : value === 1
-      ? 'border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-      : 'border-rose-400 text-rose-600 bg-rose-50 hover:bg-rose-100';
+      ? 'border-success text-success bg-success/10 hover:bg-success/20'
+      : 'border-destructive text-destructive bg-destructive/10 hover:bg-destructive/20';
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -54,17 +54,17 @@ export function FilterToggle({ label, value, onChange }: FilterToggleProps) {
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-40 rounded-md border border-slate-200 bg-white py-1 shadow-lg">
+        <div className="absolute top-full left-0 z-50 mt-1 w-40 rounded-md border border-border bg-card py-1 shadow-lg">
           <button
             type="button"
-            className="w-full px-3 py-1.5 text-left text-sm hover:bg-slate-50"
+            className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted/50"
             onClick={() => { onChange(undefined); setOpen(false); }}
           >
             <span className={value === undefined ? 'font-medium' : ''}>Любые</span>
           </button>
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 text-emerald-700"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted/50 text-success"
             onClick={() => { onChange(1); setOpen(false); }}
           >
             <Check className="h-3.5 w-3.5" />
@@ -72,7 +72,7 @@ export function FilterToggle({ label, value, onChange }: FilterToggleProps) {
           </button>
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 text-rose-600"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted/50 text-destructive"
             onClick={() => { onChange(0); setOpen(false); }}
           >
             <X className="h-3.5 w-3.5" />

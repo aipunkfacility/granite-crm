@@ -1,8 +1,9 @@
 'use client';
 
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { FilterToggle } from '@/components/ui/filter-toggle';
 import { Input } from '@/components/ui/input';
-import { X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { FilterState } from '@/lib/hooks/use-company-filters';
 import { SEGMENT_CONFIG, FUNNEL_STAGES } from '@/constants/funnel';
 import type { Segment, FunnelStage } from '@/lib/types/api';
@@ -18,9 +19,149 @@ interface CompaniesFiltersProps {
   cmsTypes: string[];
 }
 
-/* V-14: focus ring на всех 4 нативных select */
-const selectClass = "mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+/* focus ring для нативных select */
+const selectClass =
+  'mt-1 w-full rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors';
 
+/* ========================================
+   Collapsible Group
+   ======================================== */
+function FilterGroup({
+  label,
+  activeCount,
+  defaultOpen = true,
+  children,
+}: {
+  label: string;
+  activeCount?: number;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className={open ? 'mt-3' : 'mt-2'}>
+      {/* Group header — clickable */}
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-1.5 py-0.5 text-left group"
+      >
+        <ChevronDown
+          className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-200 ${
+            !open ? '-rotate-90' : ''
+          }`}
+        />
+        <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+          {label}
+        </span>
+        {/* Active count badge — shown when collapsed */}
+        {!open && activeCount !== undefined && activeCount > 0 && (
+          <span className="rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-semibold text-primary">
+            {activeCount}
+          </span>
+        )}
+        <span className="flex-1 border-b border-border" />
+      </button>
+
+      {/* Group body — collapsible */}
+      <div
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
+          open ? 'mt-2 max-h-96 opacity-100' : 'mt-0 max-h-0 opacity-0'
+        }`}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ========================================
+   Active Filter Pills (for collapsed panel header)
+   ======================================== */
+function ActivePills({ filters }: { filters: FilterState }) {
+  const pills: { label: string; variant: 'primary' | 'success' | 'destructive' | 'muted' }[] = useMemo(() => {
+    const result: { label: string; variant: 'primary' | 'success' | 'destructive' | 'muted' }[] = [];
+
+    /* Сегменты */
+    filters.segment.forEach(s => {
+      result.push({ label: s === 'spam' ? 'Spam' : s, variant: 'primary' });
+    });
+
+    /* Воронка */
+    if (filters.funnel_stage) {
+      const cfg = FUNNEL_STAGES[filters.funnel_stage as FunnelStage];
+      result.push({ label: cfg?.label ?? filters.funnel_stage, variant: 'muted' });
+    }
+
+    /* География */
+    if (filters.region) {
+      result.push({ label: filters.region.length > 20 ? filters.region.slice(0, 18) + '...' : filters.region, variant: 'muted' });
+    }
+    if (filters.city.length > 0) {
+      result.push({ label: `${filters.city.length} гор.`, variant: 'muted' });
+    }
+
+    /* CMS */
+    if (filters.cms) {
+      result.push({ label: filters.cms, variant: 'muted' });
+    }
+
+    /* Тоглы */
+    const toggleMap: [keyof FilterState, string][] = [
+      ['has_telegram', 'TG'], ['has_whatsapp', 'WA'], ['has_email', 'Email'],
+      ['has_website', 'Сайт'], ['has_vk', 'VK'], ['has_address', 'Адр.'],
+      ['is_network', 'Сети'], ['has_marquiz', 'Marquiz'],
+      ['needs_review', 'Проверка'], ['stop_automation', 'Пауза'],
+    ];
+    toggleMap.forEach(([key, short]) => {
+      const v = filters[key] as 0 | 1 | undefined;
+      if (v === 1) result.push({ label: short, variant: 'success' });
+      else if (v === 0) result.push({ label: `~${short}`, variant: 'destructive' });
+    });
+
+    /* Score */
+    if (filters.min_score !== undefined || filters.max_score !== undefined) {
+      const lo = filters.min_score ?? '';
+      const hi = filters.max_score ?? '';
+      result.push({ label: `S:${lo}–${hi}`, variant: 'muted' });
+    }
+
+    return result;
+  }, [filters]);
+
+  if (pills.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1 min-w-0 flex-1">
+      {pills.slice(0, 8).map((p, i) => (
+        <span
+          key={i}
+          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-none max-w-[140px] truncate ${
+            p.variant === 'primary'
+              ? 'bg-primary/10 text-primary'
+              : p.variant === 'success'
+                ? 'bg-success/10 text-success'
+                : p.variant === 'destructive'
+                  ? 'bg-destructive/10 text-destructive'
+                  : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          {p.label}
+        </span>
+      ))}
+      {pills.length > 8 && (
+        <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium leading-none text-muted-foreground">
+          +{pills.length - 8}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ========================================
+   Main Component
+   ======================================== */
 export function CompaniesFilters({
   filters,
   onFilterChange,
@@ -31,164 +172,272 @@ export function CompaniesFilters({
   regions,
   cmsTypes,
 }: CompaniesFiltersProps) {
+  const [panelOpen, setPanelOpen] = useState(true);
+
+  /* Keyboard shortcut: F to toggle panel */
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+        setPanelOpen(prev => !prev);
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, []);
+
+  /* Count active filters per group */
+  const classCount = useMemo(() => {
+    let c = 0;
+    if (filters.segment.length > 0) c++;
+    if (filters.funnel_stage) c++;
+    return c;
+  }, [filters.segment, filters.funnel_stage]);
+
+  const geoCount = useMemo(() => {
+    let c = 0;
+    if (filters.region) c++;
+    if (filters.city.length > 0) c++;
+    if (filters.cms) c++;
+    return c;
+  }, [filters.region, filters.city, filters.cms]);
+
+  const channelCount = useMemo(() => {
+    let c = 0;
+    if (filters.has_telegram !== undefined) c++;
+    if (filters.has_whatsapp !== undefined) c++;
+    if (filters.has_email !== undefined) c++;
+    if (filters.has_vk !== undefined) c++;
+    if (filters.has_website !== undefined) c++;
+    if (filters.has_address !== undefined) c++;
+    return c;
+  }, [filters.has_telegram, filters.has_whatsapp, filters.has_email, filters.has_vk, filters.has_website, filters.has_address]);
+
+  const propsCount = useMemo(() => {
+    let c = 0;
+    if (filters.is_network !== undefined) c++;
+    if (filters.has_marquiz !== undefined) c++;
+    if (filters.needs_review !== undefined) c++;
+    if (filters.stop_automation !== undefined) c++;
+    if (filters.min_score !== undefined) c++;
+    if (filters.max_score !== undefined) c++;
+    return c;
+  }, [filters.is_network, filters.has_marquiz, filters.needs_review, filters.stop_automation, filters.min_score, filters.max_score]);
+
   return (
-    <div className="space-y-4 rounded-lg border bg-white p-4">
-      {/* Шапка: всего найдено + сброс */}
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-slate-500">
-          Всего найдено: <span className="font-semibold text-slate-900">{total}</span>
-        </span>
-        {activeCount > 0 && (
-          <button
-            type="button"
-            onClick={onClearAll}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            <X className="h-3.5 w-3.5" />
-            Сбросить всё ({activeCount})
-          </button>
-        )}
-      </div>
+    <div className="overflow-hidden rounded-lg border bg-card transition-all duration-300">
+      {/* ======== Panel Header (always visible) ======== */}
+      <button
+        type="button"
+        onClick={() => setPanelOpen(!panelOpen)}
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/30 transition-colors"
+      >
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
+            !panelOpen ? '-rotate-90' : ''
+          }`}
+        />
+        <span className="text-sm font-semibold text-foreground">Фильтры</span>
 
-      {/* Сегменты */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm font-medium text-slate-500 w-16 shrink-0">Сегмент:</span>
-        {(Object.keys(SEGMENT_CONFIG) as Segment[]).map(seg => {
-          const active = filters.segment.includes(seg);
-          return (
-            <button
-              key={seg}
-              type="button"
-              onClick={() => {
-                const next = active
-                  ? filters.segment.filter(s => s !== seg)
-                  : [...filters.segment, seg];
-                onFilterChange('segment', next.length ? next : []);
+        {/* Active pills — always visible, useful when collapsed */}
+        <ActivePills filters={filters} />
+
+        {/* Right side: count + clear */}
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            Найдено: <span className="font-semibold text-foreground">{total}</span>
+          </span>
+          {activeCount > 0 && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={e => {
+                e.stopPropagation();
+                onClearAll();
               }}
-              className={`rounded-md border px-2.5 py-1 text-sm font-medium transition-colors ${
-                active
-                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
-                  : 'border-slate-200 text-slate-500 hover:border-slate-300'
-              }`}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.stopPropagation();
+                  onClearAll();
+                }
+              }}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-foreground hover:border-destructive hover:text-destructive transition-colors"
             >
-              {seg}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Dropdowns */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <label className="text-xs font-medium text-slate-500">Регион</label>
-          <select
-            value={filters.region || ''}
-            onChange={e => onFilterChange('region', (e.target.value || undefined) as string | undefined)}
-            className={selectClass}
-          >
-            <option value="">Все регионы</option>
-            {regions.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
-        </div>
-
-        <div>
-          <label className="text-xs font-medium text-slate-500">Город</label>
-          <select
-            value=""
-            onChange={e => {
-              if (!e.target.value) return;
-              const next = filters.city.includes(e.target.value)
-                ? filters.city.filter(c => c !== e.target.value)
-                : [...filters.city, e.target.value];
-              onFilterChange('city', next);
-            }}
-            className={selectClass}
-          >
-            <option value="">Выберите город...</option>
-            {cities.map(c => (
-              <option key={c} value={c} disabled={filters.city.includes(c)}>
-                {filters.city.includes(c) ? `✓ ${c}` : c}
-              </option>
-            ))}
-          </select>
-          {filters.city.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1">
-              {filters.city.map(c => (
-                <span
-                  key={c}
-                  className="inline-flex items-center gap-0.5 rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700"
-                >
-                  {c}
-                  <button onClick={() => onFilterChange('city', filters.city.filter(x => x !== c))}>
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
+              <X className="h-3 w-3" />
+              Сбросить ({activeCount})
+            </span>
           )}
         </div>
+      </button>
 
-        <div>
-          <label className="text-xs font-medium text-slate-500">Воронка</label>
-          <select
-            value={filters.funnel_stage || ''}
-            onChange={e => onFilterChange('funnel_stage', (e.target.value || undefined) as string | undefined)}
-            className={selectClass}
-          >
-            <option value="">Все стадии</option>
-            {(Object.entries(FUNNEL_STAGES) as [FunnelStage, any][]).map(([key, cfg]) => (
-              <option key={key} value={key}>{cfg.label}</option>
-            ))}
-          </select>
+      {/* ======== Panel Body (collapsible) ======== */}
+      <div
+        className={`transition-all duration-300 ease-in-out ${
+          panelOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        <div className="border-t border-border px-4 pb-4 pt-1">
+
+          {/* ─── Group 1: Классификация ─── */}
+          <FilterGroup label="Классификация" activeCount={classCount}>
+            <div className="flex flex-wrap items-center gap-4">
+              {/* Сегменты — pills */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Сегмент</span>
+                {(Object.keys(SEGMENT_CONFIG) as Segment[]).map(seg => {
+                  const active = filters.segment.includes(seg);
+                  return (
+                    <button
+                      key={seg}
+                      type="button"
+                      onClick={() => {
+                        const next = active
+                          ? filters.segment.filter(s => s !== seg)
+                          : [...filters.segment, seg];
+                        onFilterChange('segment', next.length ? next : []);
+                      }}
+                      className={`rounded-full border px-3 py-0.5 text-sm font-semibold transition-colors ${
+                        active
+                          ? 'border-primary bg-primary/10 text-primary'
+                          : 'border-border text-muted-foreground hover:border-primary/30 hover:text-foreground'
+                      }`}
+                    >
+                      {seg}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Воронка */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">Воронка</span>
+                <select
+                  value={filters.funnel_stage || ''}
+                  onChange={e => onFilterChange('funnel_stage', (e.target.value || undefined) as string | undefined)}
+                  className="rounded-md border border-border bg-card px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-colors"
+                >
+                  <option value="">Все стадии</option>
+                  {(Object.entries(FUNNEL_STAGES) as [FunnelStage, any][]).map(([key, cfg]) => (
+                    <option key={key} value={key}>{cfg.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </FilterGroup>
+
+          {/* ─── Group 2: География и платформа ─── */}
+          <FilterGroup label="География и платформа" activeCount={geoCount}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_1fr]">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Регион</label>
+                <select
+                  value={filters.region || ''}
+                  onChange={e => onFilterChange('region', (e.target.value || undefined) as string | undefined)}
+                  className={selectClass}
+                >
+                  <option value="">Все регионы</option>
+                  {regions.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Город</label>
+                <select
+                  value=""
+                  onChange={e => {
+                    if (!e.target.value) return;
+                    const next = filters.city.includes(e.target.value)
+                      ? filters.city.filter(c => c !== e.target.value)
+                      : [...filters.city, e.target.value];
+                    onFilterChange('city', next);
+                  }}
+                  className={selectClass}
+                >
+                  <option value="">Выберите город...</option>
+                  {cities.map(c => (
+                    <option key={c} value={c} disabled={filters.city.includes(c)}>
+                      {filters.city.includes(c) ? `✓ ${c}` : c}
+                    </option>
+                  ))}
+                </select>
+                {filters.city.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {filters.city.map(c => (
+                      <span
+                        key={c}
+                        className="inline-flex items-center gap-0.5 rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary"
+                      >
+                        {c}
+                        <button onClick={() => onFilterChange('city', filters.city.filter(x => x !== c))}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">CMS</label>
+                <select
+                  value={filters.cms || ''}
+                  onChange={e => onFilterChange('cms', (e.target.value || undefined) as string | undefined)}
+                  className={selectClass}
+                >
+                  <option value="">Все CMS</option>
+                  {cmsTypes.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+          </FilterGroup>
+
+          {/* ─── Group 3: Каналы связи ─── */}
+          <FilterGroup label="Каналы связи" activeCount={channelCount}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterToggle label="Telegram" value={filters.has_telegram} onChange={v => onFilterChange('has_telegram', v)} />
+              <FilterToggle label="WhatsApp" value={filters.has_whatsapp} onChange={v => onFilterChange('has_whatsapp', v)} />
+              <FilterToggle label="Email" value={filters.has_email} onChange={v => onFilterChange('has_email', v)} />
+              <FilterToggle label="VK" value={filters.has_vk} onChange={v => onFilterChange('has_vk', v)} />
+              {/* Визуальный разделитель */}
+              <span className="mx-1 h-5 w-px bg-border" />
+              <FilterToggle label="С сайтом" value={filters.has_website} onChange={v => onFilterChange('has_website', v)} />
+              <FilterToggle label="С адресом" value={filters.has_address} onChange={v => onFilterChange('has_address', v)} />
+            </div>
+          </FilterGroup>
+
+          {/* ─── Group 4: Свойства ─── */}
+          <FilterGroup label="Свойства" activeCount={propsCount}>
+            <div className="flex flex-wrap items-center gap-2">
+              <FilterToggle label="Сети" value={filters.is_network} onChange={v => onFilterChange('is_network', v)} />
+              <FilterToggle label="Марquiz" value={filters.has_marquiz} onChange={v => onFilterChange('has_marquiz', v)} />
+              <FilterToggle label="На проверке" value={filters.needs_review} onChange={v => onFilterChange('needs_review', v)} />
+              <FilterToggle label="Автопауза" value={filters.stop_automation} onChange={v => onFilterChange('stop_automation', v)} />
+
+              {/* Score — справа с разделителем */}
+              <div className="ml-auto flex items-center gap-2 border-l border-border pl-4">
+                <span className="text-xs text-muted-foreground">Score</span>
+                <Input
+                  type="number"
+                  placeholder="от"
+                  value={filters.min_score ?? ''}
+                  onChange={e => onFilterChange('min_score', e.target.value ? parseInt(e.target.value) : undefined)}
+                  className="w-16 text-center text-xs"
+                />
+                <span className="text-muted-foreground">—</span>
+                <Input
+                  type="number"
+                  placeholder="до"
+                  value={filters.max_score ?? ''}
+                  onChange={e => onFilterChange('max_score', e.target.value ? parseInt(e.target.value) : undefined)}
+                  className="w-16 text-center text-xs"
+                />
+              </div>
+            </div>
+          </FilterGroup>
+
         </div>
-
-        <div>
-          <label className="text-xs font-medium text-slate-500">CMS</label>
-          <select
-            value={filters.cms || ''}
-            onChange={e => onFilterChange('cms', (e.target.value || undefined) as string | undefined)}
-            className={selectClass}
-          >
-            <option value="">Все CMS</option>
-            {cmsTypes.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
       </div>
-
-      {/* Toggle-фильтры */}
-      <div className="flex flex-wrap gap-2">
-        <FilterToggle label="Telegram" value={filters.has_telegram} onChange={v => onFilterChange('has_telegram', v)} />
-        <FilterToggle label="WhatsApp" value={filters.has_whatsapp} onChange={v => onFilterChange('has_whatsapp', v)} />
-        <FilterToggle label="Email" value={filters.has_email} onChange={v => onFilterChange('has_email', v)} />
-        <FilterToggle label="С сайтом" value={filters.has_website} onChange={v => onFilterChange('has_website', v)} />
-        <FilterToggle label="VK" value={filters.has_vk} onChange={v => onFilterChange('has_vk', v)} />
-        <FilterToggle label="С адресом" value={filters.has_address} onChange={v => onFilterChange('has_address', v)} />
-        <FilterToggle label="Сети" value={filters.is_network} onChange={v => onFilterChange('is_network', v)} />
-        <FilterToggle label="Марquiz" value={filters.has_marquiz} onChange={v => onFilterChange('has_marquiz', v)} />
-        <FilterToggle label="На проверке" value={filters.needs_review} onChange={v => onFilterChange('needs_review', v)} />
-        <FilterToggle label="Автопауза" value={filters.stop_automation} onChange={v => onFilterChange('stop_automation', v)} />
-      </div>
-
-      {/* Score range */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-slate-500">Score (от–до):</span>
-        <Input
-          type="number"
-          placeholder="от"
-          value={filters.min_score ?? ''}
-          onChange={e => onFilterChange('min_score', e.target.value ? parseInt(e.target.value) : undefined)}
-          className="w-20"
-        />
-        <span className="text-slate-400">—</span>
-        <Input
-          type="number"
-          placeholder="до"
-          value={filters.max_score ?? ''}
-          onChange={e => onFilterChange('max_score', e.target.value ? parseInt(e.target.value) : undefined)}
-          className="w-20"
-        />
-      </div>
-
     </div>
   );
 }

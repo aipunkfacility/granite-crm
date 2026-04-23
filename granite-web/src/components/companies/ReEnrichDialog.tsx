@@ -55,16 +55,16 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden border flex flex-col max-h-[90vh]">
-        <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/50 backdrop-blur-sm p-4">
+      <div className="bg-card rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden border flex flex-col max-h-[90vh]">
+        <div className="p-6 border-b bg-muted flex justify-between items-center">
           <div>
             {/* V-05: font-semibold вместо font-bold */}
             <h2 className="text-xl font-semibold flex items-center">
-              <RefreshCcw className="mr-2 h-5 w-5 text-indigo-600" />
+              <RefreshCcw className="mr-2 h-5 w-5 text-primary" />
               Пересканирование сайта
             </h2>
-            <p className="text-sm text-slate-500">Поиск актуальных контактов на официальном сайте компании</p>
+            <p className="text-sm text-muted-foreground">Поиск актуальных контактов на официальном сайте компании</p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="h-4 w-4" /></Button>
         </div>
@@ -72,17 +72,17 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
         <div className="flex-1 overflow-y-auto p-6">
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 space-y-4">
-              <Loader2 className="h-10 w-10 text-indigo-600 animate-spin" />
-              <p className="text-slate-500 animate-pulse">Анализируем сайт компании...</p>
+              <Loader2 className="h-10 w-10 text-primary animate-spin" />
+              <p className="text-muted-foreground animate-pulse">Анализируем сайт компании...</p>
             </div>
           ) : error ? (
             /* V-19: red → rose (destructive palette) */
-            <div className="bg-rose-50 text-rose-700 p-4 rounded-lg border border-rose-100 flex items-start">
+            <div className="bg-destructive/10 text-destructive p-4 rounded-lg border border-destructive/20 flex items-start">
               <X className="mr-3 h-5 w-5 mt-0.5" />
               <div>
                 <p className="font-medium">Ошибка</p>
                 <p className="text-sm">{error}</p>
-                <Button variant="outline" size="sm" className="mt-3 text-rose-700 border-rose-200" onClick={loadPreview}>
+                <Button variant="outline" size="sm" className="mt-3 text-destructive border-destructive/20" onClick={loadPreview}>
                   Попробовать снова
                 </Button>
               </div>
@@ -98,7 +98,7 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
               <div className="grid grid-cols-2 gap-8">
                 <div className="space-y-4">
                   {/* V-07,V-08: text-slate-500 font-medium */}
-                  <h3 className="text-xs font-medium text-slate-500 uppercase tracking-widest">Текущие данные</h3>
+                  <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Текущие данные</h3>
                   <div className="space-y-3">
                     <DataField label="Название" value={data.before.name} />
                     <DataList label="Телефоны" items={data.before.phones} />
@@ -107,10 +107,10 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
                 </div>
 
                 <div className="space-y-4 relative">
-                  <div className="absolute -left-6 top-1/2 -translate-y-1/2 text-slate-200">
+                  <div className="absolute -left-6 top-1/2 -translate-y-1/2 text-muted-foreground">
                     <ArrowRight className="h-6 w-6" />
                   </div>
-                  <h3 className="text-xs font-medium text-indigo-500 uppercase tracking-widest">Найдено на сайте</h3>
+                  <h3 className="text-xs font-medium text-primary uppercase tracking-widest">Найдено на сайте</h3>
                   <div className="space-y-3">
                     <DataField
                       label="Название"
@@ -134,7 +134,7 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
           ) : null}
         </div>
 
-        <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
+        <div className="p-6 border-t bg-muted flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>Отмена</Button>
           {/* V-04: убран хардкод bg-indigo-600 — variant="default" теперь indigo через --primary */}
           <Button
@@ -152,23 +152,23 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
 
 function DataField({ label, value, changed }: { label: string, value: string, changed?: boolean }) {
   return (
-    <div className={`p-3 rounded-lg border transition-colors ${changed ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
+    <div className={`p-3 rounded-lg border transition-colors ${changed ? 'bg-primary/10 border-primary/20' : 'bg-card'}`}>
       {/* V-06: text-[10px] → text-xs */}
-      <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
-      <p className={`text-sm font-medium ${changed ? 'text-indigo-900' : ''}`}>{value || '—'}</p>
+      <p className="text-xs text-muted-foreground uppercase mb-1">{label}</p>
+      <p className={`text-sm font-medium ${changed ? 'text-primary' : ''}`}>{value || '—'}</p>
     </div>
   );
 }
 
 function DataList({ label, items, changed }: { label: string, items: string[], changed?: boolean }) {
   return (
-    <div className={`p-3 rounded-lg border transition-colors ${changed ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
+    <div className={`p-3 rounded-lg border transition-colors ${changed ? 'bg-primary/10 border-primary/20' : 'bg-card'}`}>
       {/* V-06: text-[10px] → text-xs */}
-      <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
+      <p className="text-xs text-muted-foreground uppercase mb-1">{label}</p>
       <div className="space-y-1">
         {items?.length > 0 ? items.map(item => (
-          <p key={item} className={`text-sm font-medium ${changed ? 'text-indigo-900' : ''}`}>{item}</p>
-        )) : <p className="text-sm text-slate-300 italic">Нет данных</p>}
+          <p key={item} className={`text-sm font-medium ${changed ? 'text-primary' : ''}`}>{item}</p>
+        )) : <p className="text-sm text-muted-foreground italic">Нет данных</p>}
       </div>
     </div>
   );

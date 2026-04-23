@@ -39,86 +39,152 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* Семантические минеральные цвета */
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 2.5);
 }
 
+/* ============================================================
+   Granite Light — Песчаник (по умолчанию)
+   Полированный гранит на солнце. Тёплый камень, не стерильная белизна.
+   ============================================================ */
 :root {
-  /* V-03: background — white → Ghost White #F8FAFC */
-  --background: oklch(0.984 0.003 247.858);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  /* V-02: primary — black → Indigo #4F46E5 */
-  --primary: oklch(0.457 0.24 277.023);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  /* V-12: destructive — red → Rose #E11D48 */
-  --destructive: oklch(0.592 0.249 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  /* sidebar-primary — синхронизирован с primary (Indigo) */
-  --sidebar-primary: oklch(0.457 0.24 277.023);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Фон — Песчаник */
+  --background: #EDEAE5;
+  --foreground: #2C2926;
+
+  /* Карточки — Мрамор */
+  --card: #F7F5F2;
+  --card-foreground: #2C2926;
+
+  /* Поповеры */
+  --popover: #F7F5F2;
+  --popover-foreground: #2C2926;
+
+  /* Primary — Лабрадорит */
+  --primary: #5B6ABF;
+  --primary-foreground: #FFFFFF;
+
+  /* Secondary */
+  --secondary: #E8E5E0;
+  --secondary-foreground: #2C2926;
+
+  /* Muted */
+  --muted: #E8E5E0;
+  --muted-foreground: #7A756E;
+
+  /* Accent */
+  --accent: #E0DDD8;
+  --accent-foreground: #2C2926;
+
+  /* Destructive — Гранат */
+  --destructive: #DC2643;
+
+  /* Borders — Известняк */
+  --border: #D4D0CA;
+  --input: #D4D0CA;
+
+  /* Ring */
+  --ring: #5B6ABF;
+
+  /* Семантические минеральные акценты */
+  --success: #2B9E6F;
+  --warning: #C49008;
+  --info: #2E7DB5;
+
+  /* Charts — минеральная палитра для графиков */
+  --chart-1: #5B6ABF;  /* Лабрадорит */
+  --chart-2: #2B9E6F;  /* Малахит */
+  --chart-3: #C49008;  /* Янтарь */
+  --chart-4: #DC2643;  /* Гранат */
+  --chart-5: #8B5ABF;  /* Аметист */
+
+  /* Radius — 8px B2B стандарт */
+  --radius: 0.5rem;
+
+  /* Sidebar */
+  --sidebar: #E8E5E0;
+  --sidebar-foreground: #2C2926;
+  --sidebar-primary: #5B6ABF;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #D4D0CA;
+  --sidebar-accent-foreground: #2C2926;
+  --sidebar-border: #D4D0CA;
+  --sidebar-ring: #5B6ABF;
 }
 
+/* ============================================================
+   Granite Stone — Тёмный камень
+   Гранит с минеральными прожилками. Яркие акценты на камне.
+   ============================================================ */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* Фон — Гранит */
+  --background: #3D3F45;
+  --foreground: #E4E5E9;
+
+  /* Карточки — Поверхность */
+  --card: #484A50;
+  --card-foreground: #E4E5E9;
+
+  /* Поповеры */
+  --popover: #484A50;
+  --popover-foreground: #E4E5E9;
+
+  /* Primary — Лабрадорит (яркий) */
+  --primary: #7C8CF8;
+  --primary-foreground: #1A1B20;
+
+  /* Secondary */
+  --secondary: #565860;
+  --secondary-foreground: #E4E5E9;
+
+  /* Muted */
+  --muted: #565860;
+  --muted-foreground: #9DA1A9;
+
+  /* Accent */
+  --accent: #4E5058;
+  --accent-foreground: #E4E5E9;
+
+  /* Destructive — Гранат (яркий) */
+  --destructive: #F43F5E;
+
+  /* Borders */
+  --border: #4E5058;
+  --input: #565860;
+
+  /* Ring */
+  --ring: #7C8CF8;
+
+  /* Семантические минеральные акценты — яркие на камне */
+  --success: #34D399;
+  --warning: #FBBF24;
+  --info: #60A5FA;
+
+  /* Charts — яркие на тёмном фоне */
+  --chart-1: #7C8CF8;  /* Лабрадорит */
+  --chart-2: #34D399;  /* Малахит */
+  --chart-3: #FBBF24;  /* Янтарь */
+  --chart-4: #F43F5E;  /* Гранат */
+  --chart-5: #C084FC;  /* Аметист */
+
+  /* Sidebar — сланец */
+  --sidebar: #2A2C32;
+  --sidebar-foreground: #E4E5E9;
+  --sidebar-primary: #7C8CF8;
+  --sidebar-primary-foreground: #1A1B20;
+  --sidebar-accent: #3D3F45;
+  --sidebar-accent-foreground: #E4E5E9;
+  --sidebar-border: #4E5058;
+  --sidebar-ring: #7C8CF8;
 }
 
 @layer base {
@@ -133,7 +199,7 @@
   }
 }
 
-/* V-09, V-10: mono font 13px для Score, ID, кодовых данных */
+/* Mono font 13px для Score, ID, кодовых данных */
 .font-mono-code {
   font-family: var(--font-mono);
   font-size: 13px;

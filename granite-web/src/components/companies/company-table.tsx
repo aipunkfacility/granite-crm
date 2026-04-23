@@ -22,7 +22,7 @@ interface CompanyTableProps {
 
 export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) {
   return (
-    <div className="rounded-md border bg-white">
+    <div className="rounded-md border bg-card">
       <Table>
         <TableHeader>
           <TableRow>
@@ -51,15 +51,15 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                 /* V-01: клик по строке → открывает Sheet */
                 <TableRow
                   key={company.id}
-                  className="group hover:bg-slate-50 cursor-pointer"
+                  className="group hover:bg-muted/50 cursor-pointer"
                   onClick={() => onSelectCompany?.(company.id)}
                 >
                   <TableCell className="font-medium">
-                    <span className="text-indigo-600 hover:underline">
+                    <span className="text-primary hover:underline">
                       {company.name}
                     </span>
                   </TableCell>
-                  <TableCell className="text-slate-500">{company.city}</TableCell>
+                  <TableCell className="text-muted-foreground">{company.city}</TableCell>
                   <TableCell>
                     {segment && (
                       <Badge variant={segment.variant}>
@@ -69,7 +69,7 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                   </TableCell>
                   <TableCell>
                     {/* V-10: font-mono-code (13px JetBrains Mono) */}
-                    <span className="font-mono-code font-medium text-slate-700">
+                    <span className="font-mono-code font-medium text-foreground">
                       {company.crm_score}
                     </span>
                   </TableCell>
@@ -85,7 +85,7 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                           href={`https://t.me/${company.telegram.replace('@', '')}`}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-sky-500 hover:scale-110 transition-transform"
+                          className="text-info hover:scale-110 transition-transform"
                           /* Клик по ссылке НЕ открывает Sheet */
                           onClick={e => e.stopPropagation()}
                         >
@@ -95,7 +95,7 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                       {company.phones.length > 0 && (
                         <a
                           href={`tel:${company.phones[0]}`}
-                          className="text-slate-400 hover:text-slate-600"
+                          className="text-muted-foreground hover:text-foreground"
                           onClick={e => e.stopPropagation()}
                         >
                           <Phone className="h-4 w-4" />
@@ -106,7 +106,7 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                           href={company.website}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-slate-400 hover:text-slate-600"
+                          className="text-muted-foreground hover:text-foreground"
                           onClick={e => e.stopPropagation()}
                         >
                           <ExternalLink className="h-4 w-4" />
@@ -114,7 +114,7 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right text-xs text-slate-400">
+                  <TableCell className="text-right text-xs text-muted-foreground">
                     {company.last_contact_at
                       ? formatDistanceToNow(new Date(company.last_contact_at), { addSuffix: true, locale: ru })
                       : '—'}

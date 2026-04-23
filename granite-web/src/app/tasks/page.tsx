@@ -39,11 +39,11 @@ export default function TasksPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Задачи</h1>
-          <p className="text-slate-500">Список дел и напоминаний по клиентам.</p>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Задачи</h1>
+          <p className="text-muted-foreground">Список дел и напоминаний по клиентам.</p>
         </div>
         
-        <div className="flex bg-slate-100 p-1 rounded-lg">
+        <div className="flex bg-muted p-1 rounded-lg">
           <Button 
             variant={status === 'pending' ? 'white' as any : 'ghost'} 
             size="sm"
@@ -65,13 +65,13 @@ export default function TasksPage() {
 
       {isLoading ? (
         <div className="space-y-3">
-          {[1,2,3].map(i => <div key={i} className="h-20 w-full bg-slate-100 animate-pulse rounded-lg" />)}
+          {[1,2,3].map(i => <div key={i} className="h-20 w-full bg-muted animate-pulse rounded-lg" />)}
         </div>
       ) : tasks.length === 0 ? (
         <div className="py-20 text-center border-2 border-dashed rounded-xl">
-          <CheckCircle2 className="mx-auto h-12 w-12 text-slate-200" />
-          <h3 className="mt-4 text-lg font-medium text-slate-900">Задач нет</h3>
-          <p className="text-slate-500">Все дела на сегодня выполнены.</p>
+          <CheckCircle2 className="mx-auto h-12 w-12 text-muted-foreground" />
+          <h3 className="mt-4 text-lg font-medium text-foreground">Задач нет</h3>
+          <p className="text-muted-foreground">Все дела на сегодня выполнены.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -98,20 +98,20 @@ export default function TasksPage() {
                     )}
                     <Link 
                       href={`/companies/${task.company_id}`}
-                      className="text-xs font-medium text-indigo-600 hover:underline flex items-center gap-1"
+                      className="text-xs font-medium text-primary hover:underline flex items-center gap-1"
                     >
                       {task.company_name}
-                      <span className="text-slate-400">({task.company_city})</span>
+                      <span className="text-muted-foreground">({task.company_city})</span>
                     </Link>
                   </div>
-                  <p className={cn("text-sm font-medium truncate", task.status === 'done' && "line-through text-slate-500")}>
+                  <p className={cn("text-sm font-medium truncate", task.status === 'done' && "line-through text-muted-foreground")}>
                     {task.description}
                   </p>
                 </div>
 
                 <div className="flex items-center gap-4 shrink-0">
                   <div className="text-right hidden sm:block">
-                    <div className="flex items-center text-xs text-slate-500">
+                    <div className="flex items-center text-xs text-muted-foreground">
                       <Calendar className="mr-1 h-3 w-3" />
                       {task.due_date ? format(new Date(task.due_date), 'dd MMM', { locale: ru }) : 'Без даты'}
                     </div>
@@ -120,7 +120,7 @@ export default function TasksPage() {
                   <Button 
                     variant="ghost" 
                     size="icon" 
-                    className="text-slate-400 hover:text-destructive"
+                    className="text-muted-foreground hover:text-destructive"
                     onClick={() => {
                       if (confirm("Удалить задачу?")) deleteMutation.mutate(task.id);
                     }}
