@@ -66,16 +66,25 @@ def list_companies(
     db: Session = Depends(get_db),
     city: Annotated[Optional[List[str]], Query()] = None,
     region: Optional[str] = None,
-    segment: Optional[str] = None,
+    segment: Annotated[Optional[List[str]], Query()] = None,
     funnel_stage: Optional[str] = None,
     has_telegram: Optional[int] = None,
     has_whatsapp: Optional[int] = None,
     has_email: Optional[int] = None,
+    is_network: Optional[int] = None,
+    has_website: Optional[int] = None,
+    has_vk: Optional[int] = None,
+    has_address: Optional[int] = None,
     min_score: Optional[int] = None,
+    max_score: Optional[int] = None,
+    needs_review: Optional[int] = None,
+    stop_automation: Optional[int] = None,
+    cms: Optional[str] = None,
+    has_marquiz: Optional[int] = None,
     search: Optional[str] = None,
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
-    order_by: str = Query("crm_score", pattern="^(crm_score|name_best|city|funnel_stage)$"),
+    order_by: str = Query("crm_score", pattern="^(crm_score|name_best|city|funnel_stage|segment|is_network)$"),
     order_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """Список компаний с join enriched+crm. Пагинация, фильтры, сортировка."""
@@ -95,7 +104,11 @@ def list_companies(
     if region:
         q = q.filter(CompanyRow.region == region)
     if segment:
-        q = q.filter(EnrichedCompanyRow.segment == segment)
+        segment = [s for s in segment if s.strip()]
+        if len(segment) == 1:
+            q = q.filter(EnrichedCompanyRow.segment == segment[0])
+        elif len(segment) > 1:
+            q = q.filter(EnrichedCompanyRow.segment.in_(segment))
     if funnel_stage:
         q = q.filter(CrmContactRow.funnel_stage == funnel_stage)
 
@@ -126,8 +139,90 @@ def list_companies(
             CompanyRow.emails.isnot(None),
             CompanyRow.emails.cast(String) != "[]",
         )
+    if has_email == 0:
+        q = q.filter(
+            CompanyRow.emails.is_(None) | (CompanyRow.emails.cast(String) == "[]")
+        )
+
+    # --- is_network (ORM) ---
+    if is_network == 1:
+        q = q.filter(EnrichedCompanyRow.is_network == True)
+    if is_network == 0:
+        q = q.filter(
+            (EnrichedCompanyRow.is_network.is_(None))
+            | (EnrichedCompanyRow.is_network == False)
+        )
+
+    # --- has_website (ORM) ---
+    if has_website == 1:
+        q = q.filter(
+            CompanyRow.website.isnot(None),
+            CompanyRow.website != "",
+        )
+    if has_website == 0:
+        q = q.filter(
+            (CompanyRow.website.is_(None)) | (CompanyRow.website == "")
+        )
+
+    # --- has_vk (sa_text — JSON-поле) ---
+    if has_vk == 1:
+        q = q.filter(sa_text(
+            "json_extract(enriched_companies.messengers, '$.vk') IS NOT NULL"
+            " AND json_extract(enriched_companies.messengers, '$.vk') != ''"
+        ))
+    if has_vk == 0:
+        q = q.filter(sa_text(
+            "json_extract(enriched_companies.messengers, '$.vk') IS NULL"
+            " OR json_extract(enriched_companies.messengers, '$.vk') = ''"
+        ))
+
+    # --- has_address (ORM) ---
+    if has_address == 1:
+        q = q.filter(
+            CompanyRow.address.isnot(None),
+            CompanyRow.address != "",
+        )
+    if has_address == 0:
+        q = q.filter(
+            (CompanyRow.address.is_(None)) | (CompanyRow.address == "")
+        )
+
     if min_score is not None:
         q = q.filter(EnrichedCompanyRow.crm_score >= min_score)
+    if max_score is not None:
+        q = q.filter(EnrichedCompanyRow.crm_score <= max_score)
+
+    # --- needs_review (ORM) ---
+    if needs_review == 1:
+        q = q.filter(CompanyRow.needs_review == True)
+    if needs_review == 0:
+        q = q.filter(
+            (CompanyRow.needs_review.is_(None))
+            | (CompanyRow.needs_review == False)
+        )
+
+    # --- stop_automation (ORM) ---
+    if stop_automation == 1:
+        q = q.filter(CrmContactRow.stop_automation == 1)
+    if stop_automation == 0:
+        q = q.filter(
+            (CrmContactRow.stop_automation.is_(None))
+            | (CrmContactRow.stop_automation == 0)
+        )
+
+    # --- cms (ORM, точное совпадение) ---
+    if cms:
+        q = q.filter(EnrichedCompanyRow.cms == cms)
+
+    # --- has_marquiz (ORM) ---
+    if has_marquiz == 1:
+        q = q.filter(EnrichedCompanyRow.has_marquiz == True)
+    if has_marquiz == 0:
+        q = q.filter(
+            (EnrichedCompanyRow.has_marquiz.is_(None))
+            | (EnrichedCompanyRow.has_marquiz == False)
+        )
+
     if search:
         # FIX 3.7: Экранируем LIKE-спецсимволы (% и _) в пользовательском вводе
         escaped = search.replace("%", r"\%").replace("_", r"\_")
@@ -138,6 +233,8 @@ def list_companies(
         "name_best": CompanyRow.name_best,
         "city": CompanyRow.city,
         "funnel_stage": CrmContactRow.funnel_stage,
+        "segment": EnrichedCompanyRow.segment,
+        "is_network": EnrichedCompanyRow.is_network,
     }[order_by]
     if order_dir == "desc":
         q = q.order_by(order_col.desc().nullslast())
@@ -575,3 +672,20 @@ def list_regions(
     start = (page - 1) * per_page
     items = all_regions[start:start + per_page]
     return {"items": items, "total": total, "page": page, "per_page": per_page}
+
+
+@router.get("/cms-types")
+def list_cms_types(db: Session = Depends(get_db)):
+    """Список уникальных CMS для фильтра на фронтенде."""
+    rows = (
+        db.query(EnrichedCompanyRow.cms)
+        .filter(
+            EnrichedCompanyRow.cms.isnot(None),
+            EnrichedCompanyRow.cms != "",
+            EnrichedCompanyRow.cms != "unknown",
+        )
+        .distinct()
+        .order_by(EnrichedCompanyRow.cms)
+        .all()
+    )
+    return {"items": [r[0] for r in rows]}

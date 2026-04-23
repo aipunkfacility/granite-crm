@@ -4,10 +4,18 @@
 """
 from granite.database import CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmTaskRow
 
-# Поля, которые допустимо передавать в create_company
+# Поля CompanyRow, которые допустимо передавать в create_company
 _COMPANY_ALLOWED_KEYS = frozenset({
     "name_best", "city", "website", "emails", "phones", "messengers",
     "region", "segment", "status",
+    # Новые для фильтров:
+    "address", "needs_review",
+})
+
+# Поля EnrichedCompanyRow, которые пробрасываются из overrides
+_ENRICHED_ALLOWED_KEYS = frozenset({
+    "crm_score", "segment", "messengers", "cms", "is_network",
+    "has_marquiz",
 })
 
 
@@ -17,7 +25,7 @@ def create_company(db, **overrides) -> int:
     Возвращает company.id. Данные доступны только после db.commit()
     (или db.flush(), но flush не виден через другую сессию).
     """
-    defaults = {
+    company_defaults = {
         "name_best": "Test Company",
         "city": "Москва",
         "website": "https://test.ru",
@@ -26,24 +34,31 @@ def create_company(db, **overrides) -> int:
         "messengers": {},
         "region": "Москва",
     }
-    defaults.update({
+    company_overrides = {
         k: v for k, v in overrides.items() if k in _COMPANY_ALLOWED_KEYS
-    })
+    }
+    company_defaults.update(company_overrides)
 
-    company = CompanyRow(**defaults)
+    company = CompanyRow(**company_defaults)
     db.add(company)
     db.flush()
 
-    enriched = EnrichedCompanyRow(
-        id=company.id,
-        name=defaults["name_best"],  # NOT NULL
-        city=defaults["city"],
-        messengers=overrides.get("messengers", {}),
-        crm_score=overrides.get("crm_score", 50),
-        segment=overrides.get("segment", "B"),
-        emails=defaults["emails"],
-        phones=defaults["phones"],
-    )
+    enriched_overrides = {
+        k: v for k, v in overrides.items() if k in _ENRICHED_ALLOWED_KEYS
+    }
+    enriched_defaults = {
+        "id": company.id,
+        "name": company_defaults["name_best"],
+        "city": company_defaults["city"],
+        "messengers": overrides.get("messengers", {}),
+        "crm_score": overrides.get("crm_score", 50),
+        "segment": overrides.get("segment", "B"),
+        "emails": company_defaults["emails"],
+        "phones": company_defaults["phones"],
+    }
+    enriched_defaults.update(enriched_overrides)
+
+    enriched = EnrichedCompanyRow(**enriched_defaults)
     db.add(enriched)
 
     contact = CrmContactRow(

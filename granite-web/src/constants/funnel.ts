@@ -21,3 +21,5 @@ export const SEGMENT_CONFIG: Record<Segment, { label: string; variant: "default"
   D: { label: "D", variant: "outline" },
   spam: { label: "Spam", variant: "destructive" },
 };
+
+export const SEGMENT_KEYS: Segment[] = ['A', 'B', 'C', 'D', 'spam'];

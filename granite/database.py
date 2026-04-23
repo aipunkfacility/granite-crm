@@ -52,6 +52,10 @@ class RawCompanyRow(Base):
 
 class CompanyRow(Base):
     __tablename__ = "companies"
+    __table_args__ = (
+        Index('ix_companies_city_deleted', 'city', 'deleted_at'),
+        Index('ix_companies_needs_review', 'needs_review'),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     merged_into = Column(Integer, ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -127,6 +131,11 @@ class EnrichedCompanyRow(Base):
     - Копирование 7 полей — минимальная цена за развязку жизненного цикла.
     """
     __tablename__ = "enriched_companies"
+    __table_args__ = (
+        Index('ix_enriched_segment_network', 'segment', 'is_network'),
+        Index('ix_enriched_cms', 'cms'),
+        Index('ix_enriched_marquiz', 'has_marquiz'),
+    )
 
     id = Column(
         Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True
