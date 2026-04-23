@@ -5,10 +5,8 @@ from granite.database import Database, CompanyRow, EnrichedCompanyRow
 from granite.utils import extract_domain
 
 # Домены, которые мы считаем 100% спам-агрегаторами (даже если они в 2 городах)
-KNOW_SPAM_DOMAINS = frozenset({
-    "uslugio.com", "zoon.ru", "jsprav.ru", "yell.ru", 
-    "orgpage.ru", "spravka-inform.ru", "2gis.ru",
-})
+# Единый источник — granite/constants.py
+from granite.constants import SPAM_DOMAINS as KNOW_SPAM_DOMAINS
 
 def detect_and_mark_aggregators(db: Database) -> int:
     """A-6: Глобальный сканер для обнаружения сетей и агрегаторов.

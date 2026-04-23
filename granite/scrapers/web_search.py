@@ -491,6 +491,22 @@ class WebSearchScraper(BaseScraper):
         "pamiatniky.ru",              # 6 городов
         "ritualsp.ru",                # 5 городов
         "ritualagency.ru",            # 5 городов
+        # ── B1: Новые агрегаторы из аудита БД ──
+        "vmkros.ru",                  # 11 городов — агрегатор
+        "exkluziv-granit.ru",         # 7 городов — city-страницы
+        "gravestone.ru",              # 6 городов — агрегатор
+        "katangranit.ru",             # 6 городов — агрегатор
+        "granit-master.shop",         # 6 городов — агрегатор
+        "monument-nd.ru",             # 6 городов — Подмосковье агрегатор
+        "grandmonument.ru",           # 5 городов — агрегатор
+        "rting.ru",                   # 5 городов — справочник-агрегатор
+        "altai-offroad.ru",           # 5 городов — НЕРЕЛЕВАНТНЫЙ (внедорожники!)
+        "steel-prof.ru",              # 4 города — агрегатор
+        "rosbaltnord.ru",             # 4 города — агрегатор
+        "urbanplaces.su",             # 4 города — агрегатор
+        "stella-master.ru",           # 4 города — агрегатор
+        "nikapamyatniki.ru",          # 7 городов — агрегатор
+        "памятники-цены.рф",           # 6 городов — агрегатор (кириллический домен)
         "ripme.ru",                   # 5 городов
         "ratusha-pamyatniki.ru",      # 5 городов
         "masternovikov.ru",           # 5 городов
@@ -1011,10 +1027,18 @@ class WebSearchScraper(BaseScraper):
                 seen_domains.add(domain)
             enriched += 1
 
-            # Имя компании: предпочтение названию из страницы, если title — SEO-мусор
-            company_name = details.get("company_name") or item["title"]
-            if (is_seo_title(company_name) or is_aggregator_name(company_name)) and details.get("company_name"):
-                company_name = details["company_name"]
+            # B4: Имя компании — fallback-цепочка (site name → search title → domain)
+            raw_name = details.get("company_name")
+            search_title = item["title"]
+
+            if raw_name and not is_seo_title(raw_name) and not is_aggregator_name(raw_name):
+                company_name = raw_name
+            elif not is_seo_title(search_title) and not is_aggregator_name(search_title):
+                company_name = search_title
+            else:
+                # Всё плохо — берём домен как имя (лучше чем SEO-мусор)
+                domain = extract_domain(item["url"]) or ""
+                company_name = domain or search_title
 
             company = RawCompany(
                     source=Source.WEB_SEARCH,

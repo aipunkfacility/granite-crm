@@ -629,6 +629,10 @@ class EnrichmentPhase:
                 if not text or len(text) < 6:
                     continue
 
+                # D3: Skip if address_raw contains URL instead of address
+                if text.startswith(("http://", "https://", "www.")):
+                    continue
+
                 # Требуем признак улицы в адресе для уверенности
                 _street_words = ("ул.", "улица", "проспект", "пр.", "пер.", "д.", "дом", "шоссе", "бульвар")
                 if not any(w in text.lower() for w in _street_words):
@@ -641,6 +645,18 @@ class EnrichmentPhase:
 
                 real_city = detect_city(text, exclude_city=city)
                 if not real_city:
+                    continue
+
+                # A1: Не переназначать если website содержит другой город в субдомене.
+                # Паттерн: asino.danila-master.ru — субдомен указывает на Асино,
+                # но address_raw содержит Ярославль (офис сети). Переназначение неверно.
+                if erow.website and EnrichmentPhase._subdomain_suggests_different_city(
+                    erow.website, real_city, city
+                ):
+                    logger.debug(
+                        f"  _reassign_cities: пропуск {erow.name} — "
+                        f"субдомен сайта конфликтует с предлагаемым городом {real_city}"
+                    )
                     continue
 
                 real_region = lookup_region(real_city)
@@ -680,6 +696,39 @@ class EnrichmentPhase:
         elapsed = _time.monotonic() - t0
         logger.info(f"_reassign_cities({city}): {reassigned} переназначено за {elapsed:.2f}s")
         return reassigned
+
+    @staticmethod
+    def _subdomain_suggests_different_city(website: str, proposed_city: str, current_city: str) -> bool:
+        """Проверяет, содержит ли поддомен сайта название текущего (оригинального) города.
+
+        Если субдомен сайта похож на оригинальный город записи (current_city),
+        а предлагаемый город (proposed_city) — другой, значит переназначение ошибочно.
+
+        Примеры:
+            asino.danila-master.ru, proposed=Ярославль, current=Асино → True (не переназначать)
+            panteon-vlz.ru, proposed=Волжск, current=Волжский → False (переназначать — корректно)
+        """
+        from urllib.parse import urlparse
+        from granite.utils import slugify
+
+        try:
+            parsed = urlparse(website)
+            hostname = parsed.hostname or ""
+            # Берём только первый компонент (субдомен)
+            subdomain = hostname.split(".")[0] if "." in hostname else ""
+            if len(subdomain) < 3:
+                return False
+
+            # Строим транслитерированный корень текущего города
+            current_slug = slugify(current_city)
+            # Сравниваем первые 5 символов субдомена и города
+            min_len = min(5, len(subdomain), len(current_slug))
+            if min_len < 3:
+                return False
+
+            return subdomain[:min_len] == current_slug[:min_len]
+        except Exception:
+            return False
 
     @staticmethod
     def _record_unmatched(session, city_name: str, context: str) -> None:

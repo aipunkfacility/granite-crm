@@ -99,7 +99,10 @@ class DedupPhase:
                 d["emails"] = validate_emails(d.get("emails", []))
 
             # Алгоритмы кластеризации (телефон, сайт и имя)
-            clusters_phone = cluster_by_phones(dicts)
+            network_phone_threshold = self.config.get("dedup", {}).get(
+                "network_phone_threshold", 10
+            )
+            clusters_phone = cluster_by_phones(dicts, network_phone_threshold=network_phone_threshold)
             clusters_site = cluster_by_site(dicts)
             name_threshold = self.config.get("dedup", {}).get("name_similarity_threshold", 88)
             clusters_name = find_name_matches(dicts, threshold=name_threshold)
@@ -129,6 +132,12 @@ class DedupPhase:
                         normalized[m_type] = normalize_messenger_url(m_url, m_type)
                     messengers = normalized
 
+                # D3: Validate address — don't save URL as address
+                raw_address = merged["address"] or ""
+                if raw_address and (raw_address.startswith("http") or raw_address.startswith("www.")):
+                    logger.debug(f"D3: отброшен URL-адрес для {merged['name_best']}: {raw_address[:60]}")
+                    raw_address = ""
+
                 # FIX: Нормализация URL сайта к корню домена
                 raw_website = merged.get("website")
                 clean_website = normalize_website_to_root(raw_website) if raw_website else None
@@ -136,7 +145,7 @@ class DedupPhase:
                 row = CompanyRow(
                     name_best=merged["name_best"],
                     phones=merged["phones"],
-                    address=merged["address"],
+                    address=raw_address,
                     website=clean_website,
                     emails=merged["emails"],
                     city=city_name,

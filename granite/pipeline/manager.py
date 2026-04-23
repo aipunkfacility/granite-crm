@@ -84,7 +84,7 @@ class PipelineManager:
     def network_detector(self):
         if self._network_detector is None:
             from granite.enrichers.network_detector import NetworkDetector
-            self._network_detector = NetworkDetector(self.db)
+            self._network_detector = NetworkDetector(self.db, self.config)
         return self._network_detector
 
     @property

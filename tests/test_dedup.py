@@ -45,6 +45,28 @@ class TestPhoneCluster:
         clusters = cluster_by_phones(companies)
         assert len(clusters) == 0
 
+    def test_excludes_network_phone(self):
+        """Федеральный телефон у 15 компаний — не должен создавать кластер."""
+        companies = [
+            {"id": i, "phones": ["79022234935", f"7900000000{i}"]}
+            for i in range(15)
+        ]
+        clusters = cluster_by_phones(companies, network_phone_threshold=10)
+        # Ни один кластер не должен содержать >10 компаний
+        assert all(len(c) < 10 for c in clusters), \
+            "Сетевой телефон не должен создавать гигантский кластер"
+
+    def test_normal_dedup_unaffected_by_threshold(self):
+        """Обычный случай: 2 компании с общим телефоном — должны слиться."""
+        companies = [
+            {"id": 1, "phones": ["79031234567"]},
+            {"id": 2, "phones": ["79031234567"]},
+            {"id": 3, "phones": ["79039999999"]},
+        ]
+        clusters = cluster_by_phones(companies, network_phone_threshold=10)
+        assert [1, 2] in clusters or [2, 1] in clusters, \
+            "Обычные дубли должны кластеризоваться"
+
 
 class TestNameMatcher:
     def test_exact_match(self):
@@ -72,6 +94,18 @@ class TestNameMatcher:
         ]
         matches = find_name_matches(companies, threshold=88)
         assert len(matches) == 0
+
+    def test_exact_same_city_not_missed(self):
+        """C2: Exact name+city match must be found even if fuzzy matching misses it."""
+        companies = [
+            {"id": 1, "name": "Гранитная мастерская НИКА", "city": "Воронеж", "address": "ул. Ленина, 1"},
+            {"id": 2, "name": "Гранитная мастерская НИКА", "city": "Воронеж", "address": "ул. Мира, 2"},
+            {"id": 3, "name": "Другая мастерская", "city": "Воронеж", "address": "ул. Ленина, 1"},
+        ]
+        matches = find_name_matches(companies, threshold=88)
+        match_sets = [frozenset(m) for m in matches]
+        assert frozenset([1, 2]) in match_sets
+        assert frozenset([1, 3]) not in match_sets
 
 
 class TestSiteMatcher:

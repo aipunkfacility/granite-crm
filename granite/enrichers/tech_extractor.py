@@ -4,6 +4,41 @@ from granite.utils import fetch_page, is_safe_url
 from granite.http_client import async_fetch_page
 from loguru import logger
 
+# D2-refactor: скомпилированные regex для <meta name="generator">
+_META_GENERATOR_PATTERNS = [
+    re.compile(
+        r'<meta[^>]+name=["\']generator["\'][^>]+content=["\']([^"\']+)["\']',
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']generator["\']',
+        re.IGNORECASE,
+    ),
+]
+
+# Маппинг: подстрока в content -> имя CMS
+_CMS_GENERATOR_MAP = {
+    "wordpress": "wordpress",
+    "joomla": "joomla",
+    "bitrix": "bitrix",
+    "1c-bitrix": "bitrix",
+    "tilda": "tilda",
+    "modx": "modx",
+    "drupal": "drupal",
+}
+
+# Паттерны CMS по подстрокам в HTML (до проверки meta generator)
+_CMS_HTML_PATTERNS = [
+    ("wordpress", ["wp-content", "wordpress"]),
+    ("bitrix", ["bitrix", "1c-bitrix"]),
+    ("tilda", ["tilda.ws", "tilda.cc", "created on tilda"]),
+    ("flexbe", ["flexbe"]),
+    ("lpmotor", ["lpmotor"]),
+    ("joomla", ["joomla"]),
+    ("opencart", ["opencart", "route=common/home"]),
+]
+
+
 class TechExtractor:
     """Извлекает движок сайта (CMS), виджеты и tech_keywords.
 
@@ -34,6 +69,36 @@ class TechExtractor:
                 signals[category] = True
         return signals
 
+    def _detect_cms_and_widgets(self, html: str, html_lower: str, result: dict) -> None:
+        """D2-refactor: общая логика детекции CMS и виджетов для sync/async.
+
+        1. CMS по подстрокам в HTML (быстрая проверка)
+        2. Виджет Marquiz
+        3. CMS через <meta name="generator"> (fallback)
+        """
+        # 1. CMS по подстрокам в HTML (только если ещё не определён)
+        if result["cms"] == "unknown":
+            for cms_name, patterns in _CMS_HTML_PATTERNS:
+                if any(p in html_lower for p in patterns):
+                    result["cms"] = cms_name
+                    break
+
+        # 2. Marquiz
+        if "marquiz.ru" in html_lower:
+            result["has_marquiz"] = True
+
+        # 3. CMS через <meta name="generator"> (если ещё не определён)
+        if result["cms"] == "unknown":
+            for pat in _META_GENERATOR_PATTERNS:
+                m = pat.search(html)
+                if m:
+                    gen = m.group(1).lower()
+                    for key, cms_name in _CMS_GENERATOR_MAP.items():
+                        if key in gen:
+                            result["cms"] = cms_name
+                            break
+                    break
+
     def extract(self, url: str) -> dict:
         result = {
             "cms": "unknown",
@@ -53,23 +118,7 @@ class TechExtractor:
                 return result
                 
             html_lower = html.lower()
-            if "wp-content" in html_lower or "wordpress" in html_lower:
-                result["cms"] = "wordpress"
-            elif "bitrix" in html_lower or "1c-bitrix" in html_lower:
-                result["cms"] = "bitrix"
-            elif "tilda.ws" in html_lower or "tilda.cc" in html_lower or "created on tilda" in html_lower:
-                result["cms"] = "tilda"
-            elif "flexbe" in html_lower:
-                result["cms"] = "flexbe"
-            elif "lpmotor" in html_lower:
-                result["cms"] = "lpmotor"
-            elif "joomla" in html_lower:
-                result["cms"] = "joomla"
-            elif "opencart" in html_lower or "route=common/home" in html_lower:
-                result["cms"] = "opencart"
-                
-            if "marquiz.ru" in html_lower:
-                result["has_marquiz"] = True
+            self._detect_cms_and_widgets(html, html_lower, result)
 
             # AUDIT #8: Сканируем на tech_keywords
             if self._compiled:
@@ -103,23 +152,7 @@ class TechExtractor:
                 return result
 
             html_lower = html.lower()
-            if "wp-content" in html_lower or "wordpress" in html_lower:
-                result["cms"] = "wordpress"
-            elif "bitrix" in html_lower or "1c-bitrix" in html_lower:
-                result["cms"] = "bitrix"
-            elif "tilda.ws" in html_lower or "tilda.cc" in html_lower or "created on tilda" in html_lower:
-                result["cms"] = "tilda"
-            elif "flexbe" in html_lower:
-                result["cms"] = "flexbe"
-            elif "lpmotor" in html_lower:
-                result["cms"] = "lpmotor"
-            elif "joomla" in html_lower:
-                result["cms"] = "joomla"
-            elif "opencart" in html_lower or "route=common/home" in html_lower:
-                result["cms"] = "opencart"
-
-            if "marquiz.ru" in html_lower:
-                result["has_marquiz"] = True
+            self._detect_cms_and_widgets(html, html_lower, result)
 
             # AUDIT #8: Сканируем на tech_keywords
             if self._compiled:

@@ -556,3 +556,115 @@ class TestTgRateLimit:
             from granite.enrichers.tg_finder import tg_request
             result = tg_request("https://t.me/test", {})
         assert result is None
+
+
+# ===== Network Detector — A2: base domain =====
+
+class TestExtractBaseDomain:
+    """Тесты функции extract_base_domain (A2, перенесена в utils.py)."""
+
+    def test_subdomain_network(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain("https://abaza.danila-master.ru/") == "danila-master.ru"
+
+    def test_www_stripped(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain("https://www.gravestone.ru/") == "gravestone.ru"
+
+    def test_excluded_domains(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain("https://vk.com/group123") is None
+        assert extract_base_domain("https://vk.link/abc") is None
+        assert extract_base_domain("https://t.me/test") is None
+        assert extract_base_domain("https://2gis.ru/") is None
+
+    def test_none_and_empty(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain(None) is None
+        assert extract_base_domain("") is None
+
+    def test_single_part_domain(self):
+        from granite.utils import extract_base_domain
+        # Односложный hostname без TLD — не домен
+        assert extract_base_domain("http://localhost/") is None
+
+    def test_subdomain_counter(self):
+        """A2: несколько субдоменов → один base_domain → сеть."""
+        from granite.utils import extract_base_domain
+        urls = [
+            "https://abaza.danila-master.ru/",
+            "https://aksay.danila-master.ru/",
+            "https://aldan.danila-master.ru/",
+        ]
+        bases = [extract_base_domain(u) for u in urls]
+        assert all(b == "danila-master.ru" for b in bases)
+        from collections import Counter
+        cnt = Counter(bases)
+        assert cnt["danila-master.ru"] == 3
+
+
+class TestNetworkDetectorThresholdFromConfig:
+    """A2+: NetworkDetector читает threshold из конфига."""
+
+    def test_threshold_from_config(self):
+        from granite.enrichers.network_detector import NetworkDetector
+        mock_db = MagicMock()
+        config = {"enrichment": {"network_threshold": 5}}
+        nd = NetworkDetector(mock_db, config)
+        assert nd._get_threshold() == 5
+
+    def test_threshold_default(self):
+        from granite.enrichers.network_detector import NetworkDetector
+        mock_db = MagicMock()
+        nd = NetworkDetector(mock_db, {})
+        assert nd._get_threshold() == 2
+
+    def test_threshold_none_config(self):
+        from granite.enrichers.network_detector import NetworkDetector
+        mock_db = MagicMock()
+        nd = NetworkDetector(mock_db, None)
+        assert nd._get_threshold() == 2
+
+
+# ===== D2-refactor: _detect_cms_and_widgets =====
+
+class TestDetectCmsAndWidgets:
+    """D2-refactor: единый метод _detect_cms_and_widgets для sync/async."""
+
+    def _make_extractor(self):
+        return TechExtractor({"enrichment": {"tech_keywords": {}}})
+
+    def test_meta_generator_wordpress(self):
+        ext = self._make_extractor()
+        result = {"cms": "unknown", "has_marquiz": False}
+        html = '<html><head><meta name="generator" content="WordPress 6.5"></head></html>'
+        ext._detect_cms_and_widgets(html, html.lower(), result)
+        assert result["cms"] == "wordpress"
+
+    def test_meta_generator_joomla_reversed_attrs(self):
+        ext = self._make_extractor()
+        result = {"cms": "unknown", "has_marquiz": False}
+        html = '<meta content="Joomla 4.0" name="generator">'
+        ext._detect_cms_and_widgets(html, html.lower(), result)
+        assert result["cms"] == "joomla"
+
+    def test_cms_not_overwritten(self):
+        ext = self._make_extractor()
+        result = {"cms": "bitrix", "has_marquiz": False}
+        html = '<meta name="generator" content="WordPress 6.5">'
+        ext._detect_cms_and_widgets(html, html.lower(), result)
+        assert result["cms"] == "bitrix"
+
+    def test_marquiz_detected(self):
+        ext = self._make_extractor()
+        result = {"cms": "unknown", "has_marquiz": False}
+        html = '<html><script src="https://cdn.marquiz.ru/v2.js"></script></html>'
+        ext._detect_cms_and_widgets(html, html.lower(), result)
+        assert result["has_marquiz"] is True
+
+    def test_html_pattern_tilda(self):
+        ext = self._make_extractor()
+        result = {"cms": "unknown", "has_marquiz": False}
+        html = '<html><script>var tilda = "created on tilda";</script></html>'
+        ext._detect_cms_and_widgets(html, html.lower(), result)
+        assert result["cms"] == "tilda"

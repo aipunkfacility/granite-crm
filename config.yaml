@@ -224,6 +224,7 @@ dedup:
   auto_merge_same_phone: true
   auto_merge_same_site: true
   needs_review_on_address_diff: true
+  network_phone_threshold: 10   # телефоны у >= N компаний исключаются из phone-кластеризации
 
 # ===== Обогащение =====
 enrichment:
@@ -308,16 +309,16 @@ enrichment:
   # Данные сливаются с существующими (union, без перезаписи).
   # По умолчанию выключен для тестирования.
   reverse_lookup:
-    enabled: false          # default off for testing
+    enabled: true           # D1: enabled for production
     sources:
       dgis:
-        enabled: false
+        enabled: false      # D1: NO 2GIS
         api_key: ""         # from .env: DGIS_API_KEY. Приоритет: config > env.
         max_requests_per_day: 100  # бесплатный tier 2GIS: 1000/день, оставляем запас
       yell:
-        enabled: false
+        enabled: true       # D1: enabled
         max_requests_per_day: 50    # Yell не имеет API, запросы через Crawlee
-    min_crm_score: 30       # обогащать только компании с CRM-скором ниже порога
+    min_crm_score: 5        # D1: lowered threshold
     delay_between_requests: 2.0  # секунд между запросами (с jitter ±30%)
 
 # ===== Priority Score =====
@@ -331,11 +332,12 @@ scoring:
     has_marquiz: 8
     has_telegram: 15
     has_whatsapp: 10
-    tg_trust_multiplier: 2
+    tg_trust_multiplier: 3   # E2: trust_score tiers: 0→bot(-10), 1→3pts, 2→6pts, 3→9pts
     multiple_phones: 5
     has_email: 5
     is_network: 5
     has_address: 5          # AUDIT #5: Физический адрес = реальная мастерская
+    all_non_local_phones_penalty: 5  # E1: штраф за все нелокальные телефоны
   # AUDIT #17: TLD-штрафы перенесены из hardcoded в config.
   # Каждый элемент: {tld: "<домен>", penalty: <баллы>}
   # .com/.net/.org получают мягкий штраф (-3), .kz/.by — жёсткий (-5).

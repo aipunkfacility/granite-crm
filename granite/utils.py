@@ -18,7 +18,12 @@ _SEO_TITLE_PATTERN = re.compile(
     r"памятники\s*(?:на\s*кладбищ)|"       # "Памятники на кладбищ"
     r"изготовление\s*памятников|"          # "Изготовление памятников"
     r"памятники\s*и\s*надгробия|"          # "Памятники и надгробия"
-    r"производство\s*памятников)",         # "Производство памятников"
+    r"производство\s*памятников|"
+    # B2: Новые паттерны для слипшихся слов (SEO-краулеры сливают слова)
+    r"памятниковизгранита|памятникиизгранита|"
+    r"изготовлениепамятников|установкапамятников|"
+    r"памятникинамогилу|купитьпамятник|"
+    r"заказатьпамятник|гранитнаямастерская)",
     re.IGNORECASE,
 )
 
@@ -35,6 +40,13 @@ def is_seo_title(name: str) -> bool:
     if len(name) > 100:  # Было 80, увеличил для длинных SEO-фраз
         return True
     if _SEO_TITLE_PATTERN.search(name):
+        return True
+
+    # B2: Детектор слипшихся кириллических слов (SEO-краулеры сливают слова)
+    # Ищем паттерн: строчная кириллица сразу после строчной кириллицы без пробела,
+    # и суммарная длина "склеенного" слова > 15 символов
+    _concatenated = re.findall(r'[а-яё]{6,}', name.lower())
+    if _concatenated and max(len(w) for w in _concatenated) > 15:
         return True
 
     # FIX: Детектор слов без пробелов (SEO-спам)
@@ -423,11 +435,49 @@ def extract_domain(url: str) -> str | None:
         return None
 
 
+# B3: Домены мессенджеров и соцсетей — из единого constants.py
+from granite.constants import MESSENGER_DOMAINS as _MESSENGER_DOMAINS
+from granite.constants import NON_NETWORK_DOMAINS as _NON_NETWORK_DOMAINS
+
+
+def extract_base_domain(website: str | None) -> str | None:
+    """Извлечь базовый домен (SLD+TLD) из URL, игнорируя субдомены.
+
+    Примеры:
+        https://abaza.danila-master.ru/ → danila-master.ru
+        https://www.gravestone.ru/      → gravestone.ru
+        https://vk.com/                 → None (соцсеть, не сетевой маркер)
+
+    Список исключений — NON_NETWORK_DOMAINS из granite/constants.py.
+    """
+    if not website:
+        return None
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(website)
+        hostname = (parsed.hostname or "").lower()
+        if not hostname:
+            return None
+        parts = hostname.split(".")
+        # Берём последние 2 части (SLD + TLD)
+        # Для кириллических доменов (xn-- или .рф) тоже работает
+        if len(parts) >= 2:
+            base = ".".join(parts[-2:])
+            if base in _NON_NETWORK_DOMAINS:
+                return None
+            return base
+    except Exception:
+        return None
+    return None
+
+
 def normalize_website_to_root(url: str) -> str | None:
     """Нормализация URL сайта к корню домена без path/query/fragment.
 
     Пример: https://diabaz-lux.ru/zakazat-pamyatnik → https://diabaz-lux.ru/
     Пример: diabaz-lux.ru → https://diabaz-lux.ru/
+
+    B3: мессенджерные домены возвращают None — не являются сайтом компании.
     """
     if not url or not isinstance(url, str):
         return None
@@ -439,6 +489,12 @@ def normalize_website_to_root(url: str) -> str | None:
         netloc = parsed.netloc.lower()
         if not netloc or "." not in netloc:
             return None
+
+        # B3: Исключить домены мессенджеров и соцсетей
+        hostname = netloc.split(":")[0]
+        if hostname in _MESSENGER_DOMAINS:
+            return None
+
         scheme = parsed.scheme or "https"
         return f"{scheme}://{netloc}/"
     except Exception:

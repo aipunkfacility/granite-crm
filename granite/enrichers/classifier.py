@@ -1,7 +1,7 @@
 # enrichers/classifier.py
 
 import re
-from granite.utils import extract_domain
+from granite.utils import extract_domain, is_non_local_phone
 
 
 class Classifier:
@@ -82,9 +82,8 @@ class Classifier:
             except (TypeError, ValueError):
                 pass
 
-            # FIX AUDIT-5 #12: Бот-автоответчик — не живой контакт.
-            # Без штрафа TG-бот получал +11 (trust_score=-2 × multiplier=2 + 15 base),
-            # что выше живого WhatsApp (+10). Штраф -10 делает бота < WA.
+            # Штраф -10 для бота-автоответчика: даже с multiplier=3 бот получит
+            # -2×3+15 = 9 pts (с штрафом: -1), что ниже живого WhatsApp (+10).
             if tg_trust.get("is_bot"):
                 score -= 10
 
@@ -95,6 +94,13 @@ class Classifier:
         phones = company.get("phones", [])
         if len(phones) > 1:
             score += self.weights.get("multiple_phones", 0)
+
+        # E1: Penalty for all non-local phones (aggregator indicator)
+        city_val = company.get("city", "")
+        if phones and city_val:
+            non_local_count = sum(1 for p in phones if is_non_local_phone(p, city_val))
+            if non_local_count == len(phones) and len(phones) > 0:
+                score -= self.weights.get("all_non_local_phones_penalty", 5)
 
         # Наличие Email
         emails = company.get("emails", [])

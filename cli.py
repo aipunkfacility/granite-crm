@@ -574,5 +574,117 @@ def scan_networks():
     db.engine.dispose()
 
 
+@app.command("repair-db")
+def repair_db(
+    apply_changes: bool = typer.Option(False, "--apply", help="Apply changes (default is dry-run)"),
+    fix_spam: bool = typer.Option(True, "--fix-spam/--no-fix-spam", help="Fix spam domains"),
+    fix_networks: bool = typer.Option(True, "--fix-networks/--no-fix-networks", help="Re-scan networks"),
+    fix_scores: bool = typer.Option(True, "--fix-scores/--no-fix-scores", help="Re-run scoring phase"),
+):
+    """F1: Repair database — fix spam, networks, and scoring.
+
+    By default runs in dry-run mode (reports what would be done).
+    Use --apply to actually make changes.
+    """
+    config = load_config()
+    setup_logging(config)
+    db = Database(config_path=_config_path)
+
+    dry_run = not apply_changes
+    mode_label = "DRY RUN" if dry_run else "APPLY"
+
+    print_status(f"F1: repair-db [{mode_label}] starting...", "info")
+
+    # 1. Fix spam domains
+    if fix_spam:
+        from granite.dedup.network_filter import KNOW_SPAM_DOMAINS
+        from granite.database import CompanyRow, EnrichedCompanyRow
+        from granite.utils import extract_domain
+
+        with db.session_scope() as session:
+            companies = session.query(CompanyRow).filter(CompanyRow.website.isnot(None)).all()
+            spam_count = 0
+            for comp in companies:
+                domain = extract_domain(comp.website)
+                if domain in KNOW_SPAM_DOMAINS:
+                    spam_count += 1
+                    if dry_run:
+                        logger.info(f"  [DRY] Would mark as spam: id={comp.id}, name={comp.name_best}, domain={domain}")
+                    else:
+                        enriched = session.query(EnrichedCompanyRow).get(comp.id)
+                        if enriched and enriched.segment != "spam":
+                            enriched.segment = "spam"
+                            enriched.crm_score = 0
+                        comp.status = "spam"
+                        comp.needs_review = True
+                        comp.review_reason = "repair_db_known_spam"
+            print_status(f"Spam check: {spam_count} companies with known spam domains ({mode_label})", "info" if dry_run else "success")
+
+    # 2. Fix networks
+    if fix_networks:
+        if dry_run:
+            print_status(f"Network scan: would re-run scan_for_networks() ({mode_label})", "info")
+        else:
+            from granite.enrichers.network_detector import NetworkDetector
+            detector = NetworkDetector(db, config)
+            detector.scan_for_networks()
+            print_status("Network scan: completed", "success")
+
+    # 3. Fix scores
+    if fix_scores:
+        from granite.database import CityRefRow
+        from granite.enrichers.classifier import Classifier
+        from granite.pipeline.scoring_phase import ScoringPhase
+
+        classifier = Classifier(config)
+        scorer = ScoringPhase(db, classifier)
+
+        with db.session_scope() as session:
+            cities = session.query(CityRefRow.name).filter(CityRefRow.is_populated == True).all()
+            city_names = [c.name for c in cities]
+
+        if not city_names:
+            print_status("No populated cities found for scoring", "warning")
+        else:
+            if dry_run:
+                # #8: Детальный предпросмотр — показать конкретные изменения
+                from granite.database import EnrichedCompanyRow
+                changes_shown = 0
+                max_show = 20
+                total_changes = 0
+                with db.session_scope() as session:
+                    for city_name in city_names:
+                        companies = session.query(EnrichedCompanyRow).filter_by(city=city_name).all()
+                        for c in companies:
+                            d = c.to_dict()
+                            new_score = classifier.calculate_score(d)
+                            new_segment = classifier.determine_segment(new_score)
+                            if c.crm_score != new_score or c.segment != new_segment:
+                                total_changes += 1
+                                if changes_shown < max_show:
+                                    logger.info(
+                                        f"  [DRY] {c.name} ({city_name}): "
+                                        f"score {c.crm_score}->{new_score}, "
+                                        f"segment {c.segment}->{new_segment}"
+                                    )
+                                    changes_shown += 1
+                if total_changes > max_show:
+                    logger.info(f"  ... and {total_changes - max_show} more changes")
+                print_status(
+                    f"Scoring: {total_changes} companies would change in {len(city_names)} cities ({mode_label})",
+                    "info",
+                )
+            else:
+                for city_name in city_names:
+                    try:
+                        scorer.run(city_name)
+                    except Exception as e:
+                        logger.warning(f"Scoring failed for {city_name}: {e}")
+                print_status(f"Scoring: completed for {len(city_names)} cities", "success")
+
+    print_status(f"F1: repair-db [{mode_label}] done.", "success")
+    db.engine.dispose()
+
+
 if __name__ == "__main__":
     app()

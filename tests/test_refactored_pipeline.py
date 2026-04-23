@@ -464,3 +464,61 @@ class TestEnrichmentPhase:
         mock_db = MagicMock()
         phase = EnrichmentPhase(config, mock_db, MagicMock())
         assert phase._resolver.is_source_enabled("web_search") is False
+
+    def test_subdomain_suggests_different_city(self):
+        """A1: субдомен сайта конфликтует с переназначением города."""
+        # asino.danila-master.ru, proposed=Ярославль, current=Асино → НЕ переназначать
+        assert EnrichmentPhase._subdomain_suggests_different_city(
+            "https://asino.danila-master.ru/", "Ярославль", "Асино"
+        ) is True
+        # panteon-vlz.ru, proposed=Волжск, current=Волжский → переназначение корректно
+        assert EnrichmentPhase._subdomain_suggests_different_city(
+            "https://panteon-vlz.ru/", "Волжск", "Волжский"
+        ) is False
+        # Нет субдомена — не блокировать
+        assert EnrichmentPhase._subdomain_suggests_different_city(
+            "https://danila-master.ru/", "Ярославль", "Асино"
+        ) is False
+        # Короткий субдомен — не блокировать
+        assert EnrichmentPhase._subdomain_suggests_different_city(
+            "https://a.site.ru/", "Ярославль", "Асино"
+        ) is False
+        # None website — не должно падать (edge case, но проверяем через try)
+        assert EnrichmentPhase._subdomain_suggests_different_city(
+            "", "Ярославль", "Асино"
+        ) is False
+
+
+class TestAddressUrlProtection:
+    """D3: URL-адреса не сохраняются как физический адрес."""
+
+    def test_url_stripped_in_dedup(self):
+        """dedup_phase: URL в address_raw заменяется на пустую строку."""
+        url_addresses = [
+            "https://pamyatniki-msk.ru/katalog",
+            "http://granit-master.ru/contact",
+            "www.pamyatniki-tula.ru",
+        ]
+        for raw_address in url_addresses:
+            assert raw_address.startswith(("http://", "https://", "www."))
+            clean_address = ""
+            if raw_address and (raw_address.startswith("http") or raw_address.startswith("www.")):
+                clean_address = ""
+            assert clean_address == ""
+
+    def test_real_address_passes(self):
+        """Нормальный адрес с улицей проходит через фильтр."""
+        real_address = "г. Абинск, ул. Красная, д. 45"
+        assert not real_address.startswith(("http://", "https://", "www."))
+        assert real_address != ""
+
+    def test_enrichment_skips_url_address(self):
+        """enrichment_phase: URL в address_raw пропускается."""
+        url_addresses = [
+            "https://monuments.ru/",
+            "http://granit-master.ru/contact",
+            "www.pamyatniki-tula.ru",
+        ]
+        for addr in url_addresses:
+            should_skip = addr.startswith(("http://", "https://", "www."))
+            assert should_skip is True

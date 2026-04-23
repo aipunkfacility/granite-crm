@@ -41,6 +41,25 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
         Список пар/групп: [[id1, id2], ...] — похожие названия
     """
     matches = []
+    _seen_pairs: set[frozenset[int]] = set()
+
+    # C2: Fast exact match pass (before fuzzy matching)
+    exact_name_to_ids: dict[str, list[int]] = defaultdict(list)
+    for company in companies:
+        name = (company.get("name") or "").strip().lower()
+        city = company.get("city", "")
+        if name and len(name) >= 3:
+            exact_name_to_ids[f"{city}::{name}"].append(company.get("id"))
+
+    for key, ids in exact_name_to_ids.items():
+        if len(ids) >= 2:
+            for i in range(len(ids)):
+                for j in range(i + 1, len(ids)):
+                    if ids[i] is not None and ids[j] is not None:
+                        pair = frozenset([ids[i], ids[j]])
+                        if pair not in _seen_pairs:
+                            _seen_pairs.add(pair)
+                            matches.append([ids[i], ids[j]])
 
     # Блокировка по первой букве нормализованного названия
     blocks: dict[str, list[dict]] = defaultdict(list)
@@ -68,7 +87,10 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
                     id_i = block_companies[i].get("id")
                     id_j = block_companies[j].get("id")
                     if id_i is not None and id_j is not None:
-                        matches.append([id_i, id_j])
+                        pair = frozenset([id_i, id_j])
+                        if pair not in _seen_pairs:
+                            _seen_pairs.add(pair)
+                            matches.append([id_i, id_j])
 
     # Secondary pass: for small blocks, also compare against adjacent blocks
     # to recover cross-prefix matches (e.g., "ООО Ритуал" vs "Ритуал")
@@ -92,7 +114,10 @@ def find_name_matches(companies: list[dict], threshold: int = 88) -> list[list[i
                         aid = a.get("id")
                         bid = b.get("id")
                         if aid is not None and bid is not None:
-                            matches.append([aid, bid])
+                            pair = frozenset([aid, bid])
+                            if pair not in _seen_pairs:
+                                _seen_pairs.add(pair)
+                                matches.append([aid, bid])
 
     logger.debug(f"Name matcher: {len(companies)} компаний, {total_comparisons} сравнений, {len(matches)} совпадений")
     return matches

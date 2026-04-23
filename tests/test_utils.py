@@ -337,3 +337,92 @@ class TestIsAggregatorName:
     def test_empty(self):
         assert is_aggregator_name("") is False
         assert is_aggregator_name(None) is False
+
+
+class TestIsNonLocalPhone:
+    """E1: Tests for is_non_local_phone() — detecting non-local phone numbers."""
+
+    def test_moscow_phone_in_province(self):
+        from granite.utils import is_non_local_phone
+        assert is_non_local_phone("74951234567", "Абинск") is True
+        assert is_non_local_phone("74991234567", "Абинск") is True
+
+    def test_local_phone(self):
+        from granite.utils import is_non_local_phone
+        assert is_non_local_phone("79031234567", "Абинск") is False  # mobile
+
+    def test_moscow_phone_in_moscow(self):
+        from granite.utils import is_non_local_phone
+        assert is_non_local_phone("74951234567", "Москва") is False
+
+
+# ===== B2: SEO-фильтр слипшихся слов =====
+
+class TestSeoTitleConcatenated:
+    """B2: Детектор SEO-заголовков со слипшимися словами."""
+
+    def test_concatenated_words_caught(self):
+        from granite.utils import is_seo_title
+        assert is_seo_title("заказать сделатьизготовлениепамятниковизгранитамрамора") is True
+        assert is_seo_title("Купитьпамятникизгранитав форме сердца") is True
+        assert is_seo_title("Изготовлениепамятниковизгранита|Mir-granita26.ru") is True
+        assert is_seo_title("памятниковизгранита цены") is True
+
+    def test_normal_names_not_caught(self):
+        from granite.utils import is_seo_title
+        assert is_seo_title("Гранит-Мастер") is False
+        assert is_seo_title("ИП Иванов Гранит") is False
+        assert is_seo_title("Благодел") is False
+        assert is_seo_title("КаменьПро") is False  # CamelCase — допустимо
+
+
+# ===== B3: Мессенджерные домены не сайт =====
+
+class TestNormalizeWebsiteMessengerDomains:
+    """B3: vk.link, t.me, wa.me — не сайт компании."""
+
+    def test_messenger_returns_none(self):
+        from granite.utils import normalize_website_to_root
+        assert normalize_website_to_root("https://vk.link/some_group") is None
+        assert normalize_website_to_root("https://vk.com/club12345") is None
+        assert normalize_website_to_root("https://t.me/mymasters") is None
+        assert normalize_website_to_root("https://wa.me/79001234567") is None
+        assert normalize_website_to_root("https://ok.ru/group") is None
+
+    def test_normal_sites_work(self):
+        from granite.utils import normalize_website_to_root
+        assert normalize_website_to_root("https://granit-master.ru/catalog") == "https://granit-master.ru/"
+        assert normalize_website_to_root("granit.ru") == "https://granit.ru/"
+        assert normalize_website_to_root("https://vkontakte.ru/page") is None
+
+
+class TestConstantsDomainSets:
+    """#3: Единый constants.py — списки доменов не пересекаются некорректно."""
+
+    def test_messengers_subset_of_non_network(self):
+        """Все мессенджерские домены — это не-сети."""
+        from granite.constants import MESSENGER_DOMAINS, NON_NETWORK_DOMAINS
+        assert MESSENGER_DOMAINS <= NON_NETWORK_DOMAINS
+
+    def test_messengers_no_spam_overlap(self):
+        """Мессенджеры и спам не пересекаются."""
+        from granite.constants import MESSENGER_DOMAINS, SPAM_DOMAINS
+        assert len(MESSENGER_DOMAINS & SPAM_DOMAINS) == 0
+
+
+class TestExtractBaseDomain:
+    """#6: extract_base_domain перенесена в utils.py."""
+
+    def test_subdomain(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain("https://abaza.danila-master.ru/") == "danila-master.ru"
+
+    def test_excluded(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain("https://vk.com/group") is None
+        assert extract_base_domain("https://t.me/test") is None
+
+    def test_none_empty(self):
+        from granite.utils import extract_base_domain
+        assert extract_base_domain(None) is None
+        assert extract_base_domain("") is None
