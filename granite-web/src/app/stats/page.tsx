@@ -9,7 +9,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  ResponsiveContainer,
   Cell,
   PieChart,
   Pie
@@ -22,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback, ReactNode } from "react";
 import { FUNNEL_STAGES, FunnelStage } from "@/constants/funnel";
 
 /* V-12: #ef4444 → #E11D48 (Rose), #64748b → #8B5CF6 (violet) */
@@ -40,6 +39,38 @@ const FUNNEL_COLORS: Record<string, string> = {
   orange: '#F59E0B',  // not_interested
   red: '#EF4444',     // unreachable
 };
+
+/**
+ * Замена ResponsiveContainer: измеряет контейнер через ResizeObserver
+ * и рендерит children только когда размеры > 0.
+ */
+function ChartBox({ children, className }: { children: (w: number, h: number) => ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
+
+  const measure = useCallback(() => {
+    if (!ref.current) return;
+    const { width, height } = ref.current.getBoundingClientRect();
+    if (width > 0 && height > 0) {
+      setSize(prev => (prev && prev.w === width && prev.h === height) ? prev : { w: width, h: height });
+    }
+  }, []);
+
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure]);
+
+  return (
+    <div ref={ref} className={className}>
+      {size ? children(size.w, size.h) : null}
+    </div>
+  );
+}
 
 export default function StatsPage() {
   const [selectedCity, setSelectedCity] = useState<string>("all");
@@ -134,25 +165,27 @@ export default function StatsPage() {
             {/* V-20: CardTitle font-semibold */}
             <CardTitle className="text-lg font-semibold">Воронка продаж (распределение)</CardTitle>
           </CardHeader>
-          <CardContent style={{ height: 350 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={funnelData} layout="vertical" margin={{ left: 40, right: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" hide />
-                <YAxis
-                  dataKey="name"
-                  type="category"
-                  width={120}
-                  style={{ fontSize: '12px' }}
-                />
-                <Tooltip />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                  {funnelData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <CardContent>
+            <ChartBox className="h-[350px] w-full">
+              {(w, h) => (
+                <BarChart width={w} height={h} data={funnelData} layout="vertical" margin={{ left: 40, right: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" hide />
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    width={120}
+                    style={{ fontSize: '12px' }}
+                  />
+                  <Tooltip />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+                    {funnelData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
+            </ChartBox>
           </CardContent>
         </Card>
 
@@ -162,26 +195,28 @@ export default function StatsPage() {
             {/* V-20: CardTitle font-semibold */}
             <CardTitle className="text-lg font-semibold">Качество базы (A/B/C/D)</CardTitle>
           </CardHeader>
-          <CardContent style={{ height: 350 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={segmentData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                  label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
-                >
-                  {segmentData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
+          <CardContent>
+            <ChartBox className="h-[350px] w-full">
+              {(w, h) => (
+                <PieChart width={w} height={h}>
+                  <Pie
+                    data={segmentData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey="value"
+                    label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                  >
+                    {segmentData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              )}
+            </ChartBox>
           </CardContent>
         </Card>
       </div>
