@@ -13,14 +13,14 @@ import { Company } from "@/lib/types/api";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
-import Link from "next/link";
 import { ExternalLink, MessageCircle, Phone } from "lucide-react";
 
 interface CompanyTableProps {
   companies: Company[];
+  onSelectCompany?: (companyId: number) => void;
 }
 
-export function CompanyTable({ companies }: CompanyTableProps) {
+export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) {
   return (
     <div className="rounded-md border bg-white">
       <Table>
@@ -48,14 +48,16 @@ export function CompanyTable({ companies }: CompanyTableProps) {
               const segment = company.segment ? SEGMENT_CONFIG[company.segment] : null;
 
               return (
-                <TableRow key={company.id} className="group hover:bg-slate-50">
+                /* V-01: клик по строке → открывает Sheet */
+                <TableRow
+                  key={company.id}
+                  className="group hover:bg-slate-50 cursor-pointer"
+                  onClick={() => onSelectCompany?.(company.id)}
+                >
                   <TableCell className="font-medium">
-                    <Link 
-                      href={`/companies/${company.id}`}
-                      className="text-indigo-600 hover:underline"
-                    >
+                    <span className="text-indigo-600 hover:underline">
                       {company.name}
-                    </Link>
+                    </span>
                   </TableCell>
                   <TableCell className="text-slate-500">{company.city}</TableCell>
                   <TableCell>
@@ -66,7 +68,8 @@ export function CompanyTable({ companies }: CompanyTableProps) {
                     )}
                   </TableCell>
                   <TableCell>
-                    <span className="font-mono font-bold text-slate-700">
+                    {/* V-10: font-mono-code (13px JetBrains Mono) */}
+                    <span className="font-mono-code font-medium text-slate-700">
                       {company.crm_score}
                     </span>
                   </TableCell>
@@ -78,24 +81,41 @@ export function CompanyTable({ companies }: CompanyTableProps) {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {company.telegram && (
-                        <a href={`https://t.me/${company.telegram.replace('@', '')}`} target="_blank" rel="noreferrer" className="text-sky-500 hover:scale-110 transition-transform">
+                        <a
+                          href={`https://t.me/${company.telegram.replace('@', '')}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sky-500 hover:scale-110 transition-transform"
+                          /* Клик по ссылке НЕ открывает Sheet */
+                          onClick={e => e.stopPropagation()}
+                        >
                           <MessageCircle className="h-4 w-4" />
                         </a>
                       )}
                       {company.phones.length > 0 && (
-                        <a href={`tel:${company.phones[0]}`} className="text-slate-400 hover:text-slate-600">
+                        <a
+                          href={`tel:${company.phones[0]}`}
+                          className="text-slate-400 hover:text-slate-600"
+                          onClick={e => e.stopPropagation()}
+                        >
                           <Phone className="h-4 w-4" />
                         </a>
                       )}
                       {company.website && (
-                        <a href={company.website} target="_blank" rel="noreferrer" className="text-slate-400 hover:text-slate-600">
+                        <a
+                          href={company.website}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-slate-400 hover:text-slate-600"
+                          onClick={e => e.stopPropagation()}
+                        >
                           <ExternalLink className="h-4 w-4" />
                         </a>
                       )}
                     </div>
                   </TableCell>
                   <TableCell className="text-right text-xs text-slate-400">
-                    {company.last_contact_at 
+                    {company.last_contact_at
                       ? formatDistanceToNow(new Date(company.last_contact_at), { addSuffix: true, locale: ru })
                       : '—'}
                   </TableCell>

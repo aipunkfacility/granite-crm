@@ -25,7 +25,21 @@ import {
 import { useState, useEffect } from "react";
 import { FUNNEL_STAGES, FunnelStage } from "@/constants/funnel";
 
-const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#64748b'];
+/* V-12: #ef4444 → #E11D48 (Rose), #64748b → #8B5CF6 (violet) */
+const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#E11D48', '#8B5CF6'];
+
+/* V-11: полный маппинг цветов воронки — холодный→тёплый градиент */
+const FUNNEL_COLORS: Record<string, string> = {
+  slate: '#94A3B8',   // new — нейтральный
+  blue: '#3B82F6',    // email_sent
+  indigo: '#6366F1',  // email_opened
+  violet: '#8B5CF6',  // tg_sent
+  green: '#10B981',   // wa_sent
+  emerald: '#059669', // interested
+  teal: '#14B8A6',    // replied
+  orange: '#F59E0B',  // not_interested
+  red: '#EF4444',     // unreachable
+};
 
 export default function StatsPage() {
   const [selectedCity, setSelectedCity] = useState<string>("all");
@@ -35,13 +49,12 @@ export default function StatsPage() {
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Данные для воронки
+  /* V-11: все 9 стадий маппятся в цвет через FUNNEL_COLORS */
   const funnelData = stats?.funnel
     ? Object.entries(stats.funnel).map(([stage, count]) => ({
         name: FUNNEL_STAGES[stage as FunnelStage]?.label || stage,
         count: count,
-        color: FUNNEL_STAGES[stage as FunnelStage]?.color === 'blue' ? '#3b82f6' :
-               FUNNEL_STAGES[stage as FunnelStage]?.color === 'green' ? '#10b981' : '#64748b'
+        color: FUNNEL_COLORS[FUNNEL_STAGES[stage as FunnelStage]?.color] || '#94A3B8'
       }))
     : [];
 
@@ -60,8 +73,10 @@ export default function StatsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Аналитика</h1>
-          <p className="text-slate-500">Общая статистика базы и эффективность воронки продаж.</p>
+          {/* V-05: font-semibold вместо font-bold */}
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Аналитика</h1>
+          {/* V-27: подзаголовок text-sm */}
+          <p className="text-sm text-slate-500">Общая статистика базы и эффективность воронки продаж.</p>
         </div>
 
         <div className="w-64">
@@ -84,13 +99,13 @@ export default function StatsPage() {
         <Card className="bg-indigo-600 text-white border-none shadow-lg">
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase opacity-80">Всего компаний</p>
-            <p className="text-3xl font-bold mt-1">{stats?.total_companies?.toLocaleString() ?? 0}</p>
+            <p className="text-3xl font-semibold mt-1">{stats?.total_companies?.toLocaleString() ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase text-slate-500">С мессенджерами</p>
-            <p className="text-2xl font-bold mt-1 text-sky-600">
+            <p className="text-2xl font-semibold mt-1 text-sky-600">
               TG: {stats?.with_telegram ?? 0} | WA: {stats?.with_whatsapp ?? 0}
             </p>
           </CardContent>
@@ -98,13 +113,13 @@ export default function StatsPage() {
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase text-slate-500">С Email</p>
-            <p className="text-3xl font-bold mt-1 text-indigo-600">{stats?.with_email?.toLocaleString() ?? 0}</p>
+            <p className="text-3xl font-semibold mt-1 text-indigo-600">{stats?.with_email?.toLocaleString() ?? 0}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <p className="text-xs font-medium uppercase text-slate-500">Конверсия (Ответы)</p>
-            <p className="text-3xl font-bold mt-1 text-emerald-600">
+            <p className="text-3xl font-semibold mt-1 text-emerald-600">
               {stats?.funnel?.replied ?? 0}
             </p>
           </CardContent>
@@ -116,7 +131,8 @@ export default function StatsPage() {
         {/* График воронки */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Воронка продаж (распределение)</CardTitle>
+            {/* V-20: CardTitle font-semibold */}
+            <CardTitle className="text-lg font-semibold">Воронка продаж (распределение)</CardTitle>
           </CardHeader>
           <CardContent style={{ height: 350 }}>
             <ResponsiveContainer width="100%" height="100%">
@@ -143,7 +159,8 @@ export default function StatsPage() {
         {/* График сегментов */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Качество базы (A/B/C/D)</CardTitle>
+            {/* V-20: CardTitle font-semibold */}
+            <CardTitle className="text-lg font-semibold">Качество базы (A/B/C/D)</CardTitle>
           </CardHeader>
           <CardContent style={{ height: 350 }}>
             <ResponsiveContainer width="100%" height="100%">

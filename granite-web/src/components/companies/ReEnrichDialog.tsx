@@ -59,7 +59,8 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl overflow-hidden border flex flex-col max-h-[90vh]">
         <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-bold flex items-center">
+            {/* V-05: font-semibold вместо font-bold */}
+            <h2 className="text-xl font-semibold flex items-center">
               <RefreshCcw className="mr-2 h-5 w-5 text-indigo-600" />
               Пересканирование сайта
             </h2>
@@ -75,12 +76,13 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
               <p className="text-slate-500 animate-pulse">Анализируем сайт компании...</p>
             </div>
           ) : error ? (
-            <div className="bg-red-50 text-red-700 p-4 rounded-lg border border-red-100 flex items-start">
+            /* V-19: red → rose (destructive palette) */
+            <div className="bg-rose-50 text-rose-700 p-4 rounded-lg border border-rose-100 flex items-start">
               <X className="mr-3 h-5 w-5 mt-0.5" />
               <div>
-                <p className="font-bold">Ошибка</p>
+                <p className="font-medium">Ошибка</p>
                 <p className="text-sm">{error}</p>
-                <Button variant="outline" size="sm" className="mt-3 text-red-700 border-red-200" onClick={loadPreview}>
+                <Button variant="outline" size="sm" className="mt-3 text-rose-700 border-rose-200" onClick={loadPreview}>
                   Попробовать снова
                 </Button>
               </div>
@@ -95,7 +97,8 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
 
               <div className="grid grid-cols-2 gap-8">
                 <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Текущие данные</h3>
+                  {/* V-07,V-08: text-slate-500 font-medium */}
+                  <h3 className="text-xs font-medium text-slate-500 uppercase tracking-widest">Текущие данные</h3>
                   <div className="space-y-3">
                     <DataField label="Название" value={data.before.name} />
                     <DataList label="Телефоны" items={data.before.phones} />
@@ -107,22 +110,22 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
                   <div className="absolute -left-6 top-1/2 -translate-y-1/2 text-slate-200">
                     <ArrowRight className="h-6 w-6" />
                   </div>
-                  <h3 className="text-xs font-bold text-indigo-500 uppercase tracking-widest">Найдено на сайте</h3>
+                  <h3 className="text-xs font-medium text-indigo-500 uppercase tracking-widest">Найдено на сайте</h3>
                   <div className="space-y-3">
-                    <DataField 
-                      label="Название" 
-                      value={data.after.name} 
-                      changed={data.after.name !== data.before.name} 
+                    <DataField
+                      label="Название"
+                      value={data.after.name}
+                      changed={data.after.name !== data.before.name}
                     />
-                    <DataList 
-                      label="Телефоны" 
-                      items={data.after.phones} 
-                      changed={JSON.stringify(data.after.phones) !== JSON.stringify(data.before.phones)} 
+                    <DataList
+                      label="Телефоны"
+                      items={data.after.phones}
+                      changed={JSON.stringify(data.after.phones) !== JSON.stringify(data.before.phones)}
                     />
-                    <DataList 
-                      label="Email" 
-                      items={data.after.emails} 
-                      changed={JSON.stringify(data.after.emails) !== JSON.stringify(data.before.emails)} 
+                    <DataList
+                      label="Email"
+                      items={data.after.emails}
+                      changed={JSON.stringify(data.after.emails) !== JSON.stringify(data.before.emails)}
                     />
                   </div>
                 </div>
@@ -133,10 +136,10 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
 
         <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose}>Отмена</Button>
-          <Button 
-            onClick={handleApply} 
+          {/* V-04: убран хардкод bg-indigo-600 — variant="default" теперь indigo через --primary */}
+          <Button
+            onClick={handleApply}
             disabled={applying || loading || !data?.has_changes}
-            className="bg-indigo-600 hover:bg-indigo-700"
           >
             {applying ? "Применение..." : "Обновить данные в CRM"}
             {!applying && <Check className="ml-2 h-4 w-4" />}
@@ -150,7 +153,8 @@ export function ReEnrichDialog({ companyId, isOpen, onClose, onSuccess }: ReEnri
 function DataField({ label, value, changed }: { label: string, value: string, changed?: boolean }) {
   return (
     <div className={`p-3 rounded-lg border transition-colors ${changed ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
-      <p className="text-[10px] text-slate-400 uppercase mb-1">{label}</p>
+      {/* V-06: text-[10px] → text-xs */}
+      <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
       <p className={`text-sm font-medium ${changed ? 'text-indigo-900' : ''}`}>{value || '—'}</p>
     </div>
   );
@@ -159,11 +163,12 @@ function DataField({ label, value, changed }: { label: string, value: string, ch
 function DataList({ label, items, changed }: { label: string, items: string[], changed?: boolean }) {
   return (
     <div className={`p-3 rounded-lg border transition-colors ${changed ? 'bg-indigo-50 border-indigo-200' : 'bg-white'}`}>
-      <p className="text-[10px] text-slate-400 uppercase mb-1">{label}</p>
+      {/* V-06: text-[10px] → text-xs */}
+      <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
       <div className="space-y-1">
         {items?.length > 0 ? items.map(item => (
           <p key={item} className={`text-sm font-medium ${changed ? 'text-indigo-900' : ''}`}>{item}</p>
-        )) : <p className="text-sm text-slate-300 italic text-sm">Нет данных</p>}
+        )) : <p className="text-sm text-slate-300 italic">Нет данных</p>}
       </div>
     </div>
   );

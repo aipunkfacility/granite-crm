@@ -5,6 +5,7 @@ import { useCompanies } from "@/lib/hooks/use-companies";
 import { useCompanyFilters } from "@/lib/hooks/use-company-filters";
 import { CompanyTable } from "@/components/companies/company-table";
 import { CompaniesFilters } from "@/components/companies/CompaniesFilters";
+import { CompanySheet } from "@/components/companies/CompanySheet";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
@@ -15,6 +16,8 @@ import { apiClient } from "@/lib/api/client";
 
 export function CompaniesPageContent() {
   const [page, setPage] = useState(1);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const {
     filters,
     setFilter,
@@ -72,11 +75,17 @@ export function CompaniesPageContent() {
     setTimeout(() => setPage(1), 0);
   }
 
+  const handleSelectCompany = (companyId: number) => {
+    setSelectedCompanyId(companyId);
+    setSheetOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+          {/* V-05: h1 font-semibold вместо font-bold */}
+          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
             Компании
             {activeCount > 0 && (
               <span className="ml-2 inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-0.5 text-sm font-medium text-indigo-700">
@@ -84,7 +93,8 @@ export function CompaniesPageContent() {
               </span>
             )}
           </h1>
-          <p className="text-slate-500">
+          {/* V-27: подзаголовок text-sm */}
+          <p className="text-sm text-slate-500">
             Управление базой потенциальных клиентов и стадиями воронки.
           </p>
         </div>
@@ -124,7 +134,10 @@ export function CompaniesPageContent() {
         </div>
       ) : (
         <>
-          <CompanyTable companies={data?.items || []} />
+          <CompanyTable
+            companies={data?.items || []}
+            onSelectCompany={handleSelectCompany}
+          />
 
           <div className="flex items-center justify-end text-sm text-slate-500 py-4">
             <div className="flex items-center gap-2">
@@ -147,6 +160,13 @@ export function CompaniesPageContent() {
           </div>
         </>
       )}
+
+      {/* V-01: Sheet вместо перехода на страницу */}
+      <CompanySheet
+        companyId={selectedCompanyId}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }

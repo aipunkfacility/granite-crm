@@ -77,13 +77,14 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200">
         <div className="p-6 border-b bg-gradient-to-r from-indigo-50 to-white">
-          <h2 className="text-xl font-bold text-indigo-900">Редактирование компании</h2>
+          {/* V-05: font-semibold вместо font-bold */}
+          <h2 className="text-xl font-semibold text-indigo-900">Редактирование компании</h2>
           <p className="text-sm text-slate-500 mt-0.5">{company.name} · {company.city}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
           {field('name', 'Название', 'name')}
-          
+
           <div className="grid grid-cols-2 gap-3">
             {field('city', 'Город', 'city', 'Москва')}
             {field('website', 'Сайт', 'website', 'https://...')}
@@ -94,7 +95,8 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
           {field('emails', 'Email (через запятую)', 'emails', 'info@site.ru')}
 
           <div className="pt-3 border-t space-y-3">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Мессенджеры</p>
+            {/* V-07: text-slate-400 → text-slate-500 на лейблах */}
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest">Мессенджеры</p>
             <div className="grid grid-cols-2 gap-3">
               {field('tg', 'Telegram', 'telegram', '@username или ссылка')}
               {field('wa', 'WhatsApp', 'whatsapp', '+79001234567 или ссылка')}
@@ -104,10 +106,10 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
 
         <div className="p-5 border-t bg-slate-50 flex justify-end gap-3">
           <Button variant="ghost" onClick={onClose} type="button">Отмена</Button>
+          {/* V-04: убран хардкод bg-indigo-600 — variant="default" теперь indigo через --primary */}
           <Button
             onClick={handleSubmit}
             disabled={isSaving}
-            className="bg-indigo-600 hover:bg-indigo-700"
           >
             {isSaving ? 'Сохранение...' : 'Сохранить изменения'}
           </Button>

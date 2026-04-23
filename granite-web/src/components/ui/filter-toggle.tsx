@@ -17,7 +17,7 @@ interface FilterToggleProps {
  * Состояния:
  * - undefined → «Любые» (серый outline) — не передаётся в API
  * - 1 → «Только с» (зелёный, ✓) — has_X=1
- * - 0 → «Только без» (красный outline, ✕) — has_X=0
+ * - 0 → «Только без» (rose outline, ✕) — has_X=0
  */
 export function FilterToggle({ label, value, onChange }: FilterToggleProps) {
   const [open, setOpen] = useState(false);
@@ -33,11 +33,12 @@ export function FilterToggle({ label, value, onChange }: FilterToggleProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  /* V-17, V-19: red → rose (destructive palette #E11D48) */
   const buttonClass = value === undefined
     ? 'border-slate-200 text-slate-600 hover:border-slate-300 bg-white'
     : value === 1
       ? 'border-emerald-500 text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-      : 'border-red-400 text-red-600 bg-red-50 hover:bg-red-100';
+      : 'border-rose-400 text-rose-600 bg-rose-50 hover:bg-rose-100';
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -71,7 +72,7 @@ export function FilterToggle({ label, value, onChange }: FilterToggleProps) {
           </button>
           <button
             type="button"
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 text-red-600"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-slate-50 text-rose-600"
             onClick={() => { onChange(0); setOpen(false); }}
           >
             <X className="h-3.5 w-3.5" />

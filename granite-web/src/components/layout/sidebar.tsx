@@ -2,12 +2,12 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { 
-  Building2, 
-  ListTodo, 
-  CheckSquare, 
-  Mail, 
-  Settings2, 
+import {
+  Building2,
+  ListTodo,
+  CheckSquare,
+  Mail,
+  Settings2,
   BarChart3,
   LayoutDashboard
 } from 'lucide-react';
@@ -29,7 +29,8 @@ export function Sidebar() {
     <div className="flex h-full w-60 flex-col border-r bg-slate-50/50">
       <div className="flex h-16 items-center border-b px-6">
         <Link href="/" className="flex items-center gap-2 font-semibold text-indigo-600">
-          <LayoutDashboard className="h-6 w-6" />
+          {/* V-18: h-6 w-6 → h-5 w-5 (20px) */}
+          <LayoutDashboard className="h-5 w-5" />
           <span>Granite CRM</span>
         </Link>
       </div>

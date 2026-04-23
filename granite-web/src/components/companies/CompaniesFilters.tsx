@@ -18,6 +18,9 @@ interface CompaniesFiltersProps {
   cmsTypes: string[];
 }
 
+/* V-14: focus ring на всех 4 нативных select */
+const selectClass = "mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500";
+
 export function CompaniesFilters({
   filters,
   onFilterChange,
@@ -81,7 +84,7 @@ export function CompaniesFilters({
           <select
             value={filters.region || ''}
             onChange={e => onFilterChange('region', (e.target.value || undefined) as string | undefined)}
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm"
+            className={selectClass}
           >
             <option value="">Все регионы</option>
             {regions.map(r => <option key={r} value={r}>{r}</option>)}
@@ -99,7 +102,7 @@ export function CompaniesFilters({
                 : [...filters.city, e.target.value];
               onFilterChange('city', next);
             }}
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm"
+            className={selectClass}
           >
             <option value="">Выберите город...</option>
             {cities.map(c => (
@@ -130,7 +133,7 @@ export function CompaniesFilters({
           <select
             value={filters.funnel_stage || ''}
             onChange={e => onFilterChange('funnel_stage', (e.target.value || undefined) as string | undefined)}
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm"
+            className={selectClass}
           >
             <option value="">Все стадии</option>
             {(Object.entries(FUNNEL_STAGES) as [FunnelStage, any][]).map(([key, cfg]) => (
@@ -144,7 +147,7 @@ export function CompaniesFilters({
           <select
             value={filters.cms || ''}
             onChange={e => onFilterChange('cms', (e.target.value || undefined) as string | undefined)}
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm"
+            className={selectClass}
           >
             <option value="">Все CMS</option>
             {cmsTypes.map(c => <option key={c} value={c}>{c}</option>)}
