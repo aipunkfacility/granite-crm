@@ -3,6 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchCompany, updateCompany } from "@/lib/api/companies";
 import * as Dialog from "@radix-ui/react-dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,10 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
         <Dialog.Content
           className="fixed inset-y-0 right-0 z-50 w-full max-w-xl border-l bg-white shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right duration-300 flex flex-col focus:outline-none"
         >
+          <VisuallyHidden>
+            <Dialog.Title>{company?.name ?? "Карточка компании"}</Dialog.Title>
+            <Dialog.Description>Карточка компании с контактами, воронкой и заметками</Dialog.Description>
+          </VisuallyHidden>
           {/* Header */}
           {isLoading ? (
             <div className="flex items-center justify-between border-b px-6 py-4">
@@ -103,10 +108,10 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
               <div className="flex items-center justify-between border-b px-6 py-4 bg-slate-50/50">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="min-w-0">
-                    {/* V-05: CardTitle font-semibold, not font-bold */}
-                    <Dialog.Title className="text-lg font-semibold text-slate-900 truncate">
+                    {/* V-05: font-semibold, not font-bold — Dialog.Title moved to VisuallyHidden for a11y */}
+                    <span className="text-lg font-semibold text-slate-900 truncate">
                       {company.name}
-                    </Dialog.Title>
+                    </span>
                     <div className="flex items-center text-sm text-slate-500 mt-0.5">
                       <MapPin className="mr-1 h-3 w-3 shrink-0" />
                       <span className="truncate">{company.city}, {company.region}</span>
