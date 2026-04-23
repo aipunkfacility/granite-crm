@@ -2,57 +2,59 @@
 
 import { useStats } from "@/lib/hooks/use-stats";
 import { usePipelineStatus } from "@/lib/hooks/use-pipeline";
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
   Cell,
   PieChart,
   Pie
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
 } from "@/components/ui/select";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FUNNEL_STAGES, FunnelStage } from "@/constants/funnel";
 
 const COLORS = ['#4f46e5', '#10b981', '#f59e0b', '#ef4444', '#64748b'];
 
 export default function StatsPage() {
   const [selectedCity, setSelectedCity] = useState<string>("all");
+  const [mounted, setMounted] = useState(false);
   const { data: stats, isLoading } = useStats(selectedCity === "all" ? undefined : selectedCity);
   const { data: cities } = usePipelineStatus();
 
-  if (isLoading) return <div className="p-8">Загрузка аналитики...</div>;
-  if (!stats) return <div className="p-8">Нет данных для отображения</div>;
+  useEffect(() => { setMounted(true); }, []);
 
   // Данные для воронки
-  const funnelData = stats?.funnel 
+  const funnelData = stats?.funnel
     ? Object.entries(stats.funnel).map(([stage, count]) => ({
         name: FUNNEL_STAGES[stage as FunnelStage]?.label || stage,
         count: count,
-        color: FUNNEL_STAGES[stage as FunnelStage]?.color === 'blue' ? '#3b82f6' : 
+        color: FUNNEL_STAGES[stage as FunnelStage]?.color === 'blue' ? '#3b82f6' :
                FUNNEL_STAGES[stage as FunnelStage]?.color === 'green' ? '#10b981' : '#64748b'
-      })) 
+      }))
     : [];
 
   // Данные для сегментов
-  const segmentData = stats?.segments 
+  const segmentData = stats?.segments
     ? Object.entries(stats.segments).map(([seg, count]) => ({
         name: `Сегмент ${seg}`,
         value: count
-      })) 
+      }))
     : [];
 
+  if (isLoading) return <div className="p-8">Загрузка аналитики...</div>;
+  if (!stats) return <div className="p-8">Нет данных для отображения</div>;
 
   return (
     <div className="space-y-6">
@@ -109,22 +111,23 @@ export default function StatsPage() {
         </Card>
       </div>
 
+      {mounted && funnelData.length > 0 && segmentData.length > 0 && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* График воронки */}
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">Воронка продаж (распределение)</CardTitle>
           </CardHeader>
-          <CardContent className="h-[350px]">
+          <CardContent style={{ height: 350 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnelData} layout="vertical" margin={{ left: 40, right: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" hide />
-                <YAxis 
-                  dataKey="name" 
-                  type="category" 
-                  width={120} 
-                  style={{ fontSize: '12px' }} 
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={120}
+                  style={{ fontSize: '12px' }}
                 />
                 <Tooltip />
                 <Bar dataKey="count" radius={[0, 4, 4, 0]}>
@@ -142,7 +145,7 @@ export default function StatsPage() {
           <CardHeader>
             <CardTitle className="text-lg">Качество базы (A/B/C/D)</CardTitle>
           </CardHeader>
-          <CardContent className="h-[350px]">
+          <CardContent style={{ height: 350 }}>
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -165,6 +168,7 @@ export default function StatsPage() {
           </CardContent>
         </Card>
       </div>
+      )}
     </div>
   );
 }

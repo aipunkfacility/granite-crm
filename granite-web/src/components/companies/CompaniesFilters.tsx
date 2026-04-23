@@ -12,6 +12,7 @@ interface CompaniesFiltersProps {
   onFilterChange: <K extends keyof FilterState>(key: K, value: FilterState[K]) => void;
   onClearAll: () => void;
   activeCount: number;
+  total: number;
   cities: string[];
   regions: string[];
   cmsTypes: string[];
@@ -22,12 +23,30 @@ export function CompaniesFilters({
   onFilterChange,
   onClearAll,
   activeCount,
+  total,
   cities,
   regions,
   cmsTypes,
 }: CompaniesFiltersProps) {
   return (
     <div className="space-y-4 rounded-lg border bg-white p-4">
+      {/* Шапка: всего найдено + сброс */}
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-slate-500">
+          Всего найдено: <span className="font-semibold text-slate-900">{total}</span>
+        </span>
+        {activeCount > 0 && (
+          <button
+            type="button"
+            onClick={onClearAll}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            <X className="h-3.5 w-3.5" />
+            Сбросить всё ({activeCount})
+          </button>
+        )}
+      </div>
+
       {/* Сегменты */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-slate-500 w-16 shrink-0">Сегмент:</span>
@@ -57,6 +76,18 @@ export function CompaniesFilters({
 
       {/* Dropdowns */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <label className="text-xs font-medium text-slate-500">Регион</label>
+          <select
+            value={filters.region || ''}
+            onChange={e => onFilterChange('region', (e.target.value || undefined) as string | undefined)}
+            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm"
+          >
+            <option value="">Все регионы</option>
+            {regions.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
         <div>
           <label className="text-xs font-medium text-slate-500">Город</label>
           <select
@@ -92,18 +123,6 @@ export function CompaniesFilters({
               ))}
             </div>
           )}
-        </div>
-
-        <div>
-          <label className="text-xs font-medium text-slate-500">Регион</label>
-          <select
-            value={filters.region || ''}
-            onChange={e => onFilterChange('region', (e.target.value || undefined) as string | undefined)}
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-1.5 text-sm"
-          >
-            <option value="">Все регионы</option>
-            {regions.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
         </div>
 
         <div>
@@ -149,7 +168,7 @@ export function CompaniesFilters({
 
       {/* Score range */}
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-slate-500">Score:</span>
+        <span className="text-sm font-medium text-slate-500">Score (от–до):</span>
         <Input
           type="number"
           placeholder="от"
@@ -167,19 +186,6 @@ export function CompaniesFilters({
         />
       </div>
 
-      {/* Сброс */}
-      {activeCount > 0 && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={onClearAll}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
-          >
-            <X className="h-3.5 w-3.5" />
-            Сбросить всё ({activeCount})
-          </button>
-        </div>
-      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ from granite.api.schemas import (
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
+    CityRefRow,
 )
 from granite.utils import (
     extract_domain, normalize_phones, fetch_page, extract_phones, 
@@ -627,22 +628,32 @@ def merge_companies(
 @router.get("/cities", response_model=PaginatedResponse[str])
 def list_cities(
     db: Session = Depends(get_db),
+    region: Optional[str] = None,
     page: int = Query(1, ge=1),
     per_page: int = Query(500, ge=1, le=2000),
 ):
     """Список уникальных городов для фильтра на фронтенде.
 
-    Возвращает города, в которых есть хотя бы одна компания.
-    Сортировка по алфавиту. PaginatedResponse для единообразия API.
+    Берёт города из таблицы companies. Если там пусто — fallback на cities_ref.
+    При указании region — только города из этого региона.
     """
-    rows = (
+    q = (
         db.query(CompanyRow.city)
         .filter(CompanyRow.city.isnot(None), CompanyRow.city != "", CompanyRow.deleted_at.is_(None))
-        .distinct()
-        .order_by(CompanyRow.city)
-        .all()
     )
+    if region:
+        q = q.filter(CompanyRow.region == region)
+    rows = q.distinct().order_by(CompanyRow.city).all()
     all_cities = [r[0] for r in rows]
+
+    # Fallback: если в companies пусто — берём из cities_ref справочника
+    if not all_cities:
+        q_ref = db.query(CityRefRow.name)
+        if region:
+            q_ref = q_ref.filter(CityRefRow.region == region)
+        ref_rows = q_ref.distinct().order_by(CityRefRow.name).all()
+        all_cities = [r[0] for r in ref_rows]
+
     total = len(all_cities)
     start = (page - 1) * per_page
     items = all_cities[start:start + per_page]
@@ -657,8 +668,7 @@ def list_regions(
 ):
     """Список уникальных регионов для фильтра на фронтенде.
 
-    Возвращает регионы, в которых есть хотя бы одна компания.
-    Сортировка по алфавиту. PaginatedResponse для единообразия API.
+    Берёт регионы из таблицы companies. Если там пусто — fallback на cities_ref.
     """
     rows = (
         db.query(CompanyRow.region)
@@ -668,6 +678,18 @@ def list_regions(
         .all()
     )
     all_regions = [r[0] for r in rows]
+
+    # Fallback: если в companies пусто — берём из cities_ref справочника
+    if not all_regions:
+        ref_rows = (
+            db.query(CityRefRow.region)
+            .filter(CityRefRow.region.isnot(None), CityRefRow.region != "")
+            .distinct()
+            .order_by(CityRefRow.region)
+            .all()
+        )
+        all_regions = [r[0] for r in ref_rows]
+
     total = len(all_regions)
     start = (page - 1) * per_page
     items = all_regions[start:start + per_page]

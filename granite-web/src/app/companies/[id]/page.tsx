@@ -76,14 +76,24 @@ export default function CompanyDetailPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-20 p-4 md:p-0">
-      <div className="flex items-center justify-between">
-        <Button 
-          variant="ghost" 
-          onClick={() => router.back()} 
-          className="-ml-2 text-slate-500 hover:text-slate-900"
+      {/* Sticky-панель: Назад + Пересканировать */}
+      <div className="sticky top-0 z-30 -mx-4 -mt-4 mb-6 border-b bg-white/95 backdrop-blur px-4 py-3 flex items-center justify-between">
+        <Button
+          variant="ghost"
+          onClick={() => router.back()}
+          className="text-slate-500 hover:text-slate-900"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
           Назад к списку
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setIsReEnrichOpen(true)}
+          disabled={!company.website}
+        >
+          <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+          Пересканировать сайт
         </Button>
       </div>
 
@@ -111,7 +121,7 @@ export default function CompanyDetailPage() {
               </div>
               <div className="flex gap-2">
                 {segment && (
-                  <Badge variant={segment.variant} className="px-3 py-1 text-sm bg-white shadow-sm">
+                  <Badge variant={segment.variant} className="px-3 py-1 shadow-sm">
                     Сегмент {segment.label}
                   </Badge>
                 )}
@@ -261,16 +271,6 @@ export default function CompanyDetailPage() {
                     }}
                   />
                 </div>
-                
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start text-xs font-bold text-indigo-700 border-indigo-200 bg-white hover:bg-indigo-50"
-                  onClick={() => setIsReEnrichOpen(true)}
-                  disabled={!company.website}
-                >
-                  <RefreshCcw className="mr-2 h-3.5 w-3.5" />
-                  Пересканировать сайт
-                </Button>
               </div>
             </CardContent>
           </Card>

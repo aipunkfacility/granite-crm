@@ -214,8 +214,8 @@ class TestStatsEndpoint:
         assert r.status_code == 200
         data = r.json()
         assert data["total_companies"] == 0
-        assert data["funnel"] == {}
-        assert data["segments"] == {}
+        assert isinstance(data["funnel"], dict) and all(v == 0 for v in data["funnel"].values())
+        assert isinstance(data["segments"], dict) and all(v == 0 for v in data["segments"].values())
         assert data["top_cities"] == []
         assert data["with_telegram"] == 0
         assert data["with_email"] == 0

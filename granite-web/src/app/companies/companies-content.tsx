@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from "react";
 import { useCompanies } from "@/lib/hooks/use-companies";
 import { useCompanyFilters } from "@/lib/hooks/use-company-filters";
 import { CompanyTable } from "@/components/companies/company-table";
@@ -10,6 +11,7 @@ import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCmsTypes } from "@/lib/api/companies";
+import { apiClient } from "@/lib/api/client";
 
 export function CompaniesPageContent() {
   const [page, setPage] = useState(1);
@@ -30,13 +32,19 @@ export function CompaniesPageContent() {
     order_dir: 'desc',
   });
 
+  // Сброс городов при смене региона
+  useEffect(() => {
+    setFilter('city', []);
+  }, [filters.region, setFilter]);
+
   // Загрузка справочников для dropdown-фильтров
   const { data: cities } = useQuery({
-    queryKey: ['cities'],
+    queryKey: ['cities', filters.region],
     queryFn: async () => {
-      const res = await fetch('/api/v1/cities');
-      const data = await res.json();
-      return data.items as string[];
+      const params: Record<string, string> = {};
+      if (filters.region) params.region = filters.region;
+      const { data } = await apiClient.get<{ items: string[] }>('cities', { params });
+      return data.items;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -44,9 +52,8 @@ export function CompaniesPageContent() {
   const { data: regions } = useQuery({
     queryKey: ['regions'],
     queryFn: async () => {
-      const res = await fetch('/api/v1/regions');
-      const data = await res.json();
-      return data.items as string[];
+      const { data } = await apiClient.get<{ items: string[] }>('regions');
+      return data.items;
     },
     staleTime: 5 * 60 * 1000,
   });
@@ -99,6 +106,7 @@ export function CompaniesPageContent() {
         onFilterChange={setFilter}
         onClearAll={clearAll}
         activeCount={activeCount}
+        total={data?.total || 0}
         cities={cities || []}
         regions={regions || []}
         cmsTypes={cmsTypes || []}
@@ -118,10 +126,7 @@ export function CompaniesPageContent() {
         <>
           <CompanyTable companies={data?.items || []} />
 
-          <div className="flex items-center justify-between text-sm text-slate-500 py-4">
-            <div>
-              Всего найдено: <span className="font-semibold">{data?.total || 0}</span>
-            </div>
+          <div className="flex items-center justify-end text-sm text-slate-500 py-4">
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
