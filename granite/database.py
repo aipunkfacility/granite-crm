@@ -83,6 +83,8 @@ class CompanyRow(Base):
     # но приложение должно фильтровать deleted_at IS NOT NULL.
     # crm_contacts и crm_tasks используют SET NULL для сохранения истории.
     deleted_at = Column(DateTime, nullable=True, index=True)
+    # Денормализованные источники (для фильтрации). Заполняется из raw_companies.
+    sources = Column(JSON, default=list)  # list[str], e.g. ["jsprav", "web_search"]
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"

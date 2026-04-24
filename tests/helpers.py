@@ -16,6 +16,8 @@ _COMPANY_ALLOWED_KEYS = frozenset({
     "address", "needs_review",
     # Новые для spam/duplicate/admin:
     "deleted_at", "merged_into", "review_reason",
+    # Денормализация:
+    "sources",
 })
 
 # Поля EnrichedCompanyRow, которые пробрасываются из overrides

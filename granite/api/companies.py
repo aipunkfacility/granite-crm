@@ -88,9 +88,10 @@ def list_companies(
     include_deleted: int = Query(0, description="0=hide deleted, 1=show deleted (admin)"),
     tg_trust_min: Optional[int] = Query(None, ge=0, le=3),
     tg_trust_max: Optional[int] = Query(None, ge=0, le=3),
+    source: Optional[str] = Query(None, description="Filter by source (jsprav, web_search, 2gis, yell, avito)"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
-    order_by: str = Query("crm_score", pattern="^(crm_score|name_best|city|funnel_stage|segment|is_network)$"),
+    order_by: str = Query("crm_score", pattern="^(crm_score|name_best|city|funnel_stage|segment|is_network|updated_at|last_contact_at)$"),
     order_dir: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """Список компаний с join enriched+crm. Пагинация, фильтры, сортировка."""
@@ -123,6 +124,16 @@ def list_companies(
     if tg_trust_max is not None:
         q = q.filter(sa_text(
             f"json_extract(enriched_companies.tg_trust, '$.trust_score') <= {tg_trust_max}"
+        ))
+
+    # --- Source фильтр (денормализованный JSON-массив) ---
+    VALID_SOURCES = {"jsprav", "web_search", "2gis", "yell", "jsprav_playwright", "avito", "google_maps"}
+    if source:
+        if source not in VALID_SOURCES:
+            from fastapi import HTTPException as _HE
+            raise _HE(422, f"Invalid source '{source}'. Valid: {', '.join(sorted(VALID_SOURCES))}")
+        q = q.filter(sa_text(
+            f"'{source}' IN (SELECT value FROM json_each(companies.sources))"
         ))
 
     if city:
@@ -265,6 +276,8 @@ def list_companies(
         "funnel_stage": CrmContactRow.funnel_stage,
         "segment": EnrichedCompanyRow.segment,
         "is_network": EnrichedCompanyRow.is_network,
+        "updated_at": CompanyRow.updated_at,
+        "last_contact_at": CrmContactRow.last_contact_at,
     }[order_by]
     if order_dir == "desc":
         q = q.order_by(order_col.desc().nullslast())
