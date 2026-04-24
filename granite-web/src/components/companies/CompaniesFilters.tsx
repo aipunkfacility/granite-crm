@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { FilterToggle } from '@/components/ui/filter-toggle';
 import { Input } from '@/components/ui/input';
 import { ChevronDown, X } from 'lucide-react';
@@ -25,6 +25,8 @@ const selectClass =
 
 /* ========================================
    Collapsible Group
+   — Используем CSS grid trick для плавной
+     анимации max-height (0 ↔ 1fr)
    ======================================== */
 function FilterGroup({
   label,
@@ -38,6 +40,31 @@ function FilterGroup({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [maxH, setMaxH] = useState(open ? '9999px' : '0px');
+
+  /* Измеряем реальную высоту контента для анимации */
+  useEffect(() => {
+    if (!bodyRef.current) return;
+    if (open) {
+      /* Разворачиваем: сначала снимаем ограничение, измеряем */
+      const h = bodyRef.current.scrollHeight;
+      setMaxH(`${h + 16}px`); // +16 запас
+      /* После анимации — убираем ограничение чтобы dropdown не обрезался */
+      const timer = setTimeout(() => setMaxH('none'), 350);
+      return () => clearTimeout(timer);
+    } else {
+      /* Сворачиваем: сначала задаём точную высоту (для transition), потом 0 */
+      const h = bodyRef.current.scrollHeight;
+      setMaxH(`${h}px`);
+      /* Нужно 2 кадра: установить точную высоту → затем 0 */
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setMaxH('0px');
+        });
+      });
+    }
+  }, [open]);
 
   return (
     <div className={open ? 'mt-3' : 'mt-2'}>
@@ -52,7 +79,7 @@ function FilterGroup({
             !open ? '-rotate-90' : ''
           }`}
         />
-        <span className="text-[10px] font-bold uppercase tracking-widest text-primary">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-primary group-hover:text-primary/80 transition-colors">
           {label}
         </span>
         {/* Active count badge — shown when collapsed */}
@@ -64,13 +91,13 @@ function FilterGroup({
         <span className="flex-1 border-b border-border" />
       </button>
 
-      {/* Group body — collapsible */}
+      {/* Group body — collapsible via measured max-height */}
       <div
-        className={`overflow-hidden transition-all duration-300 ease-in-out ${
-          open ? 'mt-2 max-h-96 opacity-100' : 'mt-0 max-h-0 opacity-0'
-        }`}
+        ref={bodyRef}
+        className="overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out"
+        style={{ maxHeight: maxH, opacity: open ? 1 : 0 }}
       >
-        {children}
+        <div className="pt-2">{children}</div>
       </div>
     </div>
   );
@@ -80,34 +107,32 @@ function FilterGroup({
    Active Filter Pills (for collapsed panel header)
    ======================================== */
 function ActivePills({ filters }: { filters: FilterState }) {
-  const pills: { label: string; variant: 'primary' | 'success' | 'destructive' | 'muted' }[] = useMemo(() => {
+  const pills = useMemo(() => {
     const result: { label: string; variant: 'primary' | 'success' | 'destructive' | 'muted' }[] = [];
 
-    /* Сегменты */
     filters.segment.forEach(s => {
       result.push({ label: s === 'spam' ? 'Spam' : s, variant: 'primary' });
     });
 
-    /* Воронка */
     if (filters.funnel_stage) {
       const cfg = FUNNEL_STAGES[filters.funnel_stage as FunnelStage];
       result.push({ label: cfg?.label ?? filters.funnel_stage, variant: 'muted' });
     }
 
-    /* География */
     if (filters.region) {
-      result.push({ label: filters.region.length > 20 ? filters.region.slice(0, 18) + '...' : filters.region, variant: 'muted' });
+      result.push({
+        label: filters.region.length > 20 ? filters.region.slice(0, 18) + '...' : filters.region,
+        variant: 'muted',
+      });
     }
     if (filters.city.length > 0) {
       result.push({ label: `${filters.city.length} гор.`, variant: 'muted' });
     }
 
-    /* CMS */
     if (filters.cms) {
       result.push({ label: filters.cms, variant: 'muted' });
     }
 
-    /* Тоглы */
     const toggleMap: [keyof FilterState, string][] = [
       ['has_telegram', 'TG'], ['has_whatsapp', 'WA'], ['has_email', 'Email'],
       ['has_website', 'Сайт'], ['has_vk', 'VK'], ['has_address', 'Адр.'],
@@ -120,7 +145,6 @@ function ActivePills({ filters }: { filters: FilterState }) {
       else if (v === 0) result.push({ label: `~${short}`, variant: 'destructive' });
     });
 
-    /* Score */
     if (filters.min_score !== undefined || filters.max_score !== undefined) {
       const lo = filters.min_score ?? '';
       const hi = filters.max_score ?? '';
@@ -173,15 +197,39 @@ export function CompaniesFilters({
   cmsTypes,
 }: CompaniesFiltersProps) {
   const [panelOpen, setPanelOpen] = useState(true);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [panelMaxH, setPanelMaxH] = useState(panelOpen ? 'none' : '0px');
+
+  /* Анимация панели — тот же pattern что и группы */
+  useEffect(() => {
+    if (!bodyRef.current) return;
+    if (panelOpen) {
+      const h = bodyRef.current.scrollHeight;
+      setPanelMaxH(`${h + 32}px`);
+      const timer = setTimeout(() => setPanelMaxH('none'), 400);
+      return () => clearTimeout(timer);
+    } else {
+      const h = bodyRef.current.scrollHeight;
+      setPanelMaxH(`${h}px`);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setPanelMaxH('0px');
+        });
+      });
+    }
+  }, [panelOpen]);
 
   /* Keyboard shortcut: F to toggle panel */
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const tag = (e.target as HTMLElement)?.tagName;
-        if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
-        setPanelOpen(prev => !prev);
-      }
+      if (e.key !== 'f' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const el = e.target as HTMLElement;
+      const tag = el.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      /* Также пропускаем если фокус на кнопке / contentEditable */
+      if (el.isContentEditable) return;
+      if (tag === 'BUTTON' || el.closest('button')) return;
+      setPanelOpen(prev => !prev);
     }
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
@@ -226,12 +274,11 @@ export function CompaniesFilters({
   }, [filters.is_network, filters.has_marquiz, filters.needs_review, filters.stop_automation, filters.min_score, filters.max_score]);
 
   return (
-    <div className="overflow-hidden rounded-lg border bg-card transition-all duration-300">
+    <div className="rounded-lg border bg-card transition-all duration-300">
       {/* ======== Panel Header (always visible) ======== */}
-      <button
-        type="button"
+      <div
+        className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors select-none"
         onClick={() => setPanelOpen(!panelOpen)}
-        className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-muted/30 transition-colors"
       >
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${
@@ -249,33 +296,26 @@ export function CompaniesFilters({
             Найдено: <span className="font-semibold text-foreground">{total}</span>
           </span>
           {activeCount > 0 && (
-            <span
-              role="button"
-              tabIndex={0}
+            <button
+              type="button"
               onClick={e => {
                 e.stopPropagation();
                 onClearAll();
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.stopPropagation();
-                  onClearAll();
-                }
               }}
               className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] text-foreground hover:border-destructive hover:text-destructive transition-colors"
             >
               <X className="h-3 w-3" />
               Сбросить ({activeCount})
-            </span>
+            </button>
           )}
         </div>
-      </button>
+      </div>
 
       {/* ======== Panel Body (collapsible) ======== */}
       <div
-        className={`transition-all duration-300 ease-in-out ${
-          panelOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
-        }`}
+        ref={bodyRef}
+        className="overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out"
+        style={{ maxHeight: panelMaxH, opacity: panelOpen ? 1 : 0 }}
       >
         <div className="border-t border-border px-4 pb-4 pt-1">
 
@@ -416,13 +456,13 @@ export function CompaniesFilters({
 
               {/* Score — справа с разделителем */}
               <div className="ml-auto flex items-center gap-2 border-l border-border pl-4">
-                <span className="text-xs text-muted-foreground">Score</span>
+                <span className="text-xs text-muted-foreground whitespace-nowrap">Score</span>
                 <Input
                   type="number"
                   placeholder="от"
                   value={filters.min_score ?? ''}
                   onChange={e => onFilterChange('min_score', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-16 text-center text-xs"
+                  className="w-[4.5rem] text-center text-xs"
                 />
                 <span className="text-muted-foreground">—</span>
                 <Input
@@ -430,7 +470,7 @@ export function CompaniesFilters({
                   placeholder="до"
                   value={filters.max_score ?? ''}
                   onChange={e => onFilterChange('max_score', e.target.value ? parseInt(e.target.value) : undefined)}
-                  className="w-16 text-center text-xs"
+                  className="w-[4.5rem] text-center text-xs"
                 />
               </div>
             </div>
