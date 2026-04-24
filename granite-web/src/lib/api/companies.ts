@@ -27,6 +27,14 @@ export interface CompanyFilters {
   stop_automation?: 0 | 1 | undefined;
   cms?: string;
   has_marquiz?: 0 | 1 | undefined;
+
+  // Фаза 1: Спам/удалённые
+  include_spam?: 0 | 1 | 2;  // 0=hide, 1=show, 2=only spam
+  include_deleted?: 0 | 1;   // 0=hide, 1=show
+
+  // Фаза 2: TG Trust
+  tg_trust_min?: number;     // 0-3
+  tg_trust_max?: number;     // 0-3
 }
 
 export const fetchCompanies = async (params: CompanyFilters): Promise<PaginatedResponse<Company>> => {
@@ -65,6 +73,23 @@ export const reEnrichPreview = async (id: number): Promise<any> => {
 
 export const reEnrichApply = async (id: number, updates: any): Promise<{ ok: boolean }> => {
   const { data } = await apiClient.post(`companies/${id}/re-enrich-apply`, updates);
+  return data;
+};
+
+// Mark-spam / unmark-spam
+export const markSpam = async (id: number, reason: string, note?: string): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.post(`companies/${id}/mark-spam`, { reason, note });
+  return data;
+};
+
+export const unmarkSpam = async (id: number): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.post(`companies/${id}/unmark-spam`);
+  return data;
+};
+
+// Mark-duplicate
+export const markDuplicate = async (id: number, targetId: number): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.post(`companies/${id}/mark-duplicate`, { target_id: targetId });
   return data;
 };
 

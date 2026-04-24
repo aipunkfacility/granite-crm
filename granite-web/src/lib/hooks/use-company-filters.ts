@@ -25,6 +25,12 @@ export interface FilterState {
   min_score: number | undefined;
   max_score: number | undefined;
   cms: string | undefined;
+  // Фаза 1: Спам/удалённые
+  include_spam: 0 | 1 | 2;
+  include_deleted: 0 | 1;
+  // Фаза 2: TG Trust
+  tg_trust_min: number | undefined;
+  tg_trust_max: number | undefined;
 }
 
 const DEFAULTS: FilterState = {
@@ -46,6 +52,10 @@ const DEFAULTS: FilterState = {
   min_score: undefined,
   max_score: undefined,
   cms: undefined,
+  include_spam: 0,
+  include_deleted: 0,
+  tg_trust_min: undefined,
+  tg_trust_max: undefined,
 };
 
 const TOGGLE_KEYS = [
@@ -89,6 +99,10 @@ export function useCompanyFilters() {
       min_score: parseNum(p.get('min_score')),
       max_score: parseNum(p.get('max_score')),
       cms: p.get('cms') || undefined,
+      include_spam: (parseInt(p.get('include_spam') || '0', 10) as 0 | 1 | 2) || 0,
+      include_deleted: (parseInt(p.get('include_deleted') || '0', 10) as 0 | 1) || 0,
+      tg_trust_min: parseNum(p.get('tg_trust_min')),
+      tg_trust_max: parseNum(p.get('tg_trust_max')),
     };
   });
 
@@ -110,6 +124,10 @@ export function useCompanyFilters() {
       if (filters.min_score !== undefined) params.set('min_score', String(filters.min_score));
       if (filters.max_score !== undefined) params.set('max_score', String(filters.max_score));
       if (filters.cms) params.set('cms', filters.cms);
+      if (filters.include_spam) params.set('include_spam', String(filters.include_spam));
+      if (filters.include_deleted) params.set('include_deleted', String(filters.include_deleted));
+      if (filters.tg_trust_min !== undefined) params.set('tg_trust_min', String(filters.tg_trust_min));
+      if (filters.tg_trust_max !== undefined) params.set('tg_trust_max', String(filters.tg_trust_max));
 
       const qs = params.toString();
       router.replace(pathname + (qs ? `?${qs}` : ''), { scroll: false });
@@ -144,6 +162,10 @@ export function useCompanyFilters() {
     if (filters.min_score !== undefined) count++;
     if (filters.max_score !== undefined) count++;
     if (filters.cms) count++;
+    if (filters.include_spam) count++;
+    if (filters.include_deleted) count++;
+    if (filters.tg_trust_min !== undefined) count++;
+    if (filters.tg_trust_max !== undefined) count++;
     return count;
   }, [filters]);
 
@@ -166,6 +188,10 @@ export function useCompanyFilters() {
     });
     if (filters.min_score !== undefined) p.min_score = filters.min_score;
     if (filters.max_score !== undefined) p.max_score = filters.max_score;
+    if (filters.include_spam) p.include_spam = filters.include_spam;
+    if (filters.include_deleted) p.include_deleted = filters.include_deleted;
+    if (filters.tg_trust_min !== undefined) p.tg_trust_min = filters.tg_trust_min;
+    if (filters.tg_trust_max !== undefined) p.tg_trust_max = filters.tg_trust_max;
     return p;
   }, [filters]);
 

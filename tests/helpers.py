@@ -2,20 +2,28 @@
 
 Используют list/dict напрямую — Column(JSON) сам сериализует через json.dumps.
 """
-from granite.database import CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmTaskRow
+from datetime import datetime, timezone
+
+from granite.database import (
+    CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmTaskRow, CrmTouchRow,
+)
 
 # Поля CompanyRow, которые допустимо передавать в create_company
 _COMPANY_ALLOWED_KEYS = frozenset({
     "name_best", "city", "website", "emails", "phones", "messengers",
     "region", "segment", "status",
-    # Новые для фильтров:
+    # Фильтры:
     "address", "needs_review",
+    # Новые для spam/duplicate/admin:
+    "deleted_at", "merged_into", "review_reason",
 })
 
 # Поля EnrichedCompanyRow, которые пробрасываются из overrides
 _ENRICHED_ALLOWED_KEYS = frozenset({
     "crm_score", "segment", "messengers", "cms", "is_network",
     "has_marquiz",
+    # Новые:
+    "tg_trust",
 })
 
 
@@ -69,6 +77,11 @@ def create_company(db, **overrides) -> int:
     db.add(contact)
     db.flush()
     return company.id
+
+
+def get_touches(db, company_id: int) -> list[CrmTouchRow]:
+    """Получить все audit-записи (crm_touches) для компании."""
+    return db.query(CrmTouchRow).filter_by(company_id=company_id).all()
 
 
 def create_task(db, company_id: int, **overrides) -> int:
