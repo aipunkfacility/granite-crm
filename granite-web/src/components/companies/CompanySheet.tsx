@@ -21,6 +21,9 @@ import {
   Edit2,
   RefreshCcw,
   X,
+  ShieldOff,
+  ShieldAlert,
+  Shield,
 } from "lucide-react";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { FunnelStage } from "@/lib/types/api";
@@ -31,6 +34,30 @@ import { CompanyEditDialog } from "@/components/companies/CompanyEditDialog";
 import { ReEnrichDialog } from "@/components/companies/ReEnrichDialog";
 
 /* V-01: Карточка компании — Sheet (side panel) вместо отдельной страницы */
+
+/* TG Trust Indicator — детальный статус «живости» Telegram в Sheet */
+function TgTrustIndicator({ trust }: { trust: Record<string, any> }) {
+  const score = trust?.trust_score;
+  if (score === undefined || score === null) return null;
+
+  const config: Record<number, { icon: React.ElementType; color: string; bg: string; label: string }> = {
+    0: { icon: ShieldOff, color: 'text-destructive', bg: 'bg-destructive/10', label: 'Мёртвый' },
+    1: { icon: ShieldAlert, color: 'text-orange-400', bg: 'bg-orange-400/10', label: 'Частичный' },
+    2: { icon: Shield, color: 'text-info', bg: 'bg-info/10', label: 'Живой' },
+    3: { icon: ShieldCheck, color: 'text-success', bg: 'bg-success/10', label: 'Активный' },
+  };
+
+  const { icon: Icon, color, bg, label } = config[score] ?? config[0];
+  const hasAvatar = trust?.has_avatar;
+  const hasBio = trust?.has_bio;
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium ${bg} ${color}`} title={`TG Trust: ${score}/3\nAvatar: ${hasAvatar ? 'да' : 'нет'}\nBio: ${hasBio ? 'да' : 'нет'}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {label}
+    </span>
+  );
+}
 
 interface CompanySheetProps {
   companyId: number | null;
@@ -191,11 +218,14 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                     <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Мессенджеры</h3>
                     <div className="flex flex-wrap gap-2">
                       {company.telegram && (
-                        <Button variant="outline" size="sm" asChild className="border-info/20 hover:bg-info/10">
-                          <a href={company.telegram.startsWith('http') ? company.telegram : `https://t.me/${company.telegram.replace('@', '')}`} target="_blank" rel="noreferrer">
-                            <Send className="mr-2 h-4 w-4 text-info" /> Telegram
-                          </a>
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" asChild className="border-info/20 hover:bg-info/10">
+                            <a href={company.telegram.startsWith('http') ? company.telegram : `https://t.me/${company.telegram.replace('@', '')}`} target="_blank" rel="noreferrer">
+                              <Send className="mr-2 h-4 w-4 text-info" /> Telegram
+                            </a>
+                          </Button>
+                          <TgTrustIndicator trust={company.tg_trust} />
+                        </div>
                       )}
                       {company.whatsapp && (
                         <Button variant="outline" size="sm" asChild className="border-success/20 hover:bg-success/10">

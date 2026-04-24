@@ -13,7 +13,28 @@ import { Company } from "@/lib/types/api";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
-import { ExternalLink, MessageCircle, Phone } from "lucide-react";
+import { ExternalLink, MessageCircle, Phone, Shield, ShieldOff, ShieldAlert, ShieldCheck } from "lucide-react";
+
+/* TG Trust badge — индикатор «живости» Telegram-аккаунта */
+function TgTrustBadge({ trust }: { trust: Record<string, any> }) {
+  const score = trust?.trust_score;
+  if (score === undefined || score === null) return null;
+
+  const config: Record<number, { icon: React.ElementType; color: string; label: string }> = {
+    0: { icon: ShieldOff, color: 'text-destructive', label: 'Мёртвый' },
+    1: { icon: ShieldAlert, color: 'text-orange-400', label: 'Частичный' },
+    2: { icon: Shield, color: 'text-info', label: 'Живой' },
+    3: { icon: ShieldCheck, color: 'text-success', label: 'Активный' },
+  };
+
+  const { icon: Icon, color, label } = config[score] ?? config[0];
+
+  return (
+    <span className={`${color} inline-flex items-center`} title={`TG Trust: ${label} (${score}/3)`}>
+      <Icon className="h-3 w-3" />
+    </span>
+  );
+}
 
 interface CompanyTableProps {
   companies: Company[];
@@ -81,16 +102,18 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {company.telegram && (
-                        <a
-                          href={`https://t.me/${company.telegram.replace('@', '')}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-info hover:scale-110 transition-transform"
-                          /* Клик по ссылке НЕ открывает Sheet */
-                          onClick={e => e.stopPropagation()}
-                        >
-                          <MessageCircle className="h-4 w-4" />
-                        </a>
+                        <span className="inline-flex items-center gap-0.5">
+                          <a
+                            href={`https://t.me/${company.telegram.replace('@', '')}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-info hover:scale-110 transition-transform"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            <MessageCircle className="h-4 w-4" />
+                          </a>
+                          <TgTrustBadge trust={company.tg_trust} />
+                        </span>
                       )}
                       {company.phones.length > 0 && (
                         <a
