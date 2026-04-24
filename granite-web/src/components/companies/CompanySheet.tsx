@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchCompany, updateCompany } from "@/lib/api/companies";
+import { fetchCompany, updateCompany, markSpam, unmarkSpam } from "@/lib/api/companies";
 import * as Dialog from "@radix-ui/react-dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,8 @@ import {
   ShieldOff,
   ShieldAlert,
   Shield,
+  Ban,
+  Undo2,
 } from "lucide-react";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { FunnelStage } from "@/lib/types/api";
@@ -32,6 +34,7 @@ import { useState, useEffect } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { CompanyEditDialog } from "@/components/companies/CompanyEditDialog";
 import { ReEnrichDialog } from "@/components/companies/ReEnrichDialog";
+import { MarkSpamDialog } from "@/components/companies/MarkSpamDialog";
 
 /* V-01: Карточка компании — Sheet (side panel) вместо отдельной страницы */
 
@@ -70,6 +73,7 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isReEnrichOpen, setIsReEnrichOpen] = useState(false);
+  const [isSpamDialogOpen, setIsSpamDialogOpen] = useState(false);
 
   const { data: company, isLoading, error } = useQuery({
     queryKey: ['company', companyId],
@@ -98,6 +102,39 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
   const debouncedSaveNotes = useDebouncedCallback((value: string) => {
     updateMutation.mutate({ notes: value });
   }, 1000);
+
+  /* Mark-spam с undo toast */
+  const handleMarkSpam = async (reason: string, note?: string) => {
+    if (!companyId) return;
+    try {
+      await markSpam(companyId, reason, note);
+      setIsSpamDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['company', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success('Компания перемещена в спам', {
+        duration: 5000,
+        action: {
+          label: 'Отменить',
+          onClick: () => handleUnmarkSpam(),
+        },
+      });
+    } catch (err: any) {
+      toast.error(`Ошибка: ${err.message}`);
+    }
+  };
+
+  /* Unmark-spam — восстановление */
+  const handleUnmarkSpam = async () => {
+    if (!companyId) return;
+    try {
+      await unmarkSpam(companyId);
+      queryClient.invalidateQueries({ queryKey: ['company', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success('Компания восстановлена из спама');
+    } catch (err: any) {
+      toast.error(`Ошибка: ${err.message}`);
+    }
+  };
 
   if (!companyId) return null;
 
@@ -146,6 +183,27 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 ml-3">
+                  {company.segment === 'spam' ? (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 rounded-full border-success/30 hover:bg-success/10 hover:text-success"
+                      onClick={handleUnmarkSpam}
+                      title="Восстановить из спама"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 rounded-full border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setIsSpamDialogOpen(true)}
+                      title="В спам"
+                    >
+                      <Ban className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="icon"
@@ -170,6 +228,25 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                   </Dialog.Close>
                 </div>
               </div>
+
+              {/* Spam banner */}
+              {company.segment === 'spam' && (
+                <div className="px-6 py-2 bg-destructive/5 border-b border-destructive/20">
+                  <div className="flex items-center gap-2 text-sm text-destructive">
+                    <Ban className="h-4 w-4 shrink-0" />
+                    <span className="font-medium">Компания в спаме</span>
+                    <span className="text-destructive/70">— автоматизация остановлена</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-auto text-destructive border-destructive/20 hover:bg-destructive/10"
+                      onClick={handleUnmarkSpam}
+                    >
+                      <Undo2 className="mr-1 h-3 w-3" /> Восстановить
+                    </Button>
+                  </div>
+                </div>
+              )}
 
               {/* Scrollable body */}
               <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
@@ -390,6 +467,14 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                 isOpen={isReEnrichOpen}
                 onClose={() => setIsReEnrichOpen(false)}
                 onSuccess={() => queryClient.invalidateQueries({ queryKey: ['company', companyId] })}
+              />
+
+              <MarkSpamDialog
+                companyName={company.name}
+                isOpen={isSpamDialogOpen}
+                onClose={() => setIsSpamDialogOpen(false)}
+                onConfirm={handleMarkSpam}
+                isSaving={false}
               />
             </>
           )}
