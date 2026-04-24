@@ -305,8 +305,9 @@ app.include_router(templates.router, prefix="/api/v1", tags=["templates"])
 app.include_router(stats.router, prefix="/api/v1", tags=["stats"])
 app.include_router(export.router, prefix="/api/v1", tags=["export"])
 
-from granite.api import pipeline_status
+from granite.api import pipeline_status, admin
 app.include_router(pipeline_status.router, prefix="/api/v1", tags=["pipeline"])
+app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
 
 
 @app.get("/health")
