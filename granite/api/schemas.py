@@ -217,6 +217,10 @@ class CompanyResponse(BaseModel):
     last_contact_at: Optional[str] = None
     notes: str = ""
     stop_automation: bool = False
+    merged_into: Optional[int] = None
+    review_reason: str = ""
+    needs_review: bool = False
+    updated_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

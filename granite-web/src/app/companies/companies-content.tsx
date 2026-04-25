@@ -166,6 +166,7 @@ export function CompaniesPageContent() {
         companyId={selectedCompanyId}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+        onSelectCompany={handleSelectCompany}
       />
     </div>
   );

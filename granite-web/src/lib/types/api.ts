@@ -38,7 +38,10 @@ export interface Company {
   last_contact_at: string | null;
   notes: string;
   stop_automation: boolean;
-  updated_at: string;
+  merged_into: number | null;
+  review_reason: string;
+  needs_review: boolean;
+  updated_at: string | null;
 }
 
 export interface ReEnrichData {

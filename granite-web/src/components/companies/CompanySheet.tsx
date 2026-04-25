@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchCompany, updateCompany, markSpam, unmarkSpam } from "@/lib/api/companies";
+import { fetchCompany, updateCompany, markSpam, unmarkSpam, markDuplicate } from "@/lib/api/companies";
 import * as Dialog from "@radix-ui/react-dialog";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,8 @@ import {
   Shield,
   Ban,
   Undo2,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { FunnelStage } from "@/lib/types/api";
@@ -35,6 +37,7 @@ import { useDebouncedCallback } from "use-debounce";
 import { CompanyEditDialog } from "@/components/companies/CompanyEditDialog";
 import { ReEnrichDialog } from "@/components/companies/ReEnrichDialog";
 import { MarkSpamDialog } from "@/components/companies/MarkSpamDialog";
+import { MarkDuplicateDialog } from "@/components/companies/MarkDuplicateDialog";
 
 /* V-01: Карточка компании — Sheet (side panel) вместо отдельной страницы */
 
@@ -66,14 +69,16 @@ interface CompanySheetProps {
   companyId: number | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSelectCompany?: (companyId: number) => void;
 }
 
-export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProps) {
+export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }: CompanySheetProps) {
   const queryClient = useQueryClient();
 
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isReEnrichOpen, setIsReEnrichOpen] = useState(false);
   const [isSpamDialogOpen, setIsSpamDialogOpen] = useState(false);
+  const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
 
   const { data: company, isLoading, error } = useQuery({
     queryKey: ['company', companyId],
@@ -136,6 +141,20 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
     }
   };
 
+  /* Mark-duplicate */
+  const handleMarkDuplicate = async (targetId: number) => {
+    if (!companyId) return;
+    try {
+      await markDuplicate(companyId, targetId);
+      setIsDuplicateDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['company', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['companies'] });
+      toast.success('Компания помечена как дубль');
+    } catch (err: any) {
+      toast.error(`Ошибка: ${err.message}`);
+    }
+  };
+
   if (!companyId) return null;
 
   const stage = company ? FUNNEL_STAGES[company.funnel_stage] : null;
@@ -183,7 +202,30 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                   </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0 ml-3">
-                  {company.segment === 'spam' ? (
+                  {/* Кнопка спам/восстановить — только для нескрытых компаний */}
+                  {!company.merged_into && company.segment !== 'spam' && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-full border-orange-400/30 hover:bg-orange-400/10 hover:text-orange-400"
+                        onClick={() => setIsDuplicateDialogOpen(true)}
+                        title="Это дубль"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="h-8 w-8 rounded-full border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setIsSpamDialogOpen(true)}
+                        title="В спам"
+                      >
+                        <Ban className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
+                  )}
+                  {company.segment === 'spam' && (
                     <Button
                       variant="outline"
                       size="icon"
@@ -192,16 +234,6 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                       title="Восстановить из спама"
                     >
                       <Undo2 className="h-3.5 w-3.5" />
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="h-8 w-8 rounded-full border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                      onClick={() => setIsSpamDialogOpen(true)}
-                      title="В спам"
-                    >
-                      <Ban className="h-3.5 w-3.5" />
                     </Button>
                   )}
                   <Button
@@ -243,6 +275,27 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                       onClick={handleUnmarkSpam}
                     >
                       <Undo2 className="mr-1 h-3 w-3" /> Восстановить
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Duplicate banner */}
+              {company.merged_into && (
+                <div className="px-6 py-2 bg-orange-400/5 border-b border-orange-400/20">
+                  <div className="flex items-center gap-2 text-sm text-orange-400">
+                    <Copy className="h-4 w-4 shrink-0" />
+                    <span className="font-medium">Дубликат</span>
+                    <span className="text-orange-400/70">— скрыта, объединена с</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="ml-1 text-orange-400 border-orange-400/20 hover:bg-orange-400/10"
+                      onClick={() => {
+                        onSelectCompany?.(company.merged_into!);
+                      }}
+                    >
+                      <ExternalLink className="mr-1 h-3 w-3" /> ID {company.merged_into}
                     </Button>
                   </div>
                 </div>
@@ -474,6 +527,15 @@ export function CompanySheet({ companyId, open, onOpenChange }: CompanySheetProp
                 isOpen={isSpamDialogOpen}
                 onClose={() => setIsSpamDialogOpen(false)}
                 onConfirm={handleMarkSpam}
+                isSaving={false}
+              />
+
+              <MarkDuplicateDialog
+                companyId={company.id}
+                companyName={company.name}
+                isOpen={isDuplicateDialogOpen}
+                onClose={() => setIsDuplicateDialogOpen(false)}
+                onConfirm={handleMarkDuplicate}
                 isSaving={false}
               />
             </>

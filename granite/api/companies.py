@@ -60,6 +60,10 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
         "last_contact_at": contact.last_contact_at.isoformat() if contact and contact.last_contact_at else None,
         "notes": contact.notes if contact else "",
         "stop_automation": bool(contact.stop_automation) if contact else False,
+        "merged_into": company.merged_into,
+        "review_reason": company.review_reason or "",
+        "needs_review": bool(company.needs_review) if company.needs_review is not None else False,
+        "updated_at": company.updated_at.isoformat() if company.updated_at else None,
     }
 
 
@@ -293,11 +297,8 @@ def list_companies(
 
 @router.get("/companies/{company_id}", response_model=CompanyResponse)
 def get_company(company_id: int, db: Session = Depends(get_db)):
-    """Карточка компании."""
-    company = db.query(CompanyRow).filter(
-        CompanyRow.id == company_id,
-        CompanyRow.deleted_at.is_(None),
-    ).first()
+    """Карточка компании. Показываем даже удалённые (для Sheet при include_deleted)."""
+    company = db.get(CompanyRow, company_id)
     if not company:
         raise HTTPException(404, "Company not found")
     enriched = db.get(EnrichedCompanyRow, company_id)
