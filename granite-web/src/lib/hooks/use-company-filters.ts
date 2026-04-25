@@ -195,11 +195,16 @@ export function useCompanyFilters() {
     return p;
   }, [filters]);
 
+  const applyPreset = useCallback((presetFilters: Partial<FilterState>) => {
+    setFiltersState({ ...DEFAULTS, ...presetFilters });
+  }, []);
+
   return {
     filters,
     setFilter,
     clearFilter,
     clearAll,
+    applyPreset,
     activeCount,
     isActive,
     toApiParams,

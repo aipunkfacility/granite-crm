@@ -10,6 +10,7 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PresetManager } from "@/components/companies/PresetManager";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCmsTypes } from "@/lib/api/companies";
 import { apiClient } from "@/lib/api/client";
@@ -22,6 +23,7 @@ export function CompaniesPageContent() {
     filters,
     setFilter,
     clearAll,
+    applyPreset,
     activeCount,
     toApiParams,
   } = useCompanyFilters();
@@ -99,14 +101,17 @@ export function CompaniesPageContent() {
           </p>
         </div>
 
-        <div className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Поиск по названию..."
-            className="pl-10"
-            value={filters.search}
-            onChange={(e) => setFilter('search', e.target.value)}
-          />
+        <div className="flex items-center gap-3">
+          <PresetManager filters={filters} onApplyPreset={applyPreset} />
+          <div className="relative w-full max-w-sm">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Поиск по названию..."
+              className="pl-10"
+              value={filters.search}
+              onChange={(e) => setFilter('search', e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
