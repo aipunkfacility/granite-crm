@@ -111,12 +111,29 @@ interface CompanyTableProps {
   orderBy?: string;
   orderDir?: 'asc' | 'desc';
   onSortChange?: (orderBy: string, orderDir: 'asc' | 'desc') => void;
+  /** Selected company IDs for batch operations */
+  selectedIds?: Set<number>;
+  /** Toggle selection of a single row */
+  onToggleSelect?: (companyId: number) => void;
+  /** Toggle select-all on current page */
+  onToggleSelectAll?: () => void;
 }
 
-export function CompanyTable({ companies, onSelectCompany, orderBy = 'crm_score', orderDir = 'desc', onSortChange }: CompanyTableProps) {
+export function CompanyTable({
+  companies,
+  onSelectCompany,
+  orderBy = 'crm_score',
+  orderDir = 'desc',
+  onSortChange,
+  selectedIds,
+  onToggleSelect,
+  onToggleSelectAll,
+}: CompanyTableProps) {
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({});
   const [colsOpen, setColsOpen] = useState(false);
   const colsRef = useRef<HTMLDivElement>(null);
+
+  const isBatchMode = selectedIds !== undefined;
 
   // Load visibility on mount
   useEffect(() => {
@@ -158,7 +175,11 @@ export function CompanyTable({ companies, onSelectCompany, orderBy = 'crm_score'
   };
 
   const visibleColumns = COLUMNS.filter(c => isVisible(c.key));
-  const colSpan = visibleColumns.length;
+  const colSpan = visibleColumns.length + (isBatchMode ? 1 : 0);
+
+  // Select-all state
+  const allOnPageSelected = isBatchMode && companies.length > 0 && companies.every(c => selectedIds.has(c.id));
+  const someOnPageSelected = isBatchMode && !allOnPageSelected && companies.some(c => selectedIds.has(c.id));
 
   return (
     <div className="space-y-2">
@@ -193,6 +214,15 @@ export function CompanyTable({ companies, onSelectCompany, orderBy = 'crm_score'
         <Table>
           <TableHeader>
             <TableRow>
+              {/* Checkbox column */}
+              {isBatchMode && (
+                <TableHead className="w-[40px] px-2">
+                  <Checkbox
+                    checked={allOnPageSelected ? true : someOnPageSelected ? 'indeterminate' : false}
+                    onCheckedChange={() => onToggleSelectAll?.()}
+                  />
+                </TableHead>
+              )}
               {COLUMNS.map(col => {
                 if (!isVisible(col.key)) return null;
                 if (col.sortable) {
@@ -227,13 +257,23 @@ export function CompanyTable({ companies, onSelectCompany, orderBy = 'crm_score'
               companies.map((company) => {
                 const stage = FUNNEL_STAGES[company.funnel_stage];
                 const segment = company.segment ? SEGMENT_CONFIG[company.segment] : null;
+                const isSelected = isBatchMode && selectedIds.has(company.id);
 
                 return (
                   <TableRow
                     key={company.id}
-                    className="group hover:bg-muted/50 cursor-pointer"
+                    className={`group hover:bg-muted/50 cursor-pointer ${isSelected ? 'bg-primary/5' : ''}`}
                     onClick={() => onSelectCompany?.(company.id)}
                   >
+                    {/* Checkbox */}
+                    {isBatchMode && (
+                      <TableCell className="px-2" onClick={e => e.stopPropagation()}>
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => onToggleSelect?.(company.id)}
+                        />
+                      </TableCell>
+                    )}
                     {/* Название */}
                     {isVisible('name') && (
                       <TableCell className="font-medium">

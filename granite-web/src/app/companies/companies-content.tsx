@@ -1,19 +1,23 @@
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { useCompanies } from "@/lib/hooks/use-companies";
 import { useCompanyFilters } from "@/lib/hooks/use-company-filters";
 import { CompanyTable } from "@/components/companies/company-table";
 import { CompaniesFilters } from "@/components/companies/CompaniesFilters";
 import { CompanySheet } from "@/components/companies/CompanySheet";
+import { BatchActionsBar } from "@/components/companies/BatchActionsBar";
+import { BatchConfirmDialog, BatchAction } from "@/components/companies/BatchConfirmDialog";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PresetManager } from "@/components/companies/PresetManager";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchCmsTypes, fetchSourceTypes } from "@/lib/api/companies";
+import { batchApprove, batchSpam } from "@/lib/api/admin";
 import { apiClient } from "@/lib/api/client";
+import { useAdmin } from "@/lib/admin-context";
 
 export function CompaniesPageContent() {
   const [page, setPage] = useState(1);
@@ -21,6 +25,15 @@ export function CompaniesPageContent() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sortKey, setSortKey] = useState('crm_score'); // frontend key
   const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc');
+
+  // Batch selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+  const [batchAction, setBatchAction] = useState<BatchAction>('spam');
+
+  const { isActive: isAdmin, token: adminToken } = useAdmin();
+  const queryClient = useQueryClient();
+
   const {
     filters,
     setFilter,
@@ -90,6 +103,77 @@ export function CompaniesPageContent() {
     setSheetOpen(true);
   };
 
+  // --- Batch selection handlers ---
+  const handleToggleSelect = useCallback((companyId: number) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(companyId)) next.delete(companyId);
+      else next.add(companyId);
+      return next;
+    });
+  }, []);
+
+  const handleToggleSelectAll = useCallback(() => {
+    const items = data?.items || [];
+    if (!items.length) return;
+
+    const allSelected = items.every(c => selectedIds.has(c.id));
+    if (allSelected) {
+      // Deselect all on current page
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        items.forEach(c => next.delete(c.id));
+        return next;
+      });
+    } else {
+      // Select all on current page
+      setSelectedIds(prev => {
+        const next = new Set(prev);
+        items.forEach(c => next.add(c.id));
+        return next;
+      });
+    }
+  }, [data?.items, selectedIds]);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+  }, []);
+
+  const handleBatchSpam = useCallback(() => {
+    setBatchAction('spam');
+    setBatchDialogOpen(true);
+  }, []);
+
+  const handleBatchApprove = useCallback(() => {
+    setBatchAction('approve');
+    setBatchDialogOpen(true);
+  }, []);
+
+  const handleBatchConfirm = useCallback(async (action: BatchAction, reason?: string) => {
+    if (!adminToken) throw new Error('Требуется авторизация администратора');
+    const ids = Array.from(selectedIds);
+    const total = ids.length;
+
+    let processed: number;
+    if (action === 'spam') {
+      const res = await batchSpam(ids, reason || 'aggregator', adminToken);
+      processed = res.processed;
+    } else {
+      const res = await batchApprove(ids, adminToken);
+      processed = res.processed;
+    }
+
+    // Refresh data
+    queryClient.invalidateQueries({ queryKey: ['companies'] });
+
+    return { ok: processed > 0, processed, total };
+  }, [adminToken, selectedIds, queryClient]);
+
+  const handleBatchDialogClose = useCallback(() => {
+    setBatchDialogOpen(false);
+    setSelectedIds(new Set());
+  }, []);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -154,6 +238,9 @@ export function CompaniesPageContent() {
             orderBy={sortKey}
             orderDir={orderDir}
             onSortChange={(key, dir) => { setSortKey(key); setOrderDir(dir); setPage(1); }}
+            selectedIds={selectedIds}
+            onToggleSelect={handleToggleSelect}
+            onToggleSelectAll={handleToggleSelectAll}
           />
 
           <div className="flex items-center justify-end text-sm text-muted-foreground py-4">
@@ -184,6 +271,24 @@ export function CompaniesPageContent() {
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         onSelectCompany={handleSelectCompany}
+      />
+
+      {/* Batch actions floating bar */}
+      <BatchActionsBar
+        selectedCount={selectedIds.size}
+        onBatchSpam={handleBatchSpam}
+        onBatchApprove={handleBatchApprove}
+        onClearSelection={handleClearSelection}
+        isAdmin={isAdmin}
+      />
+
+      {/* Batch confirmation dialog */}
+      <BatchConfirmDialog
+        isOpen={batchDialogOpen}
+        action={batchAction}
+        selectedCount={selectedIds.size}
+        onClose={handleBatchDialogClose}
+        onConfirm={handleBatchConfirm}
       />
     </div>
   );
