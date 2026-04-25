@@ -42,6 +42,7 @@ export interface Company {
   review_reason: string;
   needs_review: boolean;
   updated_at: string | null;
+  sources: string[];
 }
 
 export interface ReEnrichData {

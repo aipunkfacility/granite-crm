@@ -64,6 +64,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
         "review_reason": company.review_reason or "",
         "needs_review": bool(company.needs_review) if company.needs_review is not None else False,
         "updated_at": company.updated_at.isoformat() if company.updated_at else None,
+        "sources": company.sources or [],
     }
 
 
@@ -1010,3 +1011,20 @@ def list_cms_types(db: Session = Depends(get_db)):
         .all()
     )
     return {"items": [r[0] for r in rows]}
+
+
+@router.get("/source-types")
+def list_source_types(db: Session = Depends(get_db)):
+    """Список уникальных источников (sources) для фильтра на фронтенде."""
+    try:
+        rows = db.execute(sa_text(
+            "SELECT DISTINCT j.value FROM companies c, json_each(c.sources) j "
+            "WHERE c.sources IS NOT NULL AND c.deleted_at IS NULL "
+            "ORDER BY j.value"
+        )).fetchall()
+        items = [r[0] for r in rows if r[0]]
+        if not items:
+            items = sorted(["jsprav", "web_search", "2gis", "yell", "avito", "google_maps"])
+    except Exception:
+        items = sorted(["jsprav", "web_search", "2gis", "yell", "avito", "google_maps"])
+    return {"items": items}

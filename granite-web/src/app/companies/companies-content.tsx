@@ -12,14 +12,14 @@ import { Search } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PresetManager } from "@/components/companies/PresetManager";
 import { useQuery } from "@tanstack/react-query";
-import { fetchCmsTypes } from "@/lib/api/companies";
+import { fetchCmsTypes, fetchSourceTypes } from "@/lib/api/companies";
 import { apiClient } from "@/lib/api/client";
 
 export function CompaniesPageContent() {
   const [page, setPage] = useState(1);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [orderBy, setOrderBy] = useState('crm_score');
+  const [sortKey, setSortKey] = useState('crm_score'); // frontend key
   const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc');
   const {
     filters,
@@ -35,7 +35,7 @@ export function CompaniesPageContent() {
     ...apiParams,
     page,
     per_page: 50,
-    order_by: orderBy,
+    order_by: sortKey === 'name' ? 'name_best' : sortKey,
     order_dir: orderDir,
   });
 
@@ -68,6 +68,12 @@ export function CompaniesPageContent() {
   const { data: cmsTypes } = useQuery({
     queryKey: ['cms-types'],
     queryFn: fetchCmsTypes,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: sourceTypes } = useQuery({
+    queryKey: ['source-types'],
+    queryFn: fetchSourceTypes,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -127,6 +133,7 @@ export function CompaniesPageContent() {
         cities={cities || []}
         regions={regions || []}
         cmsTypes={cmsTypes || []}
+        sourceTypes={sourceTypes || []}
       />
 
       {isLoading ? (
@@ -144,9 +151,9 @@ export function CompaniesPageContent() {
           <CompanyTable
             companies={data?.items || []}
             onSelectCompany={handleSelectCompany}
-            orderBy={orderBy}
+            orderBy={sortKey}
             orderDir={orderDir}
-            onSortChange={(key, dir) => { setOrderBy(key); setOrderDir(dir); setPage(1); }}
+            onSortChange={(key, dir) => { setSortKey(key); setOrderDir(dir); setPage(1); }}
           />
 
           <div className="flex items-center justify-end text-sm text-muted-foreground py-4">

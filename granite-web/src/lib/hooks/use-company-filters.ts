@@ -31,6 +31,8 @@ export interface FilterState {
   // Фаза 2: TG Trust
   tg_trust_min: number | undefined;
   tg_trust_max: number | undefined;
+  // Фаза 10: Source
+  source: string | undefined;
 }
 
 const DEFAULTS: FilterState = {
@@ -56,6 +58,7 @@ const DEFAULTS: FilterState = {
   include_deleted: 0,
   tg_trust_min: undefined,
   tg_trust_max: undefined,
+  source: undefined,
 };
 
 const TOGGLE_KEYS = [
@@ -103,6 +106,7 @@ export function useCompanyFilters() {
       include_deleted: (parseInt(p.get('include_deleted') || '0', 10) as 0 | 1) || 0,
       tg_trust_min: parseNum(p.get('tg_trust_min')),
       tg_trust_max: parseNum(p.get('tg_trust_max')),
+      source: p.get('source') || undefined,
     };
   });
 
@@ -128,6 +132,7 @@ export function useCompanyFilters() {
       if (filters.include_deleted) params.set('include_deleted', String(filters.include_deleted));
       if (filters.tg_trust_min !== undefined) params.set('tg_trust_min', String(filters.tg_trust_min));
       if (filters.tg_trust_max !== undefined) params.set('tg_trust_max', String(filters.tg_trust_max));
+      if (filters.source) params.set('source', filters.source);
 
       const qs = params.toString();
       router.replace(pathname + (qs ? `?${qs}` : ''), { scroll: false });
@@ -166,6 +171,7 @@ export function useCompanyFilters() {
     if (filters.include_deleted) count++;
     if (filters.tg_trust_min !== undefined) count++;
     if (filters.tg_trust_max !== undefined) count++;
+    if (filters.source) count++;
     return count;
   }, [filters]);
 
@@ -192,6 +198,7 @@ export function useCompanyFilters() {
     if (filters.include_deleted) p.include_deleted = filters.include_deleted;
     if (filters.tg_trust_min !== undefined) p.tg_trust_min = filters.tg_trust_min;
     if (filters.tg_trust_max !== undefined) p.tg_trust_max = filters.tg_trust_max;
+    if (filters.source) p.source = filters.source;
     return p;
   }, [filters]);
 

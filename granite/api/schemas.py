@@ -221,6 +221,7 @@ class CompanyResponse(BaseModel):
     review_reason: str = ""
     needs_review: bool = False
     updated_at: Optional[str] = None
+    sources: list[str] = []
 
     model_config = {"from_attributes": True}
 

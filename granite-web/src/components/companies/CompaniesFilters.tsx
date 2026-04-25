@@ -17,6 +17,7 @@ interface CompaniesFiltersProps {
   cities: string[];
   regions: string[];
   cmsTypes: string[];
+  sourceTypes: string[];
 }
 
 /* focus ring для нативных select */
@@ -135,6 +136,9 @@ function ActivePills({ filters }: { filters: FilterState }) {
     if (filters.cms) {
       result.push({ label: filters.cms, variant: 'muted' });
     }
+    if (filters.source) {
+      result.push({ label: filters.source, variant: 'primary' });
+    }
 
     const toggleMap: [keyof FilterState, string][] = [
       ['has_telegram', 'TG'], ['has_whatsapp', 'WA'], ['has_email', 'Email'],
@@ -204,6 +208,7 @@ export function CompaniesFilters({
   cities,
   regions,
   cmsTypes,
+  sourceTypes,
 }: CompaniesFiltersProps) {
   const [panelOpen, setPanelOpen] = useState(true);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -260,8 +265,9 @@ export function CompaniesFilters({
     if (filters.region) c++;
     if (filters.city.length > 0) c++;
     if (filters.cms) c++;
+    if (filters.source) c++;
     return c;
-  }, [filters.region, filters.city, filters.cms]);
+  }, [filters.region, filters.city, filters.cms, filters.source]);
 
   const channelCount = useMemo(() => {
     let c = 0;
@@ -380,7 +386,7 @@ export function CompaniesFilters({
 
           {/* ─── Group 2: География и платформа ─── */}
           <FilterGroup label="География и платформа" activeCount={geoCount}>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_1fr]">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1.5fr_1fr_1fr]">
               <div>
                 <label className="text-xs font-medium text-muted-foreground">Регион</label>
                 <select
@@ -439,6 +445,18 @@ export function CompaniesFilters({
                 >
                   <option value="">Все CMS</option>
                   {cmsTypes.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-muted-foreground">Источник</label>
+                <select
+                  value={filters.source || ''}
+                  onChange={e => onFilterChange('source', (e.target.value || undefined) as string | undefined)}
+                  className={selectClass}
+                >
+                  <option value="">Все источники</option>
+                  {sourceTypes.map(s => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
             </div>

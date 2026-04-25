@@ -35,6 +35,9 @@ export interface CompanyFilters {
   // Фаза 2: TG Trust
   tg_trust_min?: number;     // 0-3
   tg_trust_max?: number;     // 0-3
+
+  // Фаза 10: Source
+  source?: string;           // jsprav, web_search, 2gis, etc.
 }
 
 export const fetchCompanies = async (params: CompanyFilters): Promise<PaginatedResponse<Company>> => {
@@ -107,5 +110,10 @@ export const resolveReview = async (id: number, payload: ResolveReviewPayload): 
 
 export const fetchCmsTypes = async (): Promise<string[]> => {
   const { data } = await apiClient.get<{ items: string[] }>('cms-types');
+  return data.items;
+};
+
+export const fetchSourceTypes = async (): Promise<string[]> => {
+  const { data } = await apiClient.get<{ items: string[] }>('source-types');
   return data.items;
 };
