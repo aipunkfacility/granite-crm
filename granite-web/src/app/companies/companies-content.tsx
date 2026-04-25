@@ -19,6 +19,8 @@ export function CompaniesPageContent() {
   const [page, setPage] = useState(1);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [orderBy, setOrderBy] = useState('crm_score');
+  const [orderDir, setOrderDir] = useState<'asc' | 'desc'>('desc');
   const {
     filters,
     setFilter,
@@ -33,8 +35,8 @@ export function CompaniesPageContent() {
     ...apiParams,
     page,
     per_page: 50,
-    order_by: 'crm_score',
-    order_dir: 'desc',
+    order_by: orderBy,
+    order_dir: orderDir,
   });
 
   // Сброс городов при смене региона
@@ -142,6 +144,9 @@ export function CompaniesPageContent() {
           <CompanyTable
             companies={data?.items || []}
             onSelectCompany={handleSelectCompany}
+            orderBy={orderBy}
+            orderDir={orderDir}
+            onSortChange={(key, dir) => { setOrderBy(key); setOrderDir(dir); setPage(1); }}
           />
 
           <div className="flex items-center justify-end text-sm text-muted-foreground py-4">
