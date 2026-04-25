@@ -1,6 +1,9 @@
 import { apiClient } from './client';
 import { PaginatedResponse } from '@/lib/types/api';
 
+// Re-export Template from templates.ts для обратной совместимости
+export { type Template, type Channel, type BodyType, fetchTemplates } from './templates';
+
 export interface Campaign {
   id: number;
   name: string;
@@ -15,23 +18,9 @@ export interface Campaign {
   completed_at: string | null;
 }
 
-export interface Template {
-  name: string;
-  channel: 'email' | 'tg' | 'wa';
-  subject?: string;
-  body: string;
-}
-
 export const fetchCampaigns = async (params: { page?: number; per_page?: number } = {}): Promise<PaginatedResponse<Campaign>> => {
   const { data } = await apiClient.get<PaginatedResponse<Campaign>>('campaigns', { params });
   return data;
-};
-
-export const fetchTemplates = async (): Promise<Template[]> => {
-  const { data } = await apiClient.get<any>('templates');
-  // Бэкенд возвращает PaginatedResponse {items, total, ...}
-  if (Array.isArray(data)) return data;
-  return data?.items || [];
 };
 
 export const createCampaign = async (payload: { name: string; template_name: string; filters?: Record<string, any> }) => {

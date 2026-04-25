@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchCampaigns, fetchTemplates } from '@/lib/api/campaigns';
+import { fetchCampaigns } from '@/lib/api/campaigns';
+import { fetchTemplates } from '@/lib/api/templates';
 
 export function useCampaigns(params: { page?: number; per_page?: number } = {}) {
   return useQuery({
@@ -13,9 +14,16 @@ export function useCampaigns(params: { page?: number; per_page?: number } = {}) 
   });
 }
 
-export function useTemplates() {
+/**
+ * Лёгкий хук для загрузки шаблонов (используется на странице кампаний).
+ * Для полноценной работы с шаблонами используйте useTemplates из use-templates.ts.
+ */
+export function useCampaignTemplates() {
   return useQuery({
     queryKey: ['templates'],
-    queryFn: () => fetchTemplates(),
+    queryFn: async () => {
+      const result = await fetchTemplates({ per_page: 500 });
+      return result.items;
+    },
   });
 }

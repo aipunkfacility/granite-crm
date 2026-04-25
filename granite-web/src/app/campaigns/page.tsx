@@ -1,6 +1,6 @@
 'use client';
 
-import { useCampaigns, useTemplates } from "@/lib/hooks/use-campaigns";
+import { useCampaigns, useCampaignTemplates } from "@/lib/hooks/use-campaigns";
 import { createCampaign, runCampaign, pauseCampaign, deleteCampaign } from "@/lib/api/campaigns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,7 @@ function CreateCampaignDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const { data: templates } = useTemplates();
+  const { data: templates } = useCampaignTemplates();
   const [name, setName] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [filterCity, setFilterCity] = useState('');
