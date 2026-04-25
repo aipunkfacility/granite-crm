@@ -69,6 +69,7 @@ class CompanyRow(Base):
     city = Column(String, nullable=False, index=True)
     region = Column(String, nullable=False, index=True, default="")
     messengers = Column(JSON, default=dict)  # {"telegram": "...", "vk": "...", ...}
+    sources = Column(JSON, default=list)
     status = Column(String, default="raw", index=True)
     segment = Column(String, default="Не определено")
     needs_review = Column(Boolean, default=False)
@@ -403,6 +404,10 @@ class CrmEmailCampaignRow(Base):
     name = Column(String, nullable=False)
     template_name = Column(String, nullable=False)
     status = Column(String, default="draft", index=True)
+    
+    # A/B тестирование тем (v5)
+    subject_a = Column(String, nullable=True)
+    subject_b = Column(String, nullable=True)
 
     # AUDIT #15: Text → JSON для SQL-фильтрации по campaign filters.
     # Миграция i3j4k5l6m7n8 конвертирует существующие данные.
