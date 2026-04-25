@@ -23,6 +23,7 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
     emails: company.emails.join(', '),
     telegram: company.telegram || '',
     whatsapp: company.whatsapp || '',
+    vk: company.vk || '',
   });
 
   if (!isOpen) return null;
@@ -45,7 +46,8 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
     const messengers: Record<string, string> = {};
     if (formData.telegram) messengers.telegram = formData.telegram;
     if (formData.whatsapp) messengers.whatsapp = formData.whatsapp;
-    if (formData.telegram !== (company.telegram || '') || formData.whatsapp !== (company.whatsapp || '')) {
+    if (formData.vk) messengers.vk = formData.vk;
+    if (formData.telegram !== (company.telegram || '') || formData.whatsapp !== (company.whatsapp || '') || formData.vk !== (company.vk || '')) {
       updates.messengers = messengers;
     }
 
@@ -97,9 +99,10 @@ export function CompanyEditDialog({ company, isOpen, onClose, onSave, isSaving }
           <div className="pt-3 border-t space-y-3">
             {/* V-07: text-slate-400 → text-slate-500 на лейблах */}
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Мессенджеры</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               {field('tg', 'Telegram', 'telegram', '@username или ссылка')}
               {field('wa', 'WhatsApp', 'whatsapp', '+79001234567 или ссылка')}
+              {field('vk', 'VK', 'vk', 'vk.com/...')}
             </div>
           </div>
         </form>

@@ -28,9 +28,13 @@ import {
   Undo2,
   Copy,
   ExternalLink,
+  Clock,
+  Smartphone,
 } from "lucide-react";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { FunnelStage } from "@/lib/types/api";
+import { formatDistanceToNow } from "date-fns";
+import { ru } from "date-fns/locale";
 import { toast } from "sonner";
 import { useState, useEffect } from "react";
 import { useDebouncedCallback } from "use-debounce";
@@ -364,12 +368,37 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                           </a>
                         </Button>
                       )}
-                      {(!company.telegram && !company.whatsapp) && (
+                      {company.vk && (
+                        <Button variant="outline" size="sm" asChild className="border-blue-500/20 hover:bg-blue-500/10">
+                          <a href={company.vk.startsWith('http') ? company.vk : `https://vk.com/${company.vk}`} target="_blank" rel="noreferrer">
+                            <Smartphone className="mr-2 h-4 w-4 text-blue-500" /> VK
+                          </a>
+                        </Button>
+                      )}
+                      {(!company.telegram && !company.whatsapp && !company.vk) && (
                         <p className="text-sm text-muted-foreground italic">Не указаны</p>
                       )}
                     </div>
                   </div>
                 </div>
+
+                {/* Address */}
+                {company.address && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <span className="text-foreground">{company.address}</span>
+                  </div>
+                )}
+
+                {/* Enrichment date */}
+                {company.updated_at && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>
+                      Обогащено {formatDistanceToNow(new Date(company.updated_at), { addSuffix: true, locale: ru })}
+                    </span>
+                  </div>
+                )}
 
                 {/* CMS / Сеть / Quiz tiles */}
                 <div className="grid grid-cols-3 gap-3 text-xs">

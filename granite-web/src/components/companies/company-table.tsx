@@ -13,7 +13,7 @@ import { Company } from "@/lib/types/api";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
-import { ExternalLink, MessageCircle, Phone, Shield, ShieldOff, ShieldAlert, ShieldCheck } from "lucide-react";
+import { ExternalLink, MessageCircle, Phone, Shield, ShieldOff, ShieldAlert, ShieldCheck, Smartphone } from "lucide-react";
 
 /* TG Trust badge — индикатор «живости» Telegram-аккаунта */
 function TgTrustBadge({ trust }: { trust: Record<string, any> }) {
@@ -133,6 +133,17 @@ export function CompanyTable({ companies, onSelectCompany }: CompanyTableProps) 
                           onClick={e => e.stopPropagation()}
                         >
                           <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                      {company.vk && (
+                        <a
+                          href={company.vk.startsWith('http') ? company.vk : `https://vk.com/${company.vk}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-blue-500 hover:text-blue-600"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <Smartphone className="h-4 w-4" />
                         </a>
                       )}
                     </div>
