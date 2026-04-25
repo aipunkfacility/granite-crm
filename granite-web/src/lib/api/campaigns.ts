@@ -28,8 +28,10 @@ export const fetchCampaigns = async (params: { page?: number; per_page?: number 
 };
 
 export const fetchTemplates = async (): Promise<Template[]> => {
-  const { data } = await apiClient.get<Template[]>('templates');
-  return data;
+  const { data } = await apiClient.get<any>('templates');
+  // Бэкенд возвращает PaginatedResponse {items, total, ...}
+  if (Array.isArray(data)) return data;
+  return data?.items || [];
 };
 
 export const createCampaign = async (payload: { name: string; template_name: string; filters?: Record<string, any> }) => {
