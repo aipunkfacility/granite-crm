@@ -217,10 +217,16 @@ export function CompanyTable({
               {/* Checkbox column */}
               {isBatchMode && (
                 <TableHead className="w-[40px] px-2">
-                  <Checkbox
-                    checked={allOnPageSelected ? true : someOnPageSelected ? 'indeterminate' : false}
-                    onCheckedChange={() => onToggleSelectAll?.()}
-                  />
+                  <div
+                    className="flex items-center justify-center"
+                    onClick={e => e.stopPropagation()}
+                    onPointerDown={e => e.stopPropagation()}
+                  >
+                    <Checkbox
+                      checked={allOnPageSelected ? true : someOnPageSelected ? 'indeterminate' : false}
+                      onCheckedChange={() => onToggleSelectAll?.()}
+                    />
+                  </div>
                 </TableHead>
               )}
               {COLUMNS.map(col => {
@@ -267,11 +273,17 @@ export function CompanyTable({
                   >
                     {/* Checkbox */}
                     {isBatchMode && (
-                      <TableCell className="px-2" onClick={e => e.stopPropagation()}>
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => onToggleSelect?.(company.id)}
-                        />
+                      <TableCell className="px-2">
+                        <div
+                          className="flex items-center justify-center"
+                          onClick={e => { e.stopPropagation(); e.preventDefault(); }}
+                          onPointerDown={e => e.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => onToggleSelect?.(company.id)}
+                          />
+                        </div>
                       </TableCell>
                     )}
                     {/* Название */}
