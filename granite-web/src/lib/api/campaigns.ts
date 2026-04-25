@@ -32,7 +32,22 @@ export const fetchTemplates = async (): Promise<Template[]> => {
   return data;
 };
 
-export const createCampaign = async (campaign: any) => {
-  const { data } = await apiClient.post('campaigns', campaign);
+export const createCampaign = async (payload: { name: string; template_name: string; filters?: Record<string, any> }) => {
+  const { data } = await apiClient.post('campaigns', payload);
+  return data;
+};
+
+export const runCampaign = async (campaignId: number) => {
+  const { data } = await apiClient.post(`campaigns/${campaignId}/run`);
+  return data;
+};
+
+export const pauseCampaign = async (campaignId: number) => {
+  const { data } = await apiClient.patch(`campaigns/${campaignId}`, { status: 'paused' });
+  return data;
+};
+
+export const deleteCampaign = async (campaignId: number) => {
+  const { data } = await apiClient.delete(`campaigns/${campaignId}`);
   return data;
 };

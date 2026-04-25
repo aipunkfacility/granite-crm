@@ -312,14 +312,32 @@ app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
 
 @app.get("/health")
 def health(request: Request):
-    """Health check с пингом БД."""
+    """Health check с пингом БД и расширенной статистикой."""
+    from granite.database import CompanyRow, CrmEmailCampaignRow
     db_ok = False
+    total_companies = 0
+    total_campaigns_running = 0
+    last_pipeline_activity = None
     try:
         session = request.app.state.Session()
         session.execute(sa_text("SELECT 1"))
-        session.close()
         db_ok = True
+        # Количество активных компаний
+        total_companies = session.query(CompanyRow).filter(
+            CompanyRow.deleted_at.is_(None)
+        ).count()
+        # Количество запущенных кампаний
+        total_campaigns_running = session.query(CrmEmailCampaignRow).filter_by(
+            status="running"
+        ).count()
+        session.close()
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "db": db_ok}
+    return {
+        "status": status,
+        "db": db_ok,
+        "version": app.version,
+        "total_companies": total_companies,
+        "campaigns_running": total_campaigns_running,
+    }
