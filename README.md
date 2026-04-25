@@ -1,683 +1,126 @@
-# Granite Workshops DB
+# RetouchGrav CRM
 
-Сбор базы гранитных мастерских и производителей памятников по областям России. Поиск контактов (телефон, email, Telegram, WhatsApp, VK) для дальнейшей связи.
+AI-провайдер ретуши для гравировки на памятниках + CRM для поиска и аутрича гранитных мастерских по всей России.
 
-## Как работает
+**Публичный сайт:** https://retouchgrav.netlify.app
 
-Запускаешь город из конфига — программа сама:
+---
 
-1. Определяет область (из `config.yaml`)
-2. Подтягивает все населённые пункты этой области (из `data/regions.yaml`)
-3. Автоматически ищет поддомены и категории на jsprav.ru через API (`/api/cities/`)
-4. Парсит каждый город из источников: jsprav, web_search (DuckDuckGo), 2GIS (Crawlee/API), yell (Crawlee)
-5. **Географическая валидация (A-5)** — проверяет соответствие адреса найденной компании целевому городу. Подозрительные записи помечаются флагом `needs_review`.
-6. Дедуплицирует — сливает дубли по телефону и сайту (Union-Find)
-7. **Обогащение, проход 1** — сканирует сайты на мессенджеры, ищет Telegram по телефону и названию, определяет CMS (sync через ThreadPoolExecutor или async через httpx)
-8. **Обогащение, проход 2** — для компаний без сайта/email: поиск через web_search (DuckDuckGo) с заполнением недостающих полей
-9. **Reverse Lookup** — для компаний с малым количеством данных: поиск в 2GIS и Yell по имени/телефону, дополнение контактов
-10. **Детекция сетей (A-6/A-8)** — поиск филиалов и агрегаторов (один домен у 3+ городов).
-11. Определяет сегмент (A/B/C/D) по скорингу
-12. Экспортирует в CSV или Markdown
+## Экосистема
 
-Всё локально. Никаких GitHub Actions, никаких облачных сервисов.
+RetouchGrav состоит из нескольких компонентов:
 
-## Установка
+| Компонент | Назначение |
+|-----------|-----------|
+| **granite-crm** (бэкенд) | Скрапинг мастерских, скоринг, воронка, рассылки |
+| **granite-web** (фронтенд) | UI для управления контактами и рассылками |
+| **monument-web** (лендинг) | Публичный сайт retouchgrav.netlify.app |
+| **memorial-img** | Хостинг изображений для email-шаблонов |
 
-**Требования:** Python 3.12+
+Подробнее: [docs/architecture/ecosystem.md](docs/architecture/ecosystem.md)
 
-**Менеджер пакетов:** `uv` — единственный инструмент управления зависимостями.
+---
+
+## Быстрый старт
 
 ```bash
-uv sync
-uv run playwright install chromium
+uv sync                              # Зависимости
+uv run playwright install chromium   # Скраперы
+uv run cli.py seed-cities            # Справочник городов
+uv run cli.py run "Астрахань"        # Собрать данные по городу
+uv run cli.py api --port 8000        # Запустить API
+
+cd granite-web && npm install && npm run dev  # Фронтенд
 ```
 
-Зависимости включают: `requests`, `httpx` (async HTTP), `crawlee` (скрапинг 2GIS/Yell), `playwright`, `beautifulsoup4`, `sqlalchemy`, `alembic`, `rapidfuzz`, `fastapi`, `uvicorn`, `typer`, `pydantic`.
+Подробнее: [docs/guides/getting-started.md](docs/guides/getting-started.md)
 
-**Добавить пакет:** `uv add <package>`
-**Удалить пакет:** `uv remove <package>`
-**Никогда:** `pip install`
+---
 
-### Настройка секретов (опционально)
+## Структура проекта
 
-Для использования API ключей создайте `.env` файл на основе `.env.example`:
-
-```bash
-cp .env.example .env
-# Отредактируйте .env и добавьте ваши API ключи
+```
+├── cli.py                 # CLI (typer): run, export, db, api
+├── config.yaml            # Города, источники, скоринг, пресеты
+├── granite/               # Бэкенд
+│   ├── api/               # FastAPI REST API
+│   ├── pipeline/          # Пайплайн (скрапинг → скоринг → экспорт)
+│   ├── scrapers/          # Парсеры (jsprav, web_search, 2GIS, Yell)
+│   ├── enrichers/         # Обогащение (TG, CMS, мессенджеры)
+│   ├── dedup/             # Дедупликация (Union-Find)
+│   ├── email/             # Email-отправка + tracking pixel
+│   ├── messenger/         # TG/WA отправка (mock)
+│   └── exporters/         # CSV/Markdown экспорт
+├── granite-web/           # Next.js фронтенд
+├── alembic/               # Миграции БД
+├── data/
+│   ├── granite.db         # SQLite (WAL)
+│   ├── regions.yaml       # 40 областей, 566 городов
+│   └── export/            # CSV/MD экспорт
+└── docs/                  # Документация
 ```
 
-Поддерживаемые переменные:
+---
 
-- `DGIS_API_KEY` — 2GIS Catalog API для reverse lookup и скрапинга 2GIS (<https://dev.2gis.ru/>)
-- `CRAWLEE_PROXY_URL` — URL прокси для Crawlee-скраперов (опционально)
-- `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` — Telegram API (опционально)
-- `TELESCAN_API_KEY` — Telescan API (опционально)
-
-## Запуск
+## Основные команды
 
 ```bash
-# Использовать альтернативный конфиг (по умолчанию: config.yaml)
-uv run cli.py -c config.prod.yaml run "Астрахань"
+# Пайплайн
+uv run cli.py run "Город"              # Полный цикл
+uv run cli.py run "Город" --force      # С нуля
+uv run cli.py run "Город" --re-enrich  # Только обогащение
+uv run cli.py run all -r               # Все города, пропуск готовых
 
-# Одна область (все города парсятся автоматически)
-uv run cli.py run "Ростов-на-Дону"
+# API
+uv run cli.py api --port 8000          # Запустить API
+uv run cli.py api --port 8000 --reload # Hot reload
 
-# С очисткой старых данных
-uv run cli.py run "Ростов-на-Дону" --force
-
-# Пропустить парсинг, только дедупликация и обогащение
-uv run cli.py run "Ростов-на-Дону" --no-scrape
-
-# Перезапустить только точечное обогащение (сохранить scrape+dedup, заполнить пустые website/email)
-uv run cli.py run "Ростов-на-Дону" --re-enrich
-
-# Все города из конфига
-uv run cli.py run all
+# БД
+uv run cli.py db check                 # Проверить расхождения
+uv run cli.py db migrate "описание"    # Создать миграцию
+uv run cli.py db upgrade head          # Применить миграции
 
 # Экспорт
-uv run cli.py export "Ростов-на-Дону" --format csv
-uv run cli.py export "Ростов-на-Дону" --format md
-
-# Экспорт по пресету
-uv run cli.py export-preset "Ростов-на-Дону" hot_leads
+uv run cli.py export "Город" --format csv
+uv run cli.py export-preset "Город" hot_leads
 ```
 
-### Управление базой данных (Alembic миграции)
-
-```bash
-# Проверить, нужна ли миграция
-uv run cli.py db check
-
-# Создать миграцию (после изменения моделей в database.py)
-uv run cli.py db migrate "add last_contacted_at to companies"
-
-# Применить миграцию
-uv run cli.py db upgrade head
-
-# Откатить на одну версию назад
-uv run cli.py db downgrade -1
-
-# История миграций
-uv run cli.py db history -v
-
-# Текущая версия схемы
-uv run cli.py db current
-
-# Пометить существующую БД как актуальную (для миграции на Alembic)
-python cli.py db stamp head
-```
-
-Подробнее: [docs/DATABASE_GUIDE.md](docs/DATABASE_GUIDE.md)
-
-### run.bat (Windows)
-
-Файл `run.bat` в корне проекта. Настройки:
-
-```bat
-set CITY=Астрахань          :: Город из config.yaml
-set RE_ENRICH=--re-enrich   :: Раскомментировать для перезапуска обогащения
-:: set FORCE=--force         :: Раскомментировать для очистки и запуска с нуля
-```
-
-## Структура
-
-```
-├── cli.py                      # Точка входа (typer CLI)
-├── config.yaml                 # Настройки: города, источники, скоринг, пресеты
-├── alembic.ini                 # Конфигурация Alembic
-├── alembic/
-│   ├── env.py                  # Среда миграций (импорт granite.database)
-│   ├── script.py.mako          # Шаблон для генерации миграций
-│   └── versions/               # Файлы миграций
-│       └── ..._initial_schema.py
-├── docs/
-│   └── DATABASE_GUIDE.md       # Подробный гайд по БД
-├── granite/                    # Основной пакет проекта
-│   ├── __init__.py
-│   ├── database.py             # ORM-модели БД + класс Database (SQLite, WAL, Alembic)
-│   ├── models.py               # Pydantic-модели данных
-│   ├── utils.py                # Транслитерация, нормализация телефонов, HTTP-запросы
-│   ├── regions.py              # Справочник: область → список городов
-│   ├── category_finder.py      # Автопоиск поддоменов jsprav.ru через API
-│   ├── http_client.py         # Единый async HTTP-клиент (httpx.AsyncClient, singleton)
-│   ├── pipeline/               # Конвейер обработки
-│   │   ├── __init__.py
-│   │   ├── manager.py          # Оркестратор (все фазы, поддержка sync/async)
-│   │   ├── region_resolver.py  # Определение области и городов
-│   │   ├── web_client.py       # WebClient: поиск и скрапинг сайтов (sync + async)
-│   │   ├── scraping_phase.py   # Фаза 1: Скрапинг
-│   │   ├── dedup_phase.py      # Фаза 2: Дедупликация (Union-Find)
-│   │   ├── enrichment_phase.py # Фаза 3: Обогащение (sync ThreadPool / async httpx)
-│   │   ├── scoring_phase.py    # Фаза 5: Скоринг и сегментация
-│   │   ├── export_phase.py     # Фаза 6: Экспорт CSV
-│   │   ├── checkpoint.py       # Возобновление с прерванного этапа
-│   │   └── status.py           # Вывод статуса
-│   ├── scrapers/               # Парсеры источников
-│   │   ├── __init__.py
-│   │   ├── base.py             # Общий интерфейс скреперов
-│   │   ├── jsprav.py           # Jsprav.ru (JSON-LD, быстрый)
-│   │   ├── jsprav_playwright.py# Jsprav.ru (Playwright, глубокий, выключен)
-│   │   ├── dgis.py             # 2GIS — Crawlee + 2GIS API (по умолчанию выключен, рабочий)
-│   │   ├── dgis_constants.py   # Общие константы 2GIS (DGIS_REGION_IDS, get_dgis_region_id)
-│   │   ├── yell.py             # Yell.ru — Crawlee PlaywrightCrawler (по умолчанию выключен, рабочий)
-│   │   ├── web_search.py       # DuckDuckGo web search (поиск + скрапинг сайтов)
-│   │   └── _playwright.py      # Общая логика Playwright
-│   ├── dedup/                  # Дедупликация
-│   │   ├── __init__.py
-│   │   ├── phone_cluster.py    # Кластеризация по общим телефонам
-│   │   ├── name_matcher.py     # Поиск дубликатов по названиям (fuzzy)
-│   │   ├── site_matcher.py     # Кластеризация по домену сайта
-│   │   ├── merger.py           # Слияние записей + генерация conflicts.md
-│   │   └── validator.py        # Валидация телефонов, email, сайтов
-│   ├── enrichers/              # Обогащение данных
-│   │   ├── __init__.py
-│   │   ├── _tg_common.py       # Общие константы TG (TG_MAX_RETRIES, TG_INITIAL_BACKOFF)
-│   │   ├── messenger_scanner.py# Поиск TG/WA/VK парсингом ссылок из HTML (sync + async)
-│   │   ├── tg_finder.py        # Поиск Telegram по телефону и названию (sync + async)
-│   │   ├── tg_trust.py         # Анализ профиля TG (аватар, описание, бот/канал) (sync + async)
-│   │   ├── tech_extractor.py   # Определение CMS сайта (sync + async)
-│   │   ├── classifier.py       # Скоринг и сегментация A/B/C/D
-│   │   ├── network_detector.py # Поиск филиальных сетей
-│   │   └── reverse_lookup.py   # Reverse lookup: поиск в 2GIS и Yell по имени/телефону
-│   ├── email/                  # CRM: отправка email
-│   │   ├── __init__.py
-│   │   └── sender.py           # EmailSender: отправка, tracking pixel, bounce handling
-│   ├── messenger/              # CRM: отправка мессенджеров
-│   │   ├── __init__.py
-│   │   ├── base.py             # Базовый интерфейс messenger dispatcher
-│   │   ├── dispatcher.py       # Маршрутизация сообщений по каналу (TG/WA)
-│   │   ├── tg_sender.py        # Telegram API отправка (bot/юзер)
-│   │   └── wa_sender.py        # WhatsApp отправка
-│   ├── exporters/              # Экспорт данных
-│       ├── __init__.py
-│       ├── csv.py              # Экспорт в CSV (utf-8-sig, пресеты)
-│       └── markdown.py         # Экспорт в Markdown (пресеты)
-├── tests/                      # Тесты
-│   ├── __init__.py
-│   ├── test_async_enrichment.py    # Тесты async-обогащения (Фаза 8)
-│   ├── test_classifier.py
-│   ├── test_crm_api.py             # Тесты FastAPI CRM endpoints
-│   ├── test_dedup.py
-│   ├── test_dgis_yell_scrapers.py  # Тесты Crawlee-скраперов (Фаза 7)
-│   ├── test_enrichers.py
-│   ├── test_migrations.py
-│   ├── test_pipeline.py
-│   ├── test_refactored_pipeline.py  # Тесты рефакторинга pipeline/
-│   ├── test_reverse_lookup.py      # Тесты ReverseLookupEnricher (Фаза 6)
-│   ├── test_scrapers.py
-│   └── test_utils.py
-├── scripts/                    # Утилиты
-│   └── benchmark.py             # Бенчмарк sync vs async обогащения
-├── run.bat                     # Быстрый запуск на Windows
-├── requirements.txt
-└── data/
-    ├── regions.yaml            # Справочник: 40 областей, 566 городов
-    ├── category_cache.yaml     # Кэш найденных поддоменов и категорий
-    ├── granite.db              # SQLite база (WAL-режим)
-    ├── logs/
-    │   └── granite.log         # Логи (rotating, 10 MB)
-    └── export/                 # CSV/MD экспорт
-```
-
-## Конфигурация
-
-### config.yaml — основные настройки
-
-- **`cities`** — список городов с полями:
-  - `name` — название города
-  - `population` — население (для приоритизации)
-  - `region` — область/край/республика
-  - `status` — `pending` / `completed` (статус обработки)
-  - `geo_center` — `[lat, lon]` центр для карт
-- **`scraping`** — общие настройки: задержки, таймауты, user-agent rotation, потоки
-- **`sources`** — каждый источник: `enabled: true/false`, категории, поддомены
-  - `web_search` — поиск через DuckDuckGo (queries)
-  - `jsprav` — категория, `subdomain_map` для нестандартных поддоменов
-  - `dgis` — Crawlee + 2GIS Catalog API (по умолчанию выключен; параметры: `api_key`, `max_pages`, `delay`)
-  - `yell` — Crawlee PlaywrightCrawler (по умолчанию выключен; параметры: `max_pages`, `delay`, `base_path`)
-  - `jsprav_playwright` — авто-fallback для JspravScraper
-  - `google_maps`, `avito` — заглушки (выключены)
-- **`crawlee`** — общие настройки для Crawlee-скраперов (2GIS, Yell):
-  - `use_session_pool` — управление куками и ротация сессий (default: true)
-  - `max_session_rotations` — макс. ротаций сессии перед остановкой (default: 10)
-  - `proxy_url` — URL прокси (или из .env: CRAWLEE_PROXY_URL)
-- **`dedup`** — настройки дедупликации (порог, слияние по телефону/сайту)
-- **`enrichment`** — настройки обогащения:
-  - `web_client` — WebClient для точечного веб-поиска (timeout, search_limit, search_delay)
-  - `max_concurrent` — количество параллельных потоков/задач обогащения
-  - `async_enabled` — включить async-режим (httpx + asyncio) вместо ThreadPoolExecutor
-  - `batch_flush` — flush каждые N enriched-записей
-  - `tg_finder` — задержки, поиск через Google, retry
-  - `tg_trust` — штраф за пустой профиль
-  - `tech_keywords` — ключевые слова для определения: оборудование, производство, портрет, конструктор сайта
-  - `reverse_lookup` — обратный поиск в 2GIS и Yell для компаний с малым количеством данных:
-    - `enabled` — включить reverse lookup
-    - `sources.dgis` / `sources.yell` — настройки по источникам (API ключ, лимит запросов/день)
-    - `min_crm_score` — обогащать компании со скором ниже порога
-    - `delay_between_requests` — задержка между запросами
-- **`scoring`** — **вложенная** структура:
-
-  ```yaml
-  scoring:
-    weights:       # Баллы за каждый признак
-      has_website: 5
-      has_telegram: 15
-      has_whatsapp: 10
-      ...
-    levels:        # Пороги для сегментов
-      segment_A: 50
-      segment_B: 30
-      segment_C: 15
-  ```
-
-  Полная таблица весов скоринга:
-
-  | Параметр | Баллы | Описание |
-  |----------|-------|----------|
-  | `has_telegram` | +15 | Найден Telegram |
-  | `has_whatsapp` | +10 | Найден WhatsApp |
-  | `has_website` | +5 | Есть сайт |
-  | `has_email` | +5 | Есть email |
-  | `cms_bitrix` | +10 | Сайт на Bitrix |
-  | `cms_modern` | +3 | Сайт на WordPress/Tilda (современные CMS) |
-  | `has_marquiz` | +8 | На сайте есть виджет Marquiz |
-  | `multiple_phones` | +5 | Более одного телефона |
-  | `is_network` | +5 | Является частью филиальной сети |
-  | `tg_trust_multiplier` | ×2 | Множитель для компаний с живым TG-профилем (trust_score ≥ 2) |
-
-  Пороги сегментов (настраиваются в `scoring.levels`):
-  - **A** — ≥ 50 баллов (высокий приоритет)
-  - **B** — ≥ 30 баллов
-  - **C** — ≥ 15 баллов
-  - **D** — < 15 баллов (мало данных)
-- **`export_presets`** — готовые фильтры для экспорта (hot_leads, producers_only, with_telegram, cold_email, manual_search, full_dump)
-- **`logging`** — уровень логов, ротация, формат
-- **`database`** — путь к SQLite (`data/granite.db`)
-
-### data/regions.yaml — города по областям
-
-Статичный справочник (40 областей, 566 городов). Каждая область содержит полный список населённых пунктов. При запуске города скреперы проходят по всем пунктам его области.
-
-Нужно добавить город — просто допиши в файл. Для jsprav.ru поддомены определяются автоматически через API (`/api/cities/`), кэшируются в `data/category_cache.yaml`. Ручные замены — через `subdomain_map` в config.yaml.
-
-## База данных
-
-SQLite с WAL-режимом (параллельные записи без "database is locked"). `busy_timeout=5000ms`. Схема управляется через **Alembic** — миграции применяются автоматически при запуске `Database()`.
-
-Подробная документация: [docs/DATABASE_GUIDE.md](docs/DATABASE_GUIDE.md)
-
-### Таблицы
-
-| Таблица | Назначение | Записей |
-|---------|-----------|---------|
-| **`raw_companies`** | Сырые данные (source, name, website, city/region, needs_review) | Много (дубли) |
-| **`companies`** | Уникальные (merged_from, name_best, city/region, needs_review, deleted_at) | Уникальные |
-| **`enriched_companies`** | Обогащённые данные (is_network, crm_score, segment, region) | = companies |
-| **`crm_contacts`** | CRM-воронка компании (funnel_stage, email/TG/WA метрики, notes, stop_automation). FK → companies | ≤ companies |
-| **`crm_touches`** | Лог касаний: каждое отправленное/полученное сообщение (channel, direction, body) | > companies |
-| **`crm_templates`** | Шаблоны сообщений с плейсхолдерами `{from_name}`, `{city}`, `{company_name}` | Настраивается |
-| **`crm_email_logs`** | Запись об отправленном письме (status, tracking_id для pixel open tracking) | > companies |
-| **`crm_tasks`** | Задачи: follow-up, отправка портфолио, звонок (status, priority, due_date) | Настраивается |
-| **`crm_email_campaigns`** | Email-кампании: набор получателей + шаблон + статистика | Настраивается |
-
-### Связи
-
-```
-raw_companies.merged_into ──→ companies.id         (many-to-one, FK)
-enriched_companies.id ──────→ companies.id         (1:1, PK = FK, CASCADE DELETE)
-crm_contacts.company_id ────→ companies.id         (1:1, PK = FK, CASCADE DELETE)
-crm_touches.company_id ─────→ companies.id         (many-to-one, CASCADE DELETE)
-crm_email_logs.company_id ──→ companies.id         (many-to-one, CASCADE DELETE)
-crm_tasks.company_id ───────→ companies.id         (many-to-one, SET NULL)
-```
-
-### Миграции
-
-Схема БД версионирована через Alembic. При изменении ORM-моделей в `granite/database.py` создайте миграцию:
-
-```bash
-uv run cli.py db check          # проверить, есть ли изменения
-uv run cli.py db migrate "... " # создать миграцию
-uv run cli.py db upgrade head   # применить
-```
-
-Автоматически: `Database()` вызывает `alembic upgrade head` при инициализации, поэтому при обычном запуске (`uv run cli.py run ...`) миграции применяются сами.
-
-### Работа с БД в коде
-
-Для безопасной работы с сессией используйте контекстный менеджер `session_scope()` — он автоматически делает commit при успехе и rollback при ошибке:
-
-```python
-from granite.database import Database, EnrichedCompanyRow
-
-db = Database()
-
-# Чтение
-with db.session_scope() as session:
-    companies = session.query(EnrichedCompanyRow).filter_by(city="Волгograd").all()
-    for c in companies:
-        print(c.name, c.crm_score)
-# commit() вызывается автоматически при выходе из with
-
-# Запись
-with db.session_scope() as session:
-    # Создание или обновление (merge = insert or update)
-    enriched = EnrichedCompanyRow(
-        id=company_id,  # если нужно обновить существующую
-        name="ГранитМастер",
-        crm_score=45,
-    )
-    session.merge(enriched)
-# commit() автоматически
-```
-
-Подробнее: [docs/DATABASE_GUIDE.md](docs/DATABASE_GUIDE.md) → раздел 9.
-
-## CRM API (FastAPI)
-
-Проект включает REST API для управления CRM-данными. Запуск:
-
-```bash
-uv run cli.py api --port 8000
-uv run cli.py api --port 8000 --reload   # hot-reload для разработки
-```
-
-Или напрямую: `uvicorn granite.api.app:app --reload`
-
-### Endpoints (`/api/v1`)
-
-| Endpoint | Метод | Описание |
-|----------|-------|----------|
-| `/companies` | GET | Список компаний с фильтрами (city, segment, funnel_stage, has_telegram, min_score, search). Пагинация, сортировка |
-| `/companies/{id}` | GET | Карточка компании (enriched + CRM данные) |
-| `/companies/{id}` | PATCH | Обновление CRM-полей (funnel_stage, notes, stop_automation) |
-| `/companies/{id}/touches` | POST | Создать касание (email/tg/wa/manual) |
-| `/companies/{id}/touches` | GET | История касаний компании |
-| `/tasks` | POST | Создать задачу (follow-up, send_portfolio, call) |
-| `/tasks` | GET | Список задач с фильтрами |
-| `/tasks/{id}` | PATCH | Обновить задачу (status, priority) |
-| `/tracking/open/{tracking_id}` | GET | Tracking pixel — фиксирует открытие письма |
-| `/campaigns` | POST | Создать email-кампанию |
-| `/campaigns` | GET | Список кампаний |
-| `/campaigns/{id}/run` | POST | Запустить кампанию |
-| `/followup/check` | POST | Проверить и создать follow-up задачи |
-| `/funnel/stages` | GET | Доступные стадии воронки |
-| `/funnel/{id}/transition` | POST | Перевести компанию на новую стадию |
-| `/messenger/send` | POST | Отправить сообщение через TG/WA |
-
-### CORS
-
-Разрешены origins: `localhost:3000`, `localhost:5173` (Next.js фронтенд).
-
-### Сессии БД
-
-Каждый запрос получает собственную SQLAlchemy сессию через `get_db` зависимость. Auto-commit при успехе, rollback при ошибке.
-
-## Конвейер
-
-```
-run "Астрахань"
-  │
-  ├─ Поиск категорий (внутри ScrapingPhase)
-  │   Автопоиск поддоменов jsprav.ru через API
-  │   Проверка категорий HEAD-запросом
-  │   Кэширование → data/category_cache.yaml
-  │
-  ├─ Фаза 1: Скрапинг
-  │   Для каждого города Астраханской области:
-  │   jsprav (JSON-LD) → web_search (DuckDuckGo) → [dgis (Crawlee/API), yell (Crawlee)]
-  │   Всё сохраняется в raw_companies (БД)
-  │
-  ├─ Фаза 2: Дедупликация
-  │   Кластеризация по телефонам → сайтам (Union-Find)
-  │   name_matcher существует но сейчас НЕ используется
-  │   Слияние дубликатов → companies (БД)
-  │
-  ├─ Фаза 3: Обогащение (проход 1)
-  │   Для каждой компании (sync или async в зависимости от enrichment.async_enabled):
-  │   → сканирование сайта на мессенджеры (парсинг ссылок из HTML)
-  │   → поиск TG по телефону (t.me/+7XXX)
-  │   → поиск TG по названию (генерация юзернеймов)
-  │   → анализ профиля TG: +1 аватар, +1 описание, -1 канал, -1 бот
-  │   → определение CMS (Bitrix, WordPress, Tilda и др.)
-  │   Sync: ThreadPoolExecutor (max_concurrent). Async: asyncio.Semaphore + httpx.
-  │
-  ├─ Фаза 3b: Точечный поиск (проход 2, web_search)
-  │   Для компаний без сайта или email:
-  │   → web_search "Название Город" → берём лучший URL
-  │   → scrape URL → извлекаем email, телефоны
-  │   → сканируем найденный сайт на мессенджеры и CMS
-  │   Пауза 2 сек между запросами
-  │
-  ├─ Reverse Lookup (если включён в config)
-  │   Для компаний без мессенджеров, email и с низким crm_score:
-  │   → поиск в 2GIS по API (приоритет) или Crawlee (BeautifulSoupCrawler fallback)
-  │   → поиск в Yell через Crawlee (PlaywrightCrawler)
-  │   → слияние найденных данных (без перезаписи существующих)
-  │
-  ├─ Детекция сетей (после обогащения, перед скорингом)
-  │   Поиск компаний с филиалами (один домен/телефон у 2+ компаний)
-  │   Поиск только в пределах одного города (не между городами)
-  │   Нормализация телефонов: 8xxx → 7xxx
-  │
-  ├─ Фаза 5: Скоринг
-  │   Расчёт CRM-score по весам из config.yaml
-  │   Пересчёт после детекции сетей (is_network влияет на скор)
-  │   Сегментация: A (≥50), B (≥30), C (≥15), D
-  │
-  └─ Фаза 6: Экспорт
-      Автоматический CSV + пресеты при завершении
-      Сортировка по crm_score (убывание)
-      data/export/{город}_enriched.csv
-```
-
-**Примечание:** Детекция сетей и Reverse Lookup не являются отдельными фазами с чекпоинтом — они вызываются между обогащением и скорингом.
-
-## Чекпоинты
-
-Конвейер запоминает прогресс в БД. При перезапуске — продолжает с прерванного этапа. Логика работает через подсчёт записей в таблицах:
-
-| Этап | Что проверяется | Следующая фаза |
-|------|-----------------|----------------|
-| `start` | raw_companies = 0 | Скрапинг |
-| `scraped` | raw_companies > 0 | Дедупликация |
-| `deduped` | companies > 0 | Обогащение |
-| `enriched` | enriched_companies > 0 | Скоринг + экспорт |
-
-Флаги:
-
-- `--force` — полная очистка данных по городу, старт с нуля
-- `--no-scrape` — пропустить скрапинг, начать с дедупликации
-- `--re-enrich` — пропустить скрапинг и дедупликацию, запустить только точечный поиск (заполнение недостающих website/email через web_search)
-
-## Сегменты
-
-| Сегмент | Порог | Описание |
-|---------|-------|----------|
-| A | ≥ 50 | Есть TG + WA + сайт, высокий скор |
-| B | ≥ 30 | Есть мессенджеры + сайт/производство |
-| C | ≥ 15 | Есть контакты или сайт |
-| D | < 15 | Мало данных, нужна ручная проверка |
-
-Пороги настраиваются в `config.yaml` → `scoring.levels`.
-
-## TG Trust
-
-Анализ Telegram-профиля при скрапинге:
-
-| Признак | Изменение score |
-|---------|-----------------|
-| Есть аватарка | +1 |
-| Есть описание | +1 |
-| Это канал/группа | -1 |
-| Это бот | -1 |
-
-`trust_score ≥ 2` — живой бизнес-контакт. `trust_score = 0` — мёртвый/фейк.
-
-## Messenger Scanner
-
-Ищет ссылки на мессенджеры парсингом HTML (не из шаблонов конфига):
-
-1. Загружает главную страницу → ищет ссылки t.me, wa.me, vk.com
-2. Если TG не найден — ищет страницу контактов по тексту ссылок и URL
-3. На странице контактов ищет доп. страницы (о нас, производство, каталог) — до 3 штук
-4. Фильтрует: пропускает кнопки "поделиться" (share, joinchat)
-
-## Экспорт
-
-### CSV
-
-Файл: `data/export/{город}_enriched.csv`, кодировка UTF-8 BOM.
-
-Поля: id, name, phones, address, website, emails, segment, crm_score, is_network, cms, has_marquiz, telegram, vk, whatsapp.
-
-Сортировка по crm_score (убывание) — лучшие контакты первыми.
-
-### Пресеты
-
-Готовые фильтры из `config.yaml` → `export_presets`:
-
-| Пресет | Описание |
-|--------|----------|
-| `hot_leads` | Есть Telegram + высокий CRM-скор (≥50) |
-| `high_score` | Сегмент A (высокий приоритет) |
-| `with_telegram` | Все компании с Telegram |
-| `cold_email` | Нет мессенджеров, но есть email |
-| `manual_search` | Нет мессенджеров — нужен прозвон |
-| `full_dump` | Все обогащённые компании |
-
-```bash
-uv run cli.py export-preset "Волгоград" hot_leads
-uv run cli.py export-preset all with_telegram
-```
-
-## Troubleshooting
-
-### «database is locked»
-
-SQLite в WAL-режиме, но иногда возникает конфликт. Решения:
-
-- Увеличьте `busy_timeout` в `database.py` (сейчас 5000ms)
-- Уменьшите `max_threads` в `config.yaml` → `scraping`
-- Проверьте, что нет параллельных процессов, пишущих в БД
-
-### Ошибка «no such module: json1»
-
-Старые версии SQLite не поддерживают JSON. Обновите SQLite до 3.38+ или используйте Python с встроенным SQLite новой версии.
-
-### Скрапер возвращает пустые данные
-
-- Проверьте интернет-соединение
-- Проверьте, что источник не заблокировал ваш IP
-- Попробуйте сменить `user_agent` в `config.yaml`
-- Проверьте логи в `data/logs/granite.log`
-
-### Как посмотреть логи
-
-```bash
-# Последние 50 строк
-tail -n 50 data/logs/granite.log
-
-# Фильтр по уровню
-grep "ERROR" data/logs/granite.log
-```
-
-### Конвейер упал на середине — как продолжить?
-
-Чекпоинты работают автоматически. Просто запустите снова:
-
-```bash
-uv run cli.py run "Астрахань"
-```
-
-Он продолжит с того места, где остановился.
-
-Принудительно начать с нуля:
-
-```bash
-uv run cli.py run "Астрахань" --force
-```
-
-### Как проверить статус города
-
-```bash
-# Через экспорт (пустой = не обработан)
-uv run cli.py export "Астрахань" --format csv
-
-# Или через БД напрямую
-sqlite3 data/granite.db "SELECT COUNT(*) FROM companies WHERE city='Астрахань';"
-```
-
-## Разработка
-
-### Требования
-
-- **Python** 3.12+ (используется syntax `str | None`)
-- **uv** — менеджер пакетов (НЕ pip)
-- **Playwright** (для скреперов с JS-рендерингом: jsprav_playwright, yell)
-- **Crawlee** (для скреперов 2GIS и Yell: session pool, proxy rotation, retry, rate limiting)
-- **httpx** (async HTTP-клиент для обогащения при `async_enabled: true`)
-
-### Установка для разработки
-
-```bash
-# Клонирование и зависимости
-git clone ...
-uv sync
-uv run playwright install chromium
-
-# Запуск тестов
-uv run pytest tests/ -v
-```
-
-### Структура модулей
-
-- `granite/scrapers/` — парсеры источников (jsprav, web_search, dgis...)
-- `granite/enrichers/` — обогащение (TG finder, messenger scanner, CMS detector...)
-- `granite/dedup/` — дедупликация (phone clustering, name matching, merging...)
-- `granite/pipeline/` — фазы обработки (scraping, dedup, enrichment, scoring...)
-- `granite/exporters/` — экспорт (CSV, Markdown)
-- `granite/api/` — FastAPI CRM REST API (companies, touches, tasks, campaigns, funnel, messenger)
-- `granite/email/` — CRM email отправка (EmailSender, tracking pixel)
-- `granite/messenger/` — CRM messenger отправка (TG/WA dispatcher)
-
-### Как добавить новый скрепер
-
-1. Создать класс в `granite/scrapers/`, унаследовать от `BaseScraper`
-2. Реализовать метод `scrape(city)` → `list[RawCompany]`
-3. Добавить в `config.yaml` → `sources` с `enabled: true`
-4. Добавить тесты в `tests/test_scrapers.py`
-
-### Как добавить новый enricher
-
-1. Создать класс в `granite/enrichers/`
-2. Использовать в `enrichment_phase.py` или создать новый метод
-3. Добавить тесты в `tests/test_enrichers.py`
-
-### Линтеры (опционально)
-
-```bash
-# flake8
-uv add flake8
-uv run flake8 granite/ --max-line-length=100
-
-# mypy (проверка типов)
-uv add mypy
-uv run mypy granite/ --ignore-missing-imports
-```
-
-## Тесты
-
-Тесты покрывают: дедупликацию, классификатор, обогащение (TG finder, TG trust, tech extractor, messenger scanner, async-обогащение), экспорт (CSV, Markdown, пресеты), скреперы (включая Crawlee dgis/yell), reverse lookup, утилиты, миграции БД, пайплайн, CRM API.
-
-```bash
-# Все тесты
-uv run pytest tests/ -v
-
-# Только миграции
-uv run pytest tests/test_migrations.py -v
-
-# CRM API
-uv run pytest tests/test_crm_api.py -v
-```
+Полный справочник: [docs/guides/cli-reference.md](docs/guides/cli-reference.md)
+
+---
+
+## Навигация по документации
+
+| Документ | Описание |
+|----------|----------|
+| [docs/project-context.md](docs/project-context.md) | **Что это, зачем, для кого, как работает** — единая точка входа |
+| [docs/architecture/ecosystem.md](docs/architecture/ecosystem.md) | Как связаны CRM, лендинг, email, изображения |
+| [docs/architecture/api.md](docs/architecture/api.md) | Справочник всех API-эндпоинтов |
+| [docs/architecture/database.md](docs/architecture/database.md) | Схема БД, миграции, ORM-модели |
+| [docs/landing/README.md](docs/landing/README.md) | Лендинг RetouchGrav: секции, цены, связь с CRM |
+| [docs/guides/getting-started.md](docs/guides/getting-started.md) | Быстрый старт (от нуля до работающей системы) |
+| [docs/guides/cli-reference.md](docs/guides/cli-reference.md) | Полный справочник CLI-команд |
+| [docs/guides/crm-user-guide.md](docs/guides/crm-user-guide.md) | Как пользоваться CRM (сценарии) |
+| [docs/guides/email-sending.md](docs/guides/email-sending.md) | Настройка и отправка email-рассылок |
+| [docs/guides/roadmap.md](docs/guides/roadmap.md) | Дорожная карта проекта |
+| [docs/frontend/design-system.md](docs/frontend/design-system.md) | Дизайн-система CRM |
+| [docs/business/market-analysis.md](docs/business/market-analysis.md) | Анализ рынка ретуши для памятников |
+| [docs/business/marketing-strategy.md](docs/business/marketing-strategy.md) | Стратегия B2B-аутрича |
+
+---
+
+## Агентские файлы
+
+| Файл | Назначение |
+|------|-----------|
+| `GEMINI.md` | Контекст и инструкции для Google Gemini |
+| `AGENTS.md` | Стандарты разработки для AI-агентов |
+| `QWEN.md` | Контекст и инструкции для Qwen Code |
+
+---
+
+## Требования
+
+- **Python** 3.12+ (менеджер пакетов: `uv`, НЕ pip)
+- **Node.js** 18+ (для фронтенда)
+- **Playwright** (для скраперов с JS-рендерингом)
