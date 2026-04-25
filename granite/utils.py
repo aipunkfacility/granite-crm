@@ -817,6 +817,31 @@ def classify_error(exc: Exception) -> str:
     return ERROR_DATA
 
 
+# ===== HTML → Plain Text =====
+
+def html_to_plain_text(html_body: str) -> str:
+    """Конвертировать HTML в plain text для MIMEText("plain") альтернативы.
+
+    Использует BeautifulSoup (уже в зависимостях) для корректного извлечения текста:
+    - Вырезает <script> и <style>
+    - Заменяет блочные теги на переводы строк
+    - Декодирует HTML-сущности (&amp; → &, &nbsp; → пробел)
+
+    Не используется regex re.sub(r'<[^>]+>', '', html) — наивный подход
+    ломается на сущностях, скриптах, стилях и переводах строк.
+    """
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html_body, "html.parser")
+    # Удалить скрипты и стили
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n")
+    # Убрать избыточные пустые строки
+    lines = [line.strip() for line in text.splitlines()]
+    cleaned = "\n".join(line for line in lines if line)
+    return cleaned
+
+
 def classify_messenger(url: str, messengers: dict) -> None:
     """Классифицировать URL мессенджера и добавить в dict.
 

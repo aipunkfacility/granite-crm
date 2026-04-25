@@ -16,7 +16,7 @@ Phase 1-2 refactor:
 """
 from typing import Optional, Any, List, Generic, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ============================================================
@@ -88,15 +88,36 @@ class CreateTemplateRequest(BaseModel):
     name: str = Field(..., min_length=1, pattern=r"^[a-z0-9_]+$")
     channel: str = Field(..., pattern="^(email|tg|wa)$")
     subject: str = ""
-    body: str = Field(..., min_length=1)
+    body: str = Field(..., min_length=1, max_length=500_000)
+    body_type: str = Field("plain", pattern="^(plain|html)$")
     description: str = ""
+
+    @model_validator(mode="after")
+    def _validate_html_email_only(self):
+        """HTML-шаблоны допускаются только для email-канала."""
+        if self.body_type == "html" and self.channel != "email":
+            raise ValueError("HTML templates are only supported for email channel")
+        return self
 
 
 class UpdateTemplateRequest(BaseModel):
     channel: Optional[str] = Field(None, pattern="^(email|tg|wa)$")
     subject: Optional[str] = None
-    body: Optional[str] = Field(None, min_length=1)
+    body: Optional[str] = Field(None, min_length=1, max_length=500_000)
+    body_type: Optional[str] = Field(None, pattern="^(plain|html)$")
     description: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_html_email_only(self):
+        """При смене body_type или channel — проверить совместимость.
+
+        Полная валидация делается в эндпоинте, где известен текущий
+        channel/body_type шаблона. Здесь проверяем случай, когда оба
+        поля переданы одновременно.
+        """
+        if self.body_type == "html" and self.channel in ("tg", "wa"):
+            raise ValueError("HTML templates are only supported for email channel")
+        return self
 
 
 class SendMessageRequest(BaseModel):
@@ -115,26 +136,6 @@ class PipelineRunRequest(BaseModel):
 class MergeRequest(BaseModel):
     """Запрос на слияние компаний."""
     source_ids: List[int] = Field(..., min_length=1, description="ID компаний для слияния в текущую")
-
-
-class MarkSpamRequest(BaseModel):
-    """Запрос на пометку компании как спам."""
-    reason: str = Field(..., pattern="^(aggregator|closed|wrong_category|duplicate_contact|other)$",
-                        description="Причина пометки спамом")
-    note: str = Field("", description="Дополнительное примечание")
-
-
-class MarkDuplicateRequest(BaseModel):
-    """Запрос на пометку компании как дубликат."""
-    target_id: int = Field(..., description="ID оригинальной компании")
-
-
-class ResolveReviewRequest(BaseModel):
-    """Запрос на разрешение needs_review."""
-    action: str = Field(..., pattern="^(approve|spam|duplicate)$",
-                        description="Действие: approve/spam/duplicate")
-    reason: Optional[str] = Field(None, description="Причина (для action=spam)")
-    target_id: Optional[int] = Field(None, description="ID оригинала (для action=duplicate)")
 
 
 class ReEnrichPreviewResponse(BaseModel):
@@ -217,11 +218,6 @@ class CompanyResponse(BaseModel):
     last_contact_at: Optional[str] = None
     notes: str = ""
     stop_automation: bool = False
-    merged_into: Optional[int] = None
-    review_reason: str = ""
-    needs_review: bool = False
-    updated_at: Optional[str] = None
-    sources: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -269,6 +265,7 @@ class TemplateResponse(BaseModel):
     channel: str
     subject: str = ""
     body: str
+    body_type: str = "plain"
     description: str = ""
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

@@ -100,9 +100,10 @@ def _apply_templates(session) -> tuple[int, int]:
             existing.subject = t["subject"]
             existing.body = t["body"]
             existing.description = t.get("description", "")
+            # Не перезаписываем body_type — пользователь мог переключить на html
             updated += 1
         else:
-            session.add(CrmTemplateRow(**t))
+            session.add(CrmTemplateRow(**t, body_type="plain"))
             inserted += 1
 
     logger.info(

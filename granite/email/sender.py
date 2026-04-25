@@ -50,6 +50,7 @@ class EmailSender:
         email_to: str,
         subject: str,
         body_text: str,
+        body_html: str | None = None,
         template_name: str = "",
         db_session=None,
         campaign_id: int | None = None,
@@ -63,7 +64,9 @@ class EmailSender:
             company_id: ID компании.
             email_to: адрес получателя.
             subject: тема письма.
-            body_text: текст письма (plain text).
+            body_text: текст письма (plain text, всегда обязательна).
+            body_html: опциональная HTML версия. Если None — генерируется
+                       из body_text через <pre> (обратная совместимость).
             template_name: имя шаблона (для логирования).
             db_session: открытая сессия БД. Если передана — лог пишется в неё.
                         Если None — лог НЕ пишется.
@@ -78,11 +81,22 @@ class EmailSender:
 
         tracking_id = secrets.token_urlsafe(16)
         pixel_url = f"{self.base_url}/api/v1/track/open/{tracking_id}.png"
+        pixel_img = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
 
-        body_html = (
-            f"<pre style='font-family:sans-serif;white-space:pre-wrap'>{html.escape(body_text)}</pre>"
-            f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
-        )
+        if body_html is None:
+            # Старое поведение: plain text → <pre>
+            body_html = (
+                f"<pre style='font-family:sans-serif;white-space:pre-wrap'>"
+                f"{html.escape(body_text)}</pre>"
+                f"{pixel_img}"
+            )
+        else:
+            # HTML-шаблон: вставить tracking pixel перед </body>
+            # Fallback: если </body> нет — добавить в конец
+            if "</body>" in body_html:
+                body_html = body_html.replace("</body>", f"{pixel_img}</body>", 1)
+            else:
+                body_html = body_html + pixel_img
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject

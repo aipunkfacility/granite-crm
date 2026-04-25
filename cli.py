@@ -343,6 +343,26 @@ def db_migrate(
         raise typer.Exit(1)
 
 
+@db_app.command("merge")
+def db_merge(
+    message: str = typer.Argument("merge heads", help="Описание merge-миграции"),
+    revisions: str = typer.Argument(None, help="Ревизии для слияния (через пробел, например: 'rev1 rev2')"),
+):
+    """Создать merge-миграцию для объединения нескольких голов (branch heads)."""
+    try:
+        alembic_cfg = _get_alembic_config()
+        from alembic import command
+
+        if revisions:
+            command.merge(alembic_cfg, revisions, message=message)
+        else:
+            command.merge(alembic_cfg, "heads", message=message)
+        print_status("Merge-миграция создана", "success")
+    except Exception as e:
+        print_status(f"Ошибка merge: {e}", "error")
+        raise typer.Exit(1)
+
+
 @db_app.command("stamp")
 def db_stamp(
     revision: str = typer.Argument("head", help="Ревизия для маркировки (head, base, или ID)")

@@ -1,4 +1,5 @@
 # database.py
+import html as _html_module
 from contextlib import contextmanager
 from sqlalchemy import (
     create_engine,
@@ -83,8 +84,6 @@ class CompanyRow(Base):
     # но приложение должно фильтровать deleted_at IS NOT NULL.
     # crm_contacts и crm_tasks используют SET NULL для сохранения истории.
     deleted_at = Column(DateTime, nullable=True, index=True)
-    # Денормализованные источники (для фильтрации). Заполняется из raw_companies.
-    sources = Column(JSON, default=list)  # list[str], e.g. ["jsprav", "web_search"]
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name_best!r})>"
@@ -288,21 +287,31 @@ class CrmTemplateRow(Base):
     channel = Column(String, nullable=False)
     subject = Column(String, default="")
     body = Column(Text, nullable=False)
+    body_type = Column(String(10), default="plain", server_default="plain", nullable=False)  # "plain" | "html"
     description = Column(String, default="")
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
 
     def render(self, **kwargs) -> str:
         """Подставить значения в плейсхолдеры шаблона.
 
         Безопасность: используется str.replace() (литеральная подстановка подстроки),
         НЕ str.format() или eval(). Инъекция невозможна.
+
+        Для HTML-шаблонов (body_type='html') значения экранируются через html.escape()
+        для предотвращения XSS.
         """
         result = self.body
         for key, value in kwargs.items():
-            result = result.replace(f"{{{key}}}", str(value))
-        # FIX 4.5: Логировать не заполненные плейсхолдеры
+            # Для HTML-шаблонов экранируем значения плейсхолдеров
+            safe_value = _html_module.escape(str(value)) if self.body_type == "html" else str(value)
+            result = result.replace(f"{{{key}}}", safe_value)
+        # Логировать не заполненные плейсхолдеры
         import re as _re
         _leftovers = _re.findall(r'\{(\w+)\}', result)
         if _leftovers:
@@ -310,7 +319,11 @@ class CrmTemplateRow(Base):
         return result
 
     def render_subject(self, **kwargs) -> str:
-        """Подставить значения в тему письма."""
+        """Подставить значения в тему письма.
+
+        Subject — всегда plain text (RFC 2047), экранирование не требуется
+        даже для HTML-шаблонов.
+        """
         if not self.subject:
             return ""
         result = self.subject
@@ -319,7 +332,7 @@ class CrmTemplateRow(Base):
         return result
 
     def __repr__(self):
-        return f"<CrmTemplateRow(name={self.name!r}, channel={self.channel!r})>"
+        return f"<CrmTemplateRow(name={self.name!r}, channel={self.channel!r}, body_type={self.body_type!r})>"
 
 
 class CrmEmailLogRow(Base):

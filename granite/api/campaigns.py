@@ -53,6 +53,14 @@ def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     if not template:
         raise HTTPException(404, f"Template '{data.template_name}' not found")
 
+    # Валидация: кампании поддерживают только email-шаблоны
+    if template.channel != "email":
+        raise HTTPException(
+            400,
+            f"Template '{data.template_name}' has channel='{template.channel}'. "
+            f"Campaigns only support email templates."
+        )
+
     # AUDIT #15: filters хранится как JSON-колонка, Pydantic→dict для ORM.
     # AUDIT #21: data.filters теперь CampaignFilters (Pydantic model), конвертируем в dict.
     campaign = CrmEmailCampaignRow(
@@ -342,16 +350,30 @@ def run_campaign(campaign_id: int, request: Request):
                     "website": company.website or "",
                 }
                 subject = template.render_subject(**render_kwargs)
-                body = template.render(**render_kwargs)
-                tracking_id = sender.send(
-                    company_id=company.id,
-                    email_to=email_to,
-                    subject=subject,
-                    body_text=body,
-                    template_name=template.name,
-                    db_session=session,
-                    campaign_id=campaign.id,
-                )
+                rendered = template.render(**render_kwargs)
+                if template.body_type == "html":
+                    from granite.utils import html_to_plain_text
+                    body_text = html_to_plain_text(rendered)
+                    tracking_id = sender.send(
+                        company_id=company.id,
+                        email_to=email_to,
+                        subject=subject,
+                        body_text=body_text,
+                        body_html=rendered,
+                        template_name=template.name,
+                        db_session=session,
+                        campaign_id=campaign.id,
+                    )
+                else:
+                    tracking_id = sender.send(
+                        company_id=company.id,
+                        email_to=email_to,
+                        subject=subject,
+                        body_text=rendered,
+                        template_name=template.name,
+                        db_session=session,
+                        campaign_id=campaign.id,
+                    )
                 if tracking_id:
                     sent += 1
                     campaign.total_sent = sent

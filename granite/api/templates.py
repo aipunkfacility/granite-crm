@@ -62,6 +62,7 @@ def list_templates(
             "channel": t.channel,
             "subject": t.subject,
             "body": t.body,
+            "body_type": t.body_type,
             "description": t.description,
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -82,6 +83,7 @@ def get_template(template_name: str, db: Session = Depends(get_db)):
         "channel": t.channel,
         "subject": t.subject,
         "body": t.body,
+        "body_type": t.body_type,
         "description": t.description,
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
@@ -102,6 +104,7 @@ def create_template(data: CreateTemplateRequest, db: Session = Depends(get_db)):
         channel=data.channel,
         subject=data.subject,
         body=data.body,
+        body_type=data.body_type,
         description=data.description,
     )
     db.add(t)
@@ -119,6 +122,13 @@ def update_template(template_name: str, data: UpdateTemplateRequest, db: Session
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(t, key, value)
+
+    # Валидация: body_type=html + channel != email → 400
+    if data.body_type is not None or data.channel is not None:
+        new_body_type = data.body_type if data.body_type is not None else t.body_type
+        new_channel = data.channel if data.channel is not None else t.channel
+        if new_body_type == "html" and new_channel != "email":
+            raise HTTPException(400, "HTML templates are only supported for email channel")
 
     # FIX MISS-1: Явно обновляем updated_at при PUT.
     # onupdate в SQLAlchemy ORM не работает при setattr + session.commit().
