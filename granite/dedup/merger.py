@@ -122,8 +122,16 @@ def merge_cluster(cluster_records: list[dict]) -> dict:
         )
         all_emails = all_emails[:MAX_MERGE_EMAILS]
 
+    # Собираем уникальные источники из всех raw-записей кластера
+    sources_set: set[str] = set()
+    for r in cluster_records:
+        src = r.get("source")
+        if src and isinstance(src, str) and src.strip():
+            sources_set.add(src.strip())
+
     merged = {
         "merged_from": [r.get("id") for r in cluster_records if r.get("id") is not None],
+        "sources": sorted(sources_set),
         # FIX 2.1: SEO-название не должно побеждать реальное имя.
         # pick_best_value берёт самое длинное → SEO-титлы (78+ символов) всегда выигрывают.
         # Новая логика: если есть не-SEO варианты — берём самое длинное из них.

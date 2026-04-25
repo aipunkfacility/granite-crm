@@ -155,6 +155,7 @@ class DedupPhase:
                     messengers=messengers,
                     needs_review=merged.get("needs_review", False),
                     review_reason=merged.get("review_reason", ""),
+                    sources=merged.get("sources", []),
                 )
                 session.add(row)
                 session.flush()  # Получаем row.id для связей

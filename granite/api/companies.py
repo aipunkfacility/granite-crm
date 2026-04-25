@@ -131,15 +131,31 @@ def list_companies(
             f"json_extract(enriched_companies.tg_trust, '$.trust_score') <= {tg_trust_max}"
         ))
 
-    # --- Source фильтр (денормализованный JSON-массив) ---
+    # --- Source фильтр ---
+    # Сначала пробуем денормализованный JSON-массив companies.sources.
+    # Если он пуст/NULL — fallback на raw_companies через подзапрос.
     VALID_SOURCES = {"jsprav", "web_search", "2gis", "yell", "jsprav_playwright", "avito", "google_maps"}
     if source:
         if source not in VALID_SOURCES:
             from fastapi import HTTPException as _HE
             raise _HE(422, f"Invalid source '{source}'. Valid: {', '.join(sorted(VALID_SOURCES))}")
-        q = q.filter(sa_text(
-            f"'{source}' IN (SELECT value FROM json_each(companies.sources))"
-        ))
+        # Проверяем: есть ли вообще заполненные sources в companies?
+        has_sources = db.execute(sa_text(
+            "SELECT COUNT(*) FROM companies "
+            "WHERE sources IS NOT NULL AND sources != '[]' AND deleted_at IS NULL"
+        )).scalar()
+        if has_sources:
+            q = q.filter(sa_text(
+                f"'{source}' IN (SELECT value FROM json_each(companies.sources))"
+            ))
+        else:
+            # Fallback: фильтр через raw_companies (merged_into или прямой id)
+            q = q.filter(sa_text(
+                f"companies.id IN ("
+                f"  SELECT COALESCE(r.merged_into, r.id) FROM raw_companies r "
+                f"  WHERE r.source = '{source}'"
+                f")"
+            ))
 
     if city:
         city = [c for c in city if c.strip()]
@@ -661,6 +677,13 @@ def merge_companies(
         if source_enriched:
             source_enriched.city = target.city  # Переносим в город target
 
+        # 7. Объединяем sources
+        source_sources = source.sources or []
+        target_sources = set(target.sources or [])
+        for s in source_sources:
+            target_sources.add(s)
+        target.sources = sorted(target_sources)
+
         merged_count += 1
         logger.info(f"merge: {source_id} ({source.name_best}) -> {company_id} ({target.name_best})")
 
@@ -1016,15 +1039,32 @@ def list_cms_types(db: Session = Depends(get_db)):
 @router.get("/source-types")
 def list_source_types(db: Session = Depends(get_db)):
     """Список уникальных источников (sources) для фильтра на фронтенде."""
+    items: list[str] = []
     try:
+        # 1. Пробуем денормализованный companies.sources
         rows = db.execute(sa_text(
             "SELECT DISTINCT j.value FROM companies c, json_each(c.sources) j "
-            "WHERE c.sources IS NOT NULL AND c.deleted_at IS NULL "
+            "WHERE c.sources IS NOT NULL AND c.sources != '[]' AND c.deleted_at IS NULL "
             "ORDER BY j.value"
         )).fetchall()
         items = [r[0] for r in rows if r[0]]
-        if not items:
-            items = sorted(["jsprav", "web_search", "2gis", "yell", "avito", "google_maps"])
     except Exception:
+        pass
+
+    # 2. Если sources пуст — берём из raw_companies
+    if not items:
+        try:
+            rows = db.execute(sa_text(
+                "SELECT DISTINCT source FROM raw_companies "
+                "WHERE source IS NOT NULL AND source != '' "
+                "ORDER BY source"
+            )).fetchall()
+            items = [r[0] for r in rows if r[0]]
+        except Exception:
+            pass
+
+    # 3. Финальный fallback — статический список
+    if not items:
         items = sorted(["jsprav", "web_search", "2gis", "yell", "avito", "google_maps"])
+
     return {"items": items}
