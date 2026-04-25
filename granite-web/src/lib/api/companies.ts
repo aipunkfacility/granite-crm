@@ -93,6 +93,18 @@ export const markDuplicate = async (id: number, targetId: number): Promise<{ ok:
   return data;
 };
 
+// Resolve-review
+export interface ResolveReviewPayload {
+  action: 'approve' | 'spam' | 'duplicate';
+  reason?: string;
+  target_id?: number;
+}
+
+export const resolveReview = async (id: number, payload: ResolveReviewPayload): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.post(`companies/${id}/resolve-review`, payload);
+  return data;
+};
+
 export const fetchCmsTypes = async (): Promise<string[]> => {
   const { data } = await apiClient.get<{ items: string[] }>('cms-types');
   return data.items;

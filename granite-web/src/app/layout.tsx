@@ -6,6 +6,7 @@ import "./globals.css";
 import QueryProvider from "@/providers/query-provider";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
+import { AdminProvider } from "@/lib/admin-context";
 
 const inter = Inter({ subsets: ["latin", "cyrillic"] });
 
@@ -27,6 +28,7 @@ export default function RootLayout({
       <body className={`${inter.className} ${jetbrainsMono.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <QueryProvider>
+            <AdminProvider>
             <div className="flex h-screen overflow-hidden bg-background">
               <Sidebar />
               <main className="flex-1 overflow-y-auto overflow-x-hidden">
@@ -35,6 +37,7 @@ export default function RootLayout({
                 </div>
               </main>
             </div>
+            </AdminProvider>
             <Toaster position="bottom-right" richColors />
           </QueryProvider>
         </ThemeProvider>
