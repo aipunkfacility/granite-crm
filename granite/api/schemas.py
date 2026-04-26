@@ -138,6 +138,23 @@ class MergeRequest(BaseModel):
     source_ids: List[int] = Field(..., min_length=1, description="ID компаний для слияния в текущую")
 
 
+class MarkSpamRequest(BaseModel):
+    """Запрос на пометку компании как спам."""
+    reason: str = Field("", min_length=0, description="Причина пометки")
+
+
+class MarkDuplicateRequest(BaseModel):
+    """Запрос на пометку компании как дубликат."""
+    target_id: int = Field(..., description="ID компании-оригинала")
+
+
+class ResolveReviewRequest(BaseModel):
+    """Запрос на разрешение needs_review для компании."""
+    action: str = Field(..., pattern="^(approve|spam|duplicate)$")
+    reason: Optional[str] = None
+    target_id: Optional[int] = None
+
+
 class ReEnrichPreviewResponse(BaseModel):
     """Результат предпросмотра пересканирования данных."""
     company_id: int

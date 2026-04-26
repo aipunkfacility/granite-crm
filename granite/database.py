@@ -1,5 +1,6 @@
 # database.py
 import html as _html_module
+import secrets as _secrets
 from contextlib import contextmanager
 from sqlalchemy import (
     create_engine,
@@ -248,7 +249,8 @@ class CrmContactRow(Base):
     # Задача 1: unsubscribe_token для отписки из email
     unsubscribe_token = Column(
         String,
-        nullable=True,
+        nullable=False,
+        default=lambda: _secrets.token_hex(16),
         unique=True,
         index=True,
     )

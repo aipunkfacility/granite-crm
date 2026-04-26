@@ -47,8 +47,13 @@ def db_session(engine):
 
 
 @pytest.fixture
-def client(engine):
+def client(engine, monkeypatch):
     """TestClient с in-memory БД, сидом шаблонов и dependency override."""
+    import os
+    # Установить рабочий каталог проекта, чтобы lifespan нашёл config.yaml
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    monkeypatch.chdir(project_root)
+
     from granite.api.app import app
 
     TestSession = sessionmaker(bind=engine)
