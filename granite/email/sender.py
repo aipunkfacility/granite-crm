@@ -37,7 +37,7 @@ class EmailSender:
 
     def __init__(self):
         self.smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-        self.smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        self.smtp_port = int(os.environ.get("SMTP_PORT", "465"))
         self.smtp_user = os.environ.get("SMTP_USER", "")
         self.smtp_pass = os.environ.get("SMTP_PASS", "")
         self.base_url = os.environ.get("BASE_URL", "http://localhost:8000").rstrip("/")
@@ -132,12 +132,23 @@ class EmailSender:
         reraise=True,
     )
     def _smtp_send(self, email_to: str, msg: MIMEMultipart) -> None:
-        """SMTP-отправка с retry на временные ошибки."""
-        with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(self.smtp_user, self.smtp_pass)
-            server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
+        """SMTP-отправка с retry на временные ошибки.
+
+        Поддерживает два режима:
+        - Порт 465: SMTP_SSL (implicit TLS) — Gmail по умолчанию
+        - Порт 587: SMTP + STARTTLS (explicit TLS)
+        """
+        if self.smtp_port == 465:
+            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
+                server.login(self.smtp_user, self.smtp_pass)
+                server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
+        else:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(self.smtp_user, self.smtp_pass)
+                server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
 
     def _log_to_db(
         self,

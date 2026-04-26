@@ -51,6 +51,15 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"CRM API started. DB: {db._db_path}")
 
+    # Задача 16: предупреждения о missing env vars
+    required_smtp_vars = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"]
+    missing = [v for v in required_smtp_vars if not os.environ.get(v)]
+    if missing:
+        logger.warning(f"Missing SMTP env vars: {missing}. Email sending will NOT work.")
+
+    if not os.environ.get("GRANITE_API_KEY"):
+        logger.warning("GRANITE_API_KEY not set — API authentication DISABLED (dev mode)")
+
     # Файловый лог с ротацией
     logger.add(
         "data/crm.log",
@@ -287,6 +296,7 @@ async def api_key_auth_middleware(request: Request, call_next):
         not request.url.path.startswith("/api/v1/")
         or request.url.path in skip_paths
         or request.url.path.startswith("/api/v1/track/")
+        or request.url.path.startswith("/api/v1/unsubscribe/")
         or request.method == "OPTIONS"
     ):
         return await call_next(request)
@@ -311,6 +321,7 @@ async def api_key_auth_middleware(request: Request, call_next):
 from granite.api import (
     companies, touches, tasks, tracking, campaigns,
     followup, funnel, messenger, templates, stats, export,
+    unsubscribe,
 )
 app.include_router(companies.router, prefix="/api/v1", tags=["companies"])
 app.include_router(touches.router, prefix="/api/v1", tags=["touches"])
@@ -323,6 +334,7 @@ app.include_router(messenger.router, prefix="/api/v1", tags=["messenger"])
 app.include_router(templates.router, prefix="/api/v1", tags=["templates"])
 app.include_router(stats.router, prefix="/api/v1", tags=["stats"])
 app.include_router(export.router, prefix="/api/v1", tags=["export"])
+app.include_router(unsubscribe.router, prefix="/api/v1", tags=["unsubscribe"])
 
 from granite.api import pipeline_status
 app.include_router(pipeline_status.router, prefix="/api/v1", tags=["pipeline"])
@@ -341,3 +353,27 @@ def health(request: Request):
         pass
     status = "ok" if db_ok else "degraded"
     return {"status": status, "db": db_ok}
+
+
+@app.get("/health/smtp")
+def health_smtp():
+    """Проверка подключения к SMTP. Использовать перед запуском кампании."""
+    import smtplib
+    smtp_host = os.environ.get("SMTP_HOST", "")
+    smtp_port = int(os.environ.get("SMTP_PORT", "465"))
+    smtp_user = os.environ.get("SMTP_USER", "")
+    smtp_pass = os.environ.get("SMTP_PASS", "")
+    if not all([smtp_host, smtp_user, smtp_pass]):
+        return {"status": "error", "smtp": "SMTP credentials not configured"}
+    try:
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10) as s:
+                s.login(smtp_user, smtp_pass)
+        else:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+                s.ehlo()
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+        return {"status": "ok", "smtp": "connected"}
+    except Exception as e:
+        return {"status": "error", "smtp": str(e)}

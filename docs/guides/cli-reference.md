@@ -137,7 +137,7 @@ uv run cli.py scan-networks
 ### Через CLI
 
 ```bash
-uv run cli.py db upgrade [РЕВИЗИЯ]     # применить миграции (default: head)
+uv run cli.py db upgrade               # применить миграции (default: head)
 uv run cli.py db downgrade [РЕВИЗИЯ]   # откатить (default: -1)
 uv run cli.py db history [-v] [-r RANGE]  # история миграций
 uv run cli.py db current               # текущая версия схемы

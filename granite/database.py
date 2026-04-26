@@ -245,6 +245,14 @@ class CrmContactRow(Base):
     notes = Column(Text, default="")
     stop_automation = Column(Integer, default=0, server_default="0", index=True)
 
+    # Задача 1: unsubscribe_token для отписки из email
+    unsubscribe_token = Column(
+        String,
+        nullable=True,
+        unique=True,
+        index=True,
+    )
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
         DateTime,

@@ -59,8 +59,8 @@ class TestIsSeoTitle:
         assert is_seo_title(None) is True
 
     def test_гранитные_мастерские(self):
-        """'Гранитные мастерские' → SEO (множественное число = каталог)."""
-        assert is_seo_title("Гранитные мастерские России") is True
+        """'Гранитные мастерские' → НЕ SEO (v13: реальное название в нише, как «Гранит-Мастер»)."""
+        assert is_seo_title("Гранитные мастерские России") is False
 
     def test_normal_name_with_granit(self):
         """'Гранит-Мастер ООО' → не SEO (реальное название)."""
