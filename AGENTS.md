@@ -1,94 +1,95 @@
 # AGENTS.md — Granite CRM
 
-Стандарты разработки для всех AI-агентов, работающих над проектом.
-Читается: Antigravity (v1.20.3+), Cursor, Claude Code, Codex.
-Antigravity-специфичные переопределения — в `.agents/rules.md` и `docs/GEMINI.md`.
+Стандарты разработки для AI-агентов.
+Иерархия: `.agents/rules.md` > `.agents/opencode.md` > `GEMINI.md` > `AGENTS.md`.
+Общие правила см. в `.agents/rules.md`.
 
 ---
 
-## 📌 Контекст проекта
+## 📌 Контекст
 
-**Что это:** Python-пайплайн сбора базы ритуальных мастерских России + FastAPI CRM бэкенд.
+**Что это:** Python-пайплайн сбора базы ритуальных мастерских + FastAPI CRM.
 **Стек:** Python 3.12, SQLAlchemy 2.x, Alembic, FastAPI, SQLite (WAL), asyncio/httpx.
-**Package manager:** `uv` — единственный инструмент управления зависимостями.
-**Смежный проект:** Granite Web UI — Next.js, TypeScript, shadcn/ui, TanStack Query v5.
+**Package manager:** **только `uv`** — никогда `pip install`.
 
-**Ключевые файлы:**
-- `granite/database.py` — ORM-модели и класс Database
-- `granite/pipeline/` — фазы пайплайна (scraping → dedup → enrichment → scoring → export)
-- `granite/scrapers/` — парсеры источников (jsprav, dgis, web_search)
-- `granite/enrichers/` — обогащение (TG, мессенджеры, CMS)
-- `granite/api/` — FastAPI CRM endpoints
-- `config.yaml` — конфигурация городов, источников, скоринга
-- `data/granite.db` — SQLite база, ~6000 компаний, 29 городов
-- `pyproject.toml` — зависимости проекта (управляется через `uv`)
+| Компонент | Файл |
+|----------|------|
+| ORM + БД | `granite/database.py` |
+| Пайплайн | `granite/pipeline/` |
+| Скреперы | `granite/scrapers/` (jsprav, jsprav_playwright) ⚠️ dgis/yell отключены, web_search работает |
+| Обогащение | `granite/enrichers/` (tg_finder, messenger_scanner, tech_extractor, classifier, network_detector, reverse_lookup) |
+| CRM API | `granite/api/` |
+| БД | `data/granite.db` (~6000 компаний, 29 городов) |
+| Фронтенд | `granite-web/` (Next.js, TypeScript) |
 
 ---
 
-## 🐍 Python — правила кодирования
+## 🐍 Python — ключевые правила
 
 ### Зависимости
-- **Добавить пакет:** `uv add <package>`
-- **Удалить пакет:** `uv remove <package>`
-- **Синхронизировать env:** `uv sync`
-- **Запустить скрипт:** `uv run <script.py>`
-- **Запустить CLI:** `uv run cli.py <command>`
-- **Никогда:** `pip install`, `pip-tools`, `poetry`
+```bash
+uv add <package>    # добавить
+uv remove <package> # удалить
+uv sync         # синхронизировать
+uv run cli.py <cmd>  # запустить CLI
+```
 
 ### БД и сессии
-- **Всегда** использовать `session_scope()` контекстный менеджер вместо `get_session()`:
-  ```python
-  with db.session_scope() as session:
-      ...
-  # commit() и close() вызываются автоматически
-  ```
-- **Никогда** не вызывать `session.commit()` внутри `session_scope()` — он делает это сам при выходе.
-- **Никогда** не передавать SQLAlchemy `session` между потоками ThreadPoolExecutor.
-- `session.flush()` допустим внутри `session_scope()` для промежуточной записи.
+```python
+# ✅ ВСЕГДА — session_scope
+with db.session_scope() as session:
+    ...  # commit() вызывается автоматически
 
-### HTTP и безопасность
-- Все URL через `is_safe_url(url)` перед запросом — обязательно (SSRF protection).
-- Логировать URL через `_sanitize_url_for_log(url)`, не сырой URL — в логах может быть PII.
-- Таймаут для одиночных запросов: 15с. Для batch-scraping: 8с.
-- `fetch_page()` уже имеет retry через tenacity — не оборачивать дополнительно.
+# ❌ НИКОГДА внутри session_scope
+session.commit()  # уже делает сам
+
+# ❌ НЕ передавать session между потоками
+```
+
+### HTTP
+```python
+# ✅ ВСЕГДА — проверка URL
+if is_safe_url(url):
+    await fetch_page(url)
+
+# ⏱ Таймауты: 15с одиночный, 8с batch-scraping
+# fetch_page() уже с retry — не оборачивать
+```
 
 ### Async vs Sync
-- Если `config.enrichment.async_enabled: true` → использовать `http_client.py` (httpx.AsyncClient).
-- Иначе → ThreadPoolExecutor в `_enrich_companies_parallel()`.
-- Не смешивать sync и async без `run_async()` из `http_client.py`.
-- В async-контексте: `async_fetch_page()`, `async_adaptive_delay()` — не `fetch_page()`.
+- `config.enrichment.async_enabled: true` → `httpx.AsyncClient` из `http_client.py`
+- Иначе → `ThreadPoolExecutor` в `_enrich_companies_parallel()`
+- Не смешивать без `run_async()`
 
 ### Стиль
-- Type hints на всех функциях — обязательно.
-- Docstrings на публичных методах (кратко: что делает, что возвращает, что кидает).
-- Максимальная длина строки: 100 символов.
-- Импорты в порядке: stdlib → third-party → local (`granite.*`).
+- Type hints + docstrings на публичных методах
+- Max 100 символов строка (ruff)
+- Импорты: stdlib → third-party → `granite.*`
 
-### 🧹 Очистка и целостность данных
-- **Всегда** использовать `normalize_messenger_url(url, type)` из `granite.utils` перед сохранением ссылок на мессенджеры. Это предотвращает дублирование префиксов (например, `wa.me/https://wa.me/...`).
-- **Всегда** использовать `is_seo_title(name)` для фильтрации мусорных названий компаний (слипшиеся слова, SEO-фразы).
-- **CrmContactRow** создается автоматически в `DedupPhase`. Не нужно создавать его вручную в других фазах пайплайна, если нет особой необходимости.
-- При ручном обновлении телефонов через API — использовать `normalize_phones()`.
+### Данные
+```python
+# Нормализация URL мессенджеров
+normalize_messenger_url(url, type)
+
+# Фильтрация мусора
+is_seo_title(name)
+
+# Телефоны
+normalize_phones()
+```
 
 ---
 
-## 🗄️ Изменения схемы БД
-
-**Всегда через Alembic — никогда напрямую:**
+## 🗄️ Изменения схемы БД — через Alembic
 
 ```bash
-# 1. Изменить ORM-модель в granite/database.py
-# 2. Проверить что Alembic видит изменения:
-uv run cli.py db check
-# 3. Создать миграцию:
-uv run cli.py db migrate "краткое описание на английском"
-# 4. Проверить сгенерированный файл в alembic/versions/ перед применением
-# 5. Применить:
-uv run cli.py db upgrade head
+uv run cli.py db check          # проверить расхождения
+uv run cli.py db migrate "desc" # создать миграцию
+uv run cli.py db upgrade head   # применить
 ```
 
-**Никогда:**
-- `Base.metadata.create_all()` в production коде (только для тестов с `auto_migrate=False`)
+**Нельзя:**
+- `Base.metadata.create_all()` в production
 - Прямые `ALTER TABLE` / `CREATE TABLE` в SQLite
 - Удалять файлы из `alembic/versions/`
 
@@ -97,89 +98,109 @@ uv run cli.py db upgrade head
 ## 🧪 Тестирование
 
 ```bash
-uv run pytest tests/ -v                       # все тесты
-uv run pytest tests/test_enrichers.py -v      # enrichers
-uv run pytest tests/test_pipeline.py -v       # pipeline
-uv run pytest tests/test_migrations.py -v     # миграции
-uv run pytest -k "async" -v                   # только async тесты
+uv run pytest tests/ -v              # все
+uv run pytest tests/test_enrichers.py -v
+uv run pytest tests/test_pipeline.py -v
+uv run pytest tests/test_migrations.py -v
+uv run pytest -k "async" -v         # только async
 ```
 
-- Перед PR: все тесты должны проходить.
-- Моки HTTP через `unittest.mock.patch` — не реальные запросы в тестах.
-- Тесты с БД: использовать `tmp_path` fixture и `Database(auto_migrate=False)`.
+- Моки HTTP через `unittest.mock.patch`
+- Тесты с БД: `Database(auto_migrate=False)`
 
 ---
 
-## 🚀 Пайплайн — как запускать
+## 🚀 Пайплайн
 
 ```bash
-# Полный цикл для города
-uv run cli.py run "Ярославль"
-
-# С очисткой старых данных
-uv run cli.py run "Ярославль" --force
-
-# Только обогащение (scrape+dedup уже есть)
-uv run cli.py run "Ярославль" --re-enrich
-
-# Все города из config.yaml (запускает scan-networks автоматически в конце)
-uv run cli.py run all
-
-# Глобальный сканер агрегаторов вручную
-uv run cli.py scan-networks
+uv run playwright install chromium   # один раз при настройке
+uv run cli.py seed-cities           # один раз при первом запуске
+uv run cli.py run "Город"          # полный цикл
+uv run cli.py run "Город" --force   # с нуля
+uv run cli.py run "Город" --re-enrich # только обогащение
+uv run cli.py run all              # все города
+uv run cli.py scan-networks       # глобальный сканер агрегаторов
+uv run cli.py cities-status        # проверить статусы городов
 ```
 
-**Чекпоинты:** пайплайн запоминает прогресс. Прерванный запуск продолжится с нужного этапа.
-
-**Мониторинг:** Пайплайн сохраняет текущую фазу и статус в таблицу `cities_ref` (поля `pipeline_status`, `pipeline_phase`). Это позволяет CRM API в реальном времени отображать прогресс даже для CLI-запусков. Используйте `self._set_city_status()` внутри `PipelineManager` для обновления прогресса.
+**Чекпоинты:** пайплайн запоминает прогресс. Поля `pipeline_status`, `pipeline_phase` в `cities_ref`.
 
 ---
 
-## ⚠️ Частые ошибки — не делать
+## ⚠️ Частые ошибки
 
-1. **Не читать `r.phones`/`r.emails` в потоках без eager loading** — SQLAlchemy lazy load не thread-safe.
-2. **Всегда проверять `needs_review` и `review_reason`** — если флаг стоит, данные требуют валидации человеком или спец. фильтрами.
-3. **Не хардкодить таймаут 15с везде** — для detail-страниц jsprav достаточно 8с, иначе зависание.
-3. **Не писать голые `except Exception:`** — минимум логировать категорию ошибки через `_classify_error()`.
-4. **Не менять `config.yaml` во время работы пайплайна** — читается один раз при старте.
-5. **Не запускать `DROP TABLE` через SQLite MCP** — использовать `uv run cli.py run "Город" --force`.
-6. **Не использовать `pip install`** — только `uv add`.
-
----
-
-## 🌐 FastAPI (CRM API)
-
-- Все изменения данных — через `session_scope()`, не через raw SQL.
-- Новые endpoints регистрировать в `granite/api/app.py` через `app.include_router()`.
-- Pydantic схемы для request/response — в `granite/api/schemas.py`.
-- Зависимость `get_db` из `granite/api/deps.py` — auto-commit при выходе, rollback при ошибке.
+1. **Lazy load в потоках** — читать `r.phones`/`r.emails` только с `joinedload()`
+2. **`needs_review` / `review_reason`** — флаг требует валидации
+3. **Таймаут 15с everywhere** — для detail-страниц jsprav хватит 8с
+4. **Голый `except Exception:`** — минимум `_classify_error()`
+5. **`config.yaml` во время работы** — читается один раз при старте
+6. **`DROP TABLE` через MCP** — `uv run cli.py run "Город" --force`
+7. **`pip install`** — только `uv add`
 
 ---
 
-## 📁 Структура — куда что класть
+## 🌐 FastAPI
+
+```bash
+uv run cli.py api --port 8000          # запустить
+uv run cli.py api --port 8000 --reload   # hot reload
+```
+
+- Изменения данных: `session_scope()`, не raw SQL
+- Endpoints: `app.include_router()` в `granite/api/app.py`
+- Pydantic схемы: `granite/api/schemas.py`
+- Зависимость `get_db`: auto-commit, rollback при ошибке
+
+---
+
+## 📁 Структура
 
 ```
 granite/
-├── scrapers/      # Новый скрепер → наследовать BaseScraper, реализовать scrape()
-├── enrichers/     # Новый enricher → добавить в __init__.py
-├── pipeline/      # Новая фаза → отдельный файл *_phase.py, добавить в manager.py
-├── api/           # Новый endpoint → отдельный файл, router, register в app.py
-└── dedup/         # Дедупликация — трогать осторожно, Union-Find алгоритм
+├── scrapers/      # BaseScraper → scrape()
+│   ├── base.py, jsprav.py, jsprav_playwright.py
+│   ├── dgis.py, dgis_constants.py ⚠️ отключены
+│   ├── web_search.py
+│   ├── yell.py ⚠️ отключен
+│   └── _playwright.py
+├── enrichers/    # добавить в __init__.py
+│   ├── tg_finder.py, tg_trust.py
+│   ├── messenger_scanner.py
+│   ├── tech_extractor.py
+│   ├── classifier.py
+│   ├── network_detector.py
+│   └── reverse_lookup.py
+├── pipeline/    # *_phase.py → manager.py
+├── api/        # router → app.py
+├── dedup/      # Union-Find (осторожно)
+├── email/     # отправка + tracking pixel
+├── messenger/ # TG/WA (mock)
+├── exporters/ # CSV/Markdown экспорт
+└── data/     # справочники
 ```
 
 ---
 
 ## 🔒 Безопасность
 
-- `is_safe_url()` — проверять ВСЕ внешние URL перед HTTP-запросом.
-- SQL в FastAPI: никаких f-string в запросах. Если `ilike` — экранировать `%` и `_`:
-  ```python
-  def _escape_like(s: str) -> str:
-      return s.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
-  q.filter(CompanyRow.name_best.ilike(f"%{_escape_like(search)}%", escape="\\"))
-  ```
-- Секреты (API ключи) — только через `.env` / переменные окружения. Не в `config.yaml`.
+- `is_safe_url()` перед HTTP
+- SQL: без f-string, `ilike` → экранировать `%_`
+- Секреты: `.env` / переменные окружения
 
 ---
 
-*Проект: Granite CRM · Последнее обновление: 2026-04-21*
+## 🎯 Скиллы
+
+Для специфичных задач — загрузить skill:
+
+| Скилл | Задача |
+|-------|--------|
+| **granite-coder** | Изменение кода в `granite/` |
+| **pipeline-monitor** | Пайплайн завис/упал |
+| **scraper-debugger** | Скрепер 0 результатов |
+| **Data Auditor** | Аудит качества данных |
+| **github** | Issues, PR, CI |
+
+---
+
+*Granite CRM · Обновлено: 2026-04-26*
