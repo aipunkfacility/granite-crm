@@ -114,8 +114,6 @@ class PipelineManager:
             print_status("Флаг --force: очистка старых данных...", "warning")
             self.checkpoints.clear_city(city)
 
-        self._set_city_status(city, "running", "start")
-        
         try:
             stage = self.checkpoints.get_stage(city)
 
@@ -133,6 +131,9 @@ class PipelineManager:
                 self._set_city_status(city, "success", "done")
                 return False  # сигнализируем, что город был пропущен
 
+            # Только теперь помечаем как running, если реально будем работать
+            self._set_city_status(city, "running", stage)
+            
             # Город требует работы — выводим заголовок
             print_status(f"Запуск конвейера для: {city} [этап: {stage}]", "bold")
 
@@ -240,14 +241,11 @@ class PipelineManager:
                     func.avg(EnrichedCompanyRow.crm_score)
                 ).scalar() or 0
 
-            if stats["total"] == 0:
-                print_status(f"Нет обогащённых компаний для {city}", "warning")
-                return
-
-            print_status(f"Итоги для {city}:", "bold")
-            rows = [
-                ["Всего компаний", str(stats["total"])],
-                ["Сегмент A", str(stats["seg_a"])],
+            if stats["total"] > 0:
+                print_status(f"Итоги для {city}:", "bold")
+                rows = [
+                    ["Всего компаний", str(stats["total"])],
+                    ["Сегмент A", str(stats["seg_a"])],
                 ["Сегмент B", str(stats["seg_b"])],
                 ["Сегмент C", str(stats["seg_c"])],
                 ["Сегмент D", str(stats["seg_d"])],

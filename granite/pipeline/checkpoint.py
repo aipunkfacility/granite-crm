@@ -1,5 +1,5 @@
 # pipeline/checkpoint.py
-from granite.database import Database, EnrichedCompanyRow, RawCompanyRow, CompanyRow
+from granite.database import Database, EnrichedCompanyRow, RawCompanyRow, CompanyRow, CityRefRow
 from loguru import logger
 
 
@@ -16,6 +16,14 @@ class CheckpointManager:
         Возможные стадии: 'start', 'scraped', 'deduped', 'enriched'
         """
         with self.db.session_scope() as session:
+            # 1. Сначала проверяем статус в справочнике городов.
+            # Если город помечен как успех — он завершён, даже если в нём 0 компаний
+            # (например, все были переназначены в другие города).
+            city_ref = session.query(CityRefRow).filter_by(name=city).first()
+            if city_ref and city_ref.pipeline_status == "success":
+                return "enriched"
+
+            # 2. Фолбэк на подсчёт строк (для совместимости и старых данных)
             enriched_count = (
                 session.query(EnrichedCompanyRow).filter_by(city=city).count()
             )

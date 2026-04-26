@@ -149,7 +149,7 @@ class ReverseLookupEnricher:
     def _get_candidates(self, city: str) -> list[EnrichedCompanyRow]:
         """Выбрать компании-кандидаты для reverse lookup.
 
-        Условия: нет мессенджеров, нет email, crm_score < min_crm_score.
+        Условие: нет мессенджеров, нет email, crm_score < min_crm_score.
 
         Returns:
             Список EnrichedCompanyRow.
@@ -170,6 +170,9 @@ class ReverseLookupEnricher:
                 if (c.crm_score or 0) >= self._min_crm_score:
                     continue
 
+                # Важно: отвязываем объект от сессии, чтобы он был доступен
+                # вне session_scope без DetachedInstanceError.
+                session.expunge(c)
                 candidates.append(c)
 
         return candidates
