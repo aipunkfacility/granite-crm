@@ -403,3 +403,358 @@ class TestCampaignsChannelValidation:
             "template_name": "cold_email_1",
         })
         assert resp.status_code == 201
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Immutable шаблоны, кириллица, max_length
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestImmutableTemplates:
+    """Immutable шаблоны: seed, retired, template_id."""
+
+    @pytest.fixture
+    def engine(self):
+        from sqlalchemy import create_engine, event
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+        from granite.database import Base
+        _engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        @event.listens_for(_engine, "connect")
+        def _pragma(dbapi_conn, conn_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+        Base.metadata.create_all(_engine)
+        yield _engine
+        _engine.dispose()
+
+    @pytest.fixture
+    def db(self, engine):
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        yield session
+        session.rollback()
+        session.close()
+
+    def _make_template(self, db, name="cold_email_v1", channel="email",
+                        subject="Тест", body="Здравствуйте {city}",
+                        body_type="plain", description="", retired=False):
+        from granite.database import CrmTemplateRow
+        template = CrmTemplateRow(name=name, channel=channel, subject=subject, body=body, body_type=body_type, description=description, retired=retired)
+        db.add(template)
+        db.flush()
+        return template
+
+    def _make_campaign(self, db, name="Test Campaign", template_name="cold_email_v1",
+                        status="draft", subject_a=None, subject_b=None,
+                        filters=None, total_sent=0, total_errors=0):
+        from granite.database import CrmEmailCampaignRow
+        campaign = CrmEmailCampaignRow(name=name, template_name=template_name, status=status, subject_a=subject_a, subject_b=subject_b, filters=filters or {}, total_sent=total_sent, total_errors=total_errors)
+        db.add(campaign)
+        db.flush()
+        return campaign
+
+    def test_seed_inserts_new(self, tmp_path):
+        import json as _json
+        from granite.database import Database, CrmTemplateRow, Base
+        db_path = str(tmp_path / "test_seed.db")
+        db = Database(db_path=db_path)
+        Base.metadata.create_all(db.engine)
+        templates_json = [
+            {"name": "seed_tpl_a", "channel": "email", "subject": "Hi A", "body": "Hello {city}", "body_type": "plain", "description": "Seed A"},
+            {"name": "seed_tpl_b", "channel": "email", "subject": "Hi B", "body": "Hello {city}", "body_type": "plain", "description": "Seed B"},
+        ]
+        json_path = str(tmp_path / "email_templates.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            _json.dump(templates_json, f)
+        from scripts.seed_templates import seed_templates
+        added = seed_templates(db_path=db_path, json_path=json_path)
+        assert added == 2
+        session = db.SessionLocal()
+        try:
+            count = session.query(CrmTemplateRow).count()
+            assert count == 2
+            names = {t.name for t in session.query(CrmTemplateRow).all()}
+            assert names == {"seed_tpl_a", "seed_tpl_b"}
+        finally:
+            session.close()
+            db.engine.dispose()
+
+    def test_seed_skips_existing(self, tmp_path):
+        import json as _json
+        from granite.database import Database, CrmTemplateRow, Base
+        db_path = str(tmp_path / "test_seed2.db")
+        db = Database(db_path=db_path)
+        Base.metadata.create_all(db.engine)
+        templates_json = [
+            {"name": "existing_tpl", "channel": "email", "subject": "Hi", "body": "Original body", "body_type": "plain", "description": "Original"},
+            {"name": "new_tpl", "channel": "email", "subject": "New", "body": "New body", "body_type": "plain", "description": "New"},
+        ]
+        json_path = str(tmp_path / "email_templates.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            _json.dump(templates_json, f)
+        session = db.SessionLocal()
+        session.add(CrmTemplateRow(name="existing_tpl", channel="email", subject="Old subject", body="Old body — must not change"))
+        session.commit()
+        session.close()
+        from scripts.seed_templates import seed_templates
+        added = seed_templates(db_path=db_path, json_path=json_path)
+        assert added == 1
+        session = db.SessionLocal()
+        try:
+            existing = session.query(CrmTemplateRow).filter_by(name="existing_tpl").first()
+            assert existing is not None
+            assert existing.body == "Old body — must not change"
+            new = session.query(CrmTemplateRow).filter_by(name="new_tpl").first()
+            assert new is not None
+            assert new.body == "New body"
+        finally:
+            session.close()
+            db.engine.dispose()
+
+    def test_template_id_in_log(self, db):
+        from granite.database import CrmEmailLogRow
+        from datetime import datetime, timezone
+        template = self._make_template(db, name="tpl_with_id")
+        from granite.database import CompanyRow
+        company = CompanyRow(name_best="Test", city="Москва", emails=["tpl@test.ru"], website="https://test.ru", sources=["web_search"])
+        db.add(company)
+        db.flush()
+        db.commit()
+        log = CrmEmailLogRow(company_id=company.id, email_to="tpl@test.ru", email_subject="Test", template_name="tpl_with_id", tracking_id="tpl-test", status="sent", sent_at=datetime.now(timezone.utc), template_id=template.id)
+        db.add(log)
+        db.commit()
+        saved = db.get(CrmEmailLogRow, log.id)
+        assert saved.template_id == template.id
+
+    def test_retired_not_in_campaign_list(self, db, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        with Session() as s:
+            self._make_template(s, name="active_tpl", retired=False)
+            self._make_template(s, name="retired_tpl", retired=True)
+            s.commit()
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/templates")
+                assert resp.status_code == 200
+                names = [t["name"] for t in resp.json()["items"]]
+                assert "active_tpl" in names
+                assert "retired_tpl" not in names
+                resp2 = client.get("/api/v1/templates?include_retired=1")
+                names2 = [t["name"] for t in resp2.json()["items"]]
+                assert "active_tpl" in names2
+                assert "retired_tpl" in names2
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_immutable_no_update(self, db, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        with Session() as s:
+            self._make_template(s, name="immutable_tpl", retired=True)
+            s.commit()
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.put("/api/v1/templates/immutable_tpl", json={"body": "Hacked!"})
+                assert resp.status_code == 409
+                assert "retired" in resp.json()["error"].lower() or "immutable" in resp.json()["error"].lower()
+        finally:
+            app.dependency_overrides.clear()
+
+
+class TestTemplateCyrillic:
+    """Кириллица в имени шаблона + description."""
+
+    @pytest.fixture
+    def engine(self):
+        from sqlalchemy import create_engine, event
+        from sqlalchemy.pool import StaticPool
+        from granite.database import Base
+        _engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        @event.listens_for(_engine, "connect")
+        def _pragma(dbapi_conn, conn_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+        Base.metadata.create_all(_engine)
+        yield _engine
+        _engine.dispose()
+
+    def test_template_name_cyrillic(self, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.post("/api/v1/templates", json={"name": "Холодное_письмо_v1", "channel": "email", "body": "Test body"})
+                assert resp.status_code == 201
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_template_name_still_rejects_spaces(self, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.post("/api/v1/templates", json={"name": "cold email", "channel": "email", "body": "Test body"})
+                assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_template_description_field(self, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.post("/api/v1/templates", json={"name": "desc_test", "channel": "email", "body": "Test body", "description": "Холодное письмо v1"})
+                assert resp.status_code == 201
+                get_resp = client.get("/api/v1/templates/desc_test")
+                assert get_resp.status_code == 200
+                assert get_resp.json()["description"] == "Холодное письмо v1"
+        finally:
+            app.dependency_overrides.clear()
+
+
+class TestTemplateNameMaxLength:
+    """CreateTemplateRequest.name ограничен 64 символами."""
+
+    @pytest.fixture
+    def engine(self):
+        from sqlalchemy import create_engine, event
+        from sqlalchemy.pool import StaticPool
+        from granite.database import Base
+        _engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        @event.listens_for(_engine, "connect")
+        def _pragma(dbapi_conn, conn_record):
+            cursor = dbapi_conn.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
+        Base.metadata.create_all(_engine)
+        yield _engine
+        _engine.dispose()
+
+    def test_template_name_too_long(self, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.post("/api/v1/templates", json={"name": "a" * 65, "channel": "email", "body": "Test body"})
+                assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_template_name_exactly_64(self, engine):
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+        Session = sessionmaker(bind=engine)
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+        try:
+            with TestClient(app) as client:
+                resp = client.post("/api/v1/templates", json={"name": "a" * 64, "channel": "email", "body": "Test body"})
+                assert resp.status_code == 201
+        finally:
+            app.dependency_overrides.clear()

@@ -1401,3 +1401,35 @@ class TestMergeCompanies:
         target = db_session.get(CompanyRow, target_id)
         assert "79002222222" in (target.phones or [])
         assert "79003333333" in (target.phones or [])
+
+
+class TestParameterizedSQL:
+    """Все sa_text() вызовы используют :param, а не f-string."""
+
+    def test_raw_sql_parameterized(self):
+        import inspect
+        from granite.api.companies import list_companies
+        source = inspect.getsource(list_companies)
+        import re
+        fstring_matches = re.findall(r'sa_text\(f["\']', source)
+        assert len(fstring_matches) == 0, (
+            f"Found f-string in sa_text() calls: {fstring_matches}. "
+            f"Use :param with .bindparams() instead."
+        )
+
+    def test_tg_trust_filter_parameterized(self):
+        import inspect
+        from granite.api.companies import list_companies
+        source = inspect.getsource(list_companies)
+        assert ":tg_trust_min" in source
+        assert ":tg_trust_max" in source
+        assert ".bindparams(" in source
+
+    def test_source_filter_parameterized(self):
+        import inspect
+        from granite.api.companies import list_companies
+        source = inspect.getsource(list_companies)
+        assert ":source" in source
+        import re
+        bad_patterns = re.findall(r'sa_text\(f["\'].*\{source\}', source)
+        assert len(bad_patterns) == 0
