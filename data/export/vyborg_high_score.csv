@@ -1,5 +1,0 @@
-﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
-1855,Гранит-Выборг,79218907185; 79218906932; 79218906945; 70412888831; 70400056745; 79218907138,"Ленинградская область, Выборгский район, посёлок Селезнёво, Выборг",http://гранит-выборг.рф/,mail@example.com; om@granit-vyborg.ru; uzh@granit-vyborg.ru; vok@granit-vyborg.ru,Выборг,,A,45,No,unknown,No,https://t.me/+79218907185,https://vk.com/granitvyborg,https://api.whatsapp.com/send?phone=79218906945
-1858,Ригранд ритуальная компания,79218614252; 79213000444; 78129654227,"Ленинградское ш., 15, Выборг, Выборг",http://www.rigrand.ru/,rigrand@yandex.ru,Выборг,,A,45,No,bitrix,No,https://t.me/+79218614252,,
-1867,vyborg.bilkam.ru,73833830392; 73517009492,,https://vyborg.bilkam.ru/,sales@bilkam.ru,Выборг,,A,45,Yes,bitrix,No,https://t.me/+73833830392,https://vk.com/bilkam,
-1856,Памятник Гранит Мрамор,79218891266; 79213052008,"Московский просп., 20, Выборг, Выборг",https://pamvbg.ru/,,Выборг,,A,40,No,unknown,No,https://t.me/+79218891266,http://vk.com/public188362775,https://api.whatsapp.com/send?phone=79213052008
