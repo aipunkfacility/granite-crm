@@ -177,11 +177,26 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)
 def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
-    """Детали кампании + предпросмотр получателей + статистика."""
+    """Детали кампании + предпросмотр получателей + статистика.
+
+    FIX-A6: Для completed/paused кампаний — не вызываем тяжёлый
+    _get_campaign_recipients(), используем total_recipients из БД.
+    """
     campaign = db.get(CrmEmailCampaignRow, campaign_id)
     if not campaign:
         raise HTTPException(404, "Campaign not found")
-    recipients = _get_campaign_recipients(campaign, db)
+
+    # FIX-A6: Оптимизация — для завершённых/приостановленных кампаний
+    # берём total_recipients из БД, не пересчитываем получателей.
+    if campaign.status in ("completed",) and (campaign.total_recipients or campaign.total_sent):
+        preview_recipients = campaign.total_recipients or campaign.total_sent or 0
+    elif campaign.status in ("paused", "paused_daily_limit") and campaign.total_recipients:
+        preview_recipients = campaign.total_recipients
+    else:
+        # Для draft и running — считаем реальных получателей
+        recipients = _get_campaign_recipients(campaign, db)
+        preview_recipients = len(recipients)
+
     open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
     return {
         "id": campaign.id, "name": campaign.name,
@@ -192,7 +207,7 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
         "total_opened": campaign.total_opened,
         "total_replied": campaign.total_replied,
         "open_rate": open_rate,
-        "preview_recipients": len(recipients),
+        "preview_recipients": preview_recipients,
         "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
         "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
     }
@@ -361,9 +376,14 @@ def run_campaign(campaign_id: int, request: Request):
             sent = campaign.total_sent or 0
             total = len(recipients)
 
+            # FIX-A5: Сохраняем total_recipients при старте кампании,
+            # чтобы SSE progress не пересчитывал _get_campaign_recipients()
             if total > MAX_SENDS_PER_RUN:
+                campaign.total_recipients = MAX_SENDS_PER_RUN
                 recipients = recipients[:MAX_SENDS_PER_RUN]
                 logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
+            else:
+                campaign.total_recipients = total
 
             # Статус уже установлен в "running" атомарно перед запуском потока.
             # Здесь только фиксируем started_at в рамках текущей сессии.
@@ -494,6 +514,9 @@ def run_campaign(campaign_id: int, request: Request):
 def campaign_progress(campaign_id: int, db: Session = Depends(get_db)):
     """FIX-P2: Прогресс кампании через SSE (без запуска отправки).
 
+    FIX-A3: Использует total_recipients из БД вместо дорогостоящего
+    _get_campaign_recipients(). Для completed — total_sent, для draft — 0.
+
     Возвращает Server-Sent Events с текущим статусом кампании.
     Фронтенд может подключиться к этому эндпоинту после обрыва SSE
     от POST /run — без перезапуска кампании.
@@ -505,19 +528,32 @@ def campaign_progress(campaign_id: int, db: Session = Depends(get_db)):
     if not campaign:
         raise HTTPException(404, "Campaign not found")
 
-    # Считаем total — количество получателей по фильтрам
-    # (если кампания ещё running, нам нужно знать сколько всего)
-    recipients_count = 0
-    if campaign.status in ("running", "paused", "paused_daily_limit"):
-        try:
-            recipients = _get_campaign_recipients(campaign, db)
-            recipients_count = len(recipients)
-        except Exception:
-            pass
+    # FIX-A3: Берём total из сохранённого total_recipients (быстро),
+    # fallback — COUNT(*) из crm_email_logs (для кампаний, запущенных до FIX-A5).
+    recipients_count = campaign.total_recipients or 0
+    if not recipients_count and campaign.status in ("running", "paused", "paused_daily_limit"):
+        # Fallback: считаем количество отправленных + оставшихся логов
+        from sqlalchemy import func
+        sent_count = campaign.total_sent or 0
+        if sent_count > 0:
+            # Если уже отправляли — total = sent + ещё не отправленные
+            # Приблизительная оценка: берём максимум из sent и кол-ва логов
+            log_count = db.query(func.count(CrmEmailLogRow.id)).filter(
+                CrmEmailLogRow.campaign_id == campaign_id
+            ).scalar() or 0
+            recipients_count = max(sent_count, log_count)
+        else:
+            # Последний fallback — тяжёлый запрос (только если нет данных)
+            try:
+                recipients = _get_campaign_recipients(campaign, db)
+                recipients_count = len(recipients)
+            except Exception:
+                pass
 
-    # Если кампания завершена — total = total_sent (все отправлены)
+    # Если кампания завершена — используем total_recipients если есть,
+    # иначе total_sent (все отправлены)
     if campaign.status == "completed":
-        recipients_count = campaign.total_sent or 0
+        recipients_count = campaign.total_recipients or campaign.total_sent or 0
 
     def _stream():
         """Отправить одно SSE-событие с текущим прогрессом."""

@@ -432,6 +432,7 @@ class CrmEmailCampaignRow(Base):
     total_opened = Column(Integer, default=0)
     total_replied = Column(Integer, default=0)
     total_errors = Column(Integer, default=0)  # Задача 3: счётчик ошибок отправки
+    total_recipients = Column(Integer, default=0)  # FIX-A5: кол-во получателей при старте
 
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)

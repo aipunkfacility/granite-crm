@@ -7,7 +7,7 @@ FIX-4: Добавлена проверка признаков блокировк
 на @gmail.com за последние 24ч, домен помечается как заблокированный.
 """
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 # Домены агрегаторов — не мастерские (из scraper-audit A-1)
@@ -139,19 +139,21 @@ def check_gmail_block_signs(db_session) -> set[str]:
     from granite.database import CrmEmailLogRow
     from sqlalchemy import func
 
-    threshold_time = datetime.now(timezone.utc) - __import__("datetime").timedelta(hours=GMAIL_BOUNCE_WINDOW_HRS)
+    threshold_time = datetime.now(timezone.utc) - timedelta(hours=GMAIL_BOUNCE_WINDOW_HRS)
 
     # Подсчитываем bounced по доменам за окно
+    # FIX-A1: Используем .label() вместо строки в group_by — совместимо с PostgreSQL
+    domain_expr = func.substr(CrmEmailLogRow.email_to, func.instr(CrmEmailLogRow.email_to, "@") + 1).label("domain")
     bounced_by_domain = (
         db_session.query(
-            func.substr(CrmEmailLogRow.email_to, func.instr(CrmEmailLogRow.email_to, "@") + 1).label("domain"),
+            domain_expr,
             func.count(CrmEmailLogRow.id).label("bounce_count"),
         )
         .filter(
             CrmEmailLogRow.status == "bounced",
             CrmEmailLogRow.bounced_at >= threshold_time,
         )
-        .group_by("domain")
+        .group_by(domain_expr)
         .having(func.count(CrmEmailLogRow.id) >= GMAIL_BOUNCE_THRESHOLD)
         .all()
     )

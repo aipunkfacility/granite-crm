@@ -17,8 +17,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from loguru import logger
 
 
-def seed_templates(db_path: str | None = None) -> int:
+def seed_templates(db_path: str | None = None, json_path: str | None = None) -> int:
     """Загрузить шаблоны из JSON в БД. INSERT-only — пропускает существующие.
+
+    FIX-A7: Добавлен параметр json_path для тестирования —
+    вместо мокания os.path.join передаём путь напрямую.
 
     Returns:
         Количество добавленных шаблонов.
@@ -26,10 +29,11 @@ def seed_templates(db_path: str | None = None) -> int:
     from granite.database import Database, CrmTemplateRow
 
     # Находим JSON-файл
-    json_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "data", "email_templates.json"
-    )
+    if not json_path:
+        json_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "data", "email_templates.json"
+        )
     if not os.path.exists(json_path):
         logger.error(f"Templates JSON not found: {json_path}")
         return 0
