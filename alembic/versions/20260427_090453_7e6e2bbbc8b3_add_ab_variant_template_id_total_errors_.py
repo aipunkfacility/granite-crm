@@ -19,26 +19,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. crm_contacts: заполнить пустые unsubscribe_token, сделать NOT NULL + UNIQUE индекс
-    # Используем raw SQL чтобы избежать batch_alter_table (пересоздание таблицы
-    # с FK CASCADE в SQLite вызывает ошибку)
-    op.execute("""
-        UPDATE crm_contacts SET unsubscribe_token = lower(hex(randomblob(16)))
-        WHERE unsubscribe_token IS NULL
-    """)
-    op.execute("""
-        DROP INDEX IF EXISTS ix_crm_contacts_unsubscribe_token
-    """)
-    op.execute("""
-        CREATE UNIQUE INDEX ix_crm_contacts_unsubscribe_token
-        ON crm_contacts (unsubscribe_token)
-    """)
+    # FIX-1: Убрана дублирующая логика с unsubscribe_token.
+    # Предыдущая миграция (add_unsubscribe_token) теперь сама создаёт
+    # колонку, заполняет токены и создаёт UNIQUE-индекс.
+    # Здесь только добавляем ab_variant, template_id, total_errors.
 
-    # 2. crm_email_campaigns: добавить total_errors
+    # 1. crm_email_campaigns: добавить total_errors
     with op.batch_alter_table('crm_email_campaigns', schema=None) as batch_op:
         batch_op.add_column(sa.Column('total_errors', sa.Integer(), nullable=True))
 
-    # 3. crm_email_logs: добавить ab_variant и template_id
+    # 2. crm_email_logs: добавить ab_variant и template_id
     with op.batch_alter_table('crm_email_logs', schema=None) as batch_op:
         batch_op.add_column(sa.Column('ab_variant', sa.String(length=1), nullable=True))
         batch_op.add_column(sa.Column('template_id', sa.Integer(), nullable=True))
@@ -53,10 +43,3 @@ def downgrade() -> None:
 
     with op.batch_alter_table('crm_email_campaigns', schema=None) as batch_op:
         batch_op.drop_column('total_errors')
-
-    # Возвращаем индекс к не-unique
-    op.execute("DROP INDEX IF EXISTS ix_crm_contacts_unsubscribe_token")
-    op.execute("""
-        CREATE INDEX ix_crm_contacts_unsubscribe_token
-        ON crm_contacts (unsubscribe_token)
-    """)

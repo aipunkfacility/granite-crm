@@ -101,6 +101,9 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
     Дедупликация:
     - По campaign_id (не отправлять дважды в одну кампанию).
     - По email-адресу (один info@granit.ru у разных компаний).
+
+    FIX-3: После базовой фильтрации применяется validate_recipients()
+    для проверки агрегаторов, невалидных email, SESSION_GAP.
     """
     # AUDIT #15: filters теперь JSON-колонка (не Text), читаем напрямую
     filters = campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}")
@@ -143,7 +146,7 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
         except Exception:
             rows_iter = q.all()
 
-    recipients = []
+    raw_recipients = []
     seen_emails = set()
     for company, enriched, contact in rows_iter:
         if company.id in sent_company_ids:
@@ -157,8 +160,19 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
         if email_to in seen_emails:
             continue
         seen_emails.add(email_to)
-        recipients.append((company, enriched, contact, email_to))
-    return recipients
+        raw_recipients.append((company, enriched, contact, email_to))
+
+    # FIX-3: Валидация получателей (агрегаторы, невалидный email, SESSION_GAP, SEO-мусор)
+    # FIX-4: Передаём db_session для проверки признаков блокировки Gmail
+    from granite.email.validator import validate_recipients
+    valid, warnings = validate_recipients(raw_recipients, db_session=db)
+    if warnings:
+        logger.warning(
+            f"Campaign {campaign.id}: {len(warnings)} recipients filtered by validator: "
+            + "; ".join(f"{w.get('name', '?')} ({w.get('reason', '?')})" for w in warnings[:5])
+            + (f"... +{len(warnings) - 5} more" if len(warnings) > 5 else "")
+        )
+    return valid
 
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)

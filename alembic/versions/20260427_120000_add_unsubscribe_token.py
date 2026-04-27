@@ -28,11 +28,15 @@ def _index_exists(table: str, index_name: str) -> bool:
 
 
 def upgrade() -> None:
+    # FIX-1: Используем batch_alter_table для SQLite-совместимости.
+    # op.add_column с unique=True вызывает ALTER TABLE ADD CONSTRAINT UNIQUE,
+    # что SQLite не поддерживает. Добавляем колонку без unique,
+    # затем создаём UNIQUE-индекс отдельно.
     if not _column_exists("crm_contacts", "unsubscribe_token"):
-        op.add_column(
-            "crm_contacts",
-            sa.Column("unsubscribe_token", sa.String, nullable=True, unique=True),
-        )
+        with op.batch_alter_table("crm_contacts", schema=None) as batch_op:
+            batch_op.add_column(
+                sa.Column("unsubscribe_token", sa.String, nullable=True),
+            )
 
     # Заполнить существующие записи уникальными токенами (идемпотентно)
     op.execute("""
@@ -41,14 +45,27 @@ def upgrade() -> None:
         WHERE unsubscribe_token IS NULL
     """)
 
+    # Сделать колонку NOT NULL (после заполнения всех записей)
+    with op.batch_alter_table("crm_contacts", schema=None) as batch_op:
+        batch_op.alter_column(
+            "unsubscribe_token",
+            nullable=False,
+            existing_type=sa.String(),
+            existing_server_default=None,
+        )
+
+    # Создаём UNIQUE-индекс отдельно (поддерживается SQLite)
     if not _index_exists("crm_contacts", "ix_crm_contacts_unsubscribe_token"):
         op.create_index(
             "ix_crm_contacts_unsubscribe_token",
             "crm_contacts",
             ["unsubscribe_token"],
+            unique=True,
         )
 
 
 def downgrade() -> None:
+    # FIX-1: Используем batch_alter_table для drop_column в SQLite
     op.drop_index("ix_crm_contacts_unsubscribe_token")
-    op.drop_column("crm_contacts", "unsubscribe_token")
+    with op.batch_alter_table("crm_contacts", schema=None) as batch_op:
+        batch_op.drop_column("unsubscribe_token")
