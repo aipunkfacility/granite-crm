@@ -122,14 +122,15 @@ def list_companies(
         q = q.filter(EnrichedCompanyRow.segment == 'spam')
 
     # --- TG Trust фильтр ---
+    # Задача 17: параметризованный SQL вместо f-string
     if tg_trust_min is not None:
         q = q.filter(sa_text(
-            f"json_extract(enriched_companies.tg_trust, '$.trust_score') >= {tg_trust_min}"
-        ))
+            "json_extract(enriched_companies.tg_trust, '$.trust_score') >= :tg_trust_min"
+        ).bindparams(tg_trust_min=tg_trust_min))
     if tg_trust_max is not None:
         q = q.filter(sa_text(
-            f"json_extract(enriched_companies.tg_trust, '$.trust_score') <= {tg_trust_max}"
-        ))
+            "json_extract(enriched_companies.tg_trust, '$.trust_score') <= :tg_trust_max"
+        ).bindparams(tg_trust_max=tg_trust_max))
 
     # --- Source фильтр ---
     # Сначала пробуем денормализованный JSON-массив companies.sources.
@@ -140,22 +141,23 @@ def list_companies(
             from fastapi import HTTPException as _HE
             raise _HE(422, f"Invalid source '{source}'. Valid: {', '.join(sorted(VALID_SOURCES))}")
         # Проверяем: есть ли вообще заполненные sources в companies?
+        # Задача 17: параметризованный SQL вместо f-string
         has_sources = db.execute(sa_text(
             "SELECT COUNT(*) FROM companies "
             "WHERE sources IS NOT NULL AND sources != '[]' AND deleted_at IS NULL"
         )).scalar()
         if has_sources:
             q = q.filter(sa_text(
-                f"'{source}' IN (SELECT value FROM json_each(companies.sources))"
-            ))
+                ":source IN (SELECT value FROM json_each(companies.sources))"
+            ).bindparams(source=source))
         else:
             # Fallback: фильтр через raw_companies (merged_into или прямой id)
             q = q.filter(sa_text(
-                f"companies.id IN ("
-                f"  SELECT COALESCE(r.merged_into, r.id) FROM raw_companies r "
-                f"  WHERE r.source = '{source}'"
-                f")"
-            ))
+                "companies.id IN ("
+                "  SELECT COALESCE(r.merged_into, r.id) FROM raw_companies r "
+                "  WHERE r.source = :source"
+                ")"
+            ).bindparams(source=source))
 
     if city:
         city = [c for c in city if c.strip()]

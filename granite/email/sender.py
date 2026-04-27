@@ -52,8 +52,10 @@ class EmailSender:
         body_text: str,
         body_html: str | None = None,
         template_name: str = "",
+        template_id: int | None = None,
         db_session=None,
         campaign_id: int | None = None,
+        ab_variant: str | None = None,
     ) -> str | None:
         """Отправить письмо и создать запись в crm_email_logs.
 
@@ -110,19 +112,22 @@ class EmailSender:
             logger.info(f"Email sent -> {email_to} (tracking={tracking_id})")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
-                                template_name, tracking_id, campaign_id=campaign_id)
+                                template_name, tracking_id, template_id=template_id,
+                                campaign_id=campaign_id, ab_variant=ab_variant)
             return tracking_id
         except smtplib.SMTPPermanentError as e:
             logger.error(f"Email PERMANENT FAILURE -> {email_to}: {e}")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
-                                template_name, tracking_id, error=str(e), campaign_id=campaign_id)
+                                template_name, tracking_id, error=str(e), template_id=template_id,
+                                campaign_id=campaign_id, ab_variant=ab_variant)
             return None
         except Exception as e:
             logger.error(f"Email FAILED after retries -> {email_to}: {e}")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
-                                template_name, tracking_id, error=str(e), campaign_id=campaign_id)
+                                template_name, tracking_id, error=str(e), template_id=template_id,
+                                campaign_id=campaign_id, ab_variant=ab_variant)
             return None
 
     @retry(
@@ -159,7 +164,9 @@ class EmailSender:
         template_name: str,
         tracking_id: str,
         error: str = "",
+        template_id: int | None = None,
         campaign_id: int | None = None,
+        ab_variant: str | None = None,
     ) -> None:
         """Записать отправку в crm_email_logs."""
         from granite.database import CrmEmailLogRow
@@ -173,4 +180,6 @@ class EmailSender:
             status="sent" if not error else "failed",
             sent_at=datetime.now(timezone.utc) if not error else None,
             error_message=error,
+            template_id=template_id,
+            ab_variant=ab_variant,
         ))

@@ -44,14 +44,22 @@ def _warn_unknown_placeholders(body: str, template_name: str) -> list[str]:
 @router.get("/templates", response_model=PaginatedResponse[TemplateResponse])
 def list_templates(
     channel: Optional[str] = Query(None, pattern="^(email|tg|wa)$"),
+    include_retired: int = Query(0, description="0=hide retired, 1=show all"),
     page: int = Query(1, ge=1),
     per_page: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    """Список шаблонов. Опциональный фильтр по каналу: ?channel=email|tg|wa."""
+    """Список шаблонов. Опциональный фильтр по каналу: ?channel=email|tg|wa.
+
+    Задача 12: по умолчанию скрыты retired-шаблоны (используются
+    в отправленных письмах, не должны меняться).
+    """
     q = db.query(CrmTemplateRow)
     if channel:
         q = q.filter_by(channel=channel)
+    # Задача 12: скрываем retired по умолчанию
+    if not include_retired:
+        q = q.filter(CrmTemplateRow.retired == False)  # noqa: E712
     q = q.order_by(CrmTemplateRow.name)
 
     total = q.count()
@@ -114,10 +122,22 @@ def create_template(data: CreateTemplateRequest, db: Session = Depends(get_db)):
 
 @router.put("/templates/{template_name}", response_model=OkResponse)
 def update_template(template_name: str, data: UpdateTemplateRequest, db: Session = Depends(get_db)):
-    """Обновить шаблон (полная замена переданных полей)."""
+    """Обновить шаблон (полная замена переданных полей).
+
+    Задача 12: retired-шаблоны нельзя обновлять — они используются
+    в отправленных письмах, изменение исказит историю.
+    """
     t = db.query(CrmTemplateRow).filter_by(name=template_name).first()
     if not t:
         raise HTTPException(404, f"Template '{template_name}' not found")
+
+    # Задача 12: immutable-шаблон нельзя изменить
+    if t.retired:
+        raise HTTPException(
+            409,
+            f"Template '{template_name}' is retired (immutable). "
+            f"Create a new template instead."
+        )
 
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
@@ -146,9 +166,11 @@ def update_template(template_name: str, data: UpdateTemplateRequest, db: Session
 
 @router.delete("/templates/{template_name}", response_model=OkResponse)
 def delete_template(template_name: str, db: Session = Depends(get_db)):
-    """Удалить шаблон.
+    """Удалить шаблон или пометить как retired.
 
-    Нельзя удалить, если он используется в активной кампании (status='running').
+    Задача 12: если шаблон используется в отправленных письмах
+    (crm_email_logs), он не удаляется, а помечается retired=True.
+    Это гарантирует целостность истории отправок.
     """
     t = db.query(CrmTemplateRow).filter_by(name=template_name).first()
     if not t:
@@ -165,6 +187,20 @@ def delete_template(template_name: str, db: Session = Depends(get_db)):
             409,
             f"Template '{template_name}' is used in {active} active campaign(s). "
             f"Stop campaigns before deleting.",
+        )
+
+    # Задача 12: проверяем, есть ли отправленные письма с этим шаблоном
+    from granite.database import CrmEmailLogRow
+    sent_count = db.query(CrmEmailLogRow).filter_by(template_name=template_name).count()
+    if sent_count > 0:
+        # Не удаляем — помечаем как retired
+        t.retired = True
+        t.updated_at = datetime.now(timezone.utc)
+        db.flush()
+        return OkResponse(
+            ok=True,
+            message=f"Template '{template_name}' retired (used in {sent_count} sent emails). "
+                    f"It will no longer appear in template lists."
         )
 
     db.delete(t)

@@ -131,10 +131,21 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
     if filters.get("min_score"):
         q = q.filter(EnrichedCompanyRow.crm_score >= filters["min_score"])
 
-    rows = q.all()
+    # Задача 18: батч-итерация вместо .all() с учётом SQLite.
+    # PostgreSQL: yield_per + stream_results для потоковой обработки.
+    # SQLite: yield_per работает, stream_results не поддерживается.
+    try:
+        rows_iter = q.yield_per(100).execution_options(stream_results=True)
+    except Exception:
+        # SQLite fallback — yield_per без stream_results
+        try:
+            rows_iter = q.yield_per(100)
+        except Exception:
+            rows_iter = q.all()
+
     recipients = []
     seen_emails = set()
-    for company, enriched, contact in rows:
+    for company, enriched, contact in rows_iter:
         if company.id in sent_company_ids:
             continue
         if contact and contact.stop_automation:
@@ -184,11 +195,11 @@ def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session =
     if not campaign:
         raise HTTPException(404, "Campaign not found")
 
-    if campaign.status not in ("draft", "paused"):
+    if campaign.status not in ("draft", "paused", "paused_daily_limit"):
         raise HTTPException(
             409,
             f"Cannot update campaign in status '{campaign.status}'. "
-            f"Only 'draft' and 'paused' campaigns can be updated.",
+            f"Only 'draft', 'paused', and 'paused_daily_limit' campaigns can be updated.",
         )
 
     updates = data.model_dump(exclude_unset=True)
@@ -301,9 +312,22 @@ def run_campaign(campaign_id: int, request: Request):
         from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow
         from granite.email.sender import EmailSender
 
-        SEND_DELAY = 3
-        BATCH_COMMIT = 10
-        MAX_SENDS_PER_RUN = 100
+        # Задача 2.3: задержка и лимиты из env (для продакшена 45-120с, для тестов 3с)
+        SEND_DELAY_MIN = int(os.environ.get("EMAIL_DELAY_MIN", "3"))
+        SEND_DELAY_MAX = int(os.environ.get("EMAIL_DELAY_MAX", "3"))
+        import random as _random
+        EMAIL_DAILY_LIMIT = int(os.environ.get("EMAIL_DAILY_LIMIT", "50"))
+        MAX_SENDS_PER_RUN = int(os.environ.get("MAX_SENDS_PER_RUN", "100"))
+
+        # Задача 2.3: функция A/B темы (задача 3 — полная реализация)
+        def get_ab_subject(company_id: int, campaign_row, template_row, render_kw: dict) -> str:
+            """Детерминированное A/B распределение по company_id."""
+            a = campaign_row.subject_a or template_row.render_subject(**render_kw)
+            if not campaign_row.subject_b:
+                return a
+            import hashlib as _hashlib
+            hash_val = int(_hashlib.md5(str(company_id).encode()).hexdigest(), 16)
+            return a if hash_val % 2 == 0 else campaign_row.subject_b
 
         campaign = None
         session = SessionFactory()
@@ -327,7 +351,7 @@ def run_campaign(campaign_id: int, request: Request):
 
             from_name = os.environ.get("FROM_NAME", "")
             sender = EmailSender()
-            sent = 0
+            sent = campaign.total_sent or 0
             total = len(recipients)
 
             if total > MAX_SENDS_PER_RUN:
@@ -342,14 +366,42 @@ def run_campaign(campaign_id: int, request: Request):
             yield f"data: {json.dumps({'status': 'started', 'total': len(recipients)})}\n\n"
 
             for company, enriched, contact, email_to in recipients:
+                # Задача 2.3: проверка паузы/отмены
+                session.refresh(campaign)
+                if campaign.status != "running":
+                    logger.info(f"Campaign {campaign_id}: status '{campaign.status}', exiting")
+                    return
+
+                # Задача 2.3: проверка дневного лимита
+                from sqlalchemy import func
+                last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+                sent_today = (
+                    session.query(func.count(CrmEmailLogRow.id))
+                    .filter(CrmEmailLogRow.sent_at >= last_24h)
+                    .scalar()
+                )
+                if sent_today >= EMAIL_DAILY_LIMIT:
+                    campaign.status = "paused_daily_limit"
+                    campaign.updated_at = datetime.now(timezone.utc)
+                    session.commit()
+                    logger.info(f"Campaign {campaign_id}: daily limit reached ({EMAIL_DAILY_LIMIT})")
+                    yield f"data: {json.dumps({'status': 'paused_daily_limit', 'reason': 'daily_limit'})}\n\n"
+                    return
                 city = company.city or ""
                 render_kwargs = {
                     "from_name": from_name,
                     "city": city,
                     "company_name": company.name_best or "",
                     "website": company.website or "",
+                    "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}" if contact else "",
                 }
-                subject = template.render_subject(**render_kwargs)
+
+                # Задача 3: A/B тема письма
+                subject = get_ab_subject(company.id, campaign, template, render_kwargs)
+
+                # Определяем A/B вариант для лога
+                subject_a = campaign.subject_a or template.render_subject(**render_kwargs)
+                ab_variant = "A" if subject == subject_a else "B"
                 rendered = template.render(**render_kwargs)
                 if template.body_type == "html":
                     from granite.utils import html_to_plain_text
@@ -361,8 +413,10 @@ def run_campaign(campaign_id: int, request: Request):
                         body_text=body_text,
                         body_html=rendered,
                         template_name=template.name,
+                        template_id=template.id,
                         db_session=session,
                         campaign_id=campaign.id,
+                        ab_variant=ab_variant,
                     )
                 else:
                     tracking_id = sender.send(
@@ -371,33 +425,39 @@ def run_campaign(campaign_id: int, request: Request):
                         subject=subject,
                         body_text=rendered,
                         template_name=template.name,
+                        template_id=template.id,
                         db_session=session,
                         campaign_id=campaign.id,
+                        ab_variant=ab_variant,
                     )
                 if tracking_id:
                     sent += 1
                     campaign.total_sent = sent
 
-                    # FIX K3: Используем apply_outgoing_touch() вместо ручного обновления.
-                    # Ранее были пропущены: contact_count, last_contact_at,
-                    # last_contact_channel, first_contact_at, updated_at.
+                    # Задача 2.3: commit после КАЖДОГО письма — не теряем данные при краше
                     session.add(CrmTouchRow(
                         company_id=company.id, channel="email", direction="outgoing",
-                        subject=subject, body=f"[tracking_id={tracking_id}]",
+                        subject=subject, body=f"[tracking_id={tracking_id}] [ab={ab_variant}]",
                     ))
                     if contact:
                         from granite.api.stage_transitions import apply_outgoing_touch
                         apply_outgoing_touch(contact, "email")
-                    # FIX BUG-C5: Heartbeat — обновляем updated_at при каждом
-                    # batch commit, чтобы watchdog не сбросил кампанию.
-                    if sent % BATCH_COMMIT == 0:
-                        campaign.updated_at = datetime.now(timezone.utc)
-                        session.commit()
+                    # Commit после каждого письма
+                    campaign.updated_at = datetime.now(timezone.utc)
+                    session.commit()
+
+                else:
+                    # Ошибка отправки — инкремент total_errors
+                    campaign.total_errors = (campaign.total_errors or 0) + 1
+                    session.commit()
+
+                # Задача 2.3: задержка из env (случайная в диапазоне MIN-MAX)
+                delay = _random.randint(SEND_DELAY_MIN, SEND_DELAY_MAX)
 
                 # AUDIT #11: Маскируем email в SSE — не передаём PII (152-ФЗ/GDPR).
                 # Заменяем полный email на company_id для клиента.
                 yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'company_id': company.id})}\n\n"
-                _time.sleep(SEND_DELAY)
+                _time.sleep(delay)
 
             session.commit()
 
@@ -464,3 +524,46 @@ def check_stale_campaigns(db: Session = Depends(get_db)):
         )
 
     return {"reset": reset, "count": len(reset)}
+
+
+@router.get("/campaigns/{campaign_id}/ab-stats")
+def get_ab_stats(campaign_id: int, db: Session = Depends(get_db)):
+    """Задача 3: Статистика A/B теста по вариантам.
+
+    Возвращает статистику отправок, открытий и ответов
+    для каждого варианта (A/B) темы письма.
+    """
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    if not campaign.subject_b:
+        return {"variants": {}, "winner": None, "note": "Не A/B тест"}
+
+    rows = db.execute(sa_text("""
+        SELECT ab_variant,
+               COUNT(*) as sent,
+               SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) as opened,
+               SUM(CASE WHEN status = 'replied' THEN 1 ELSE 0 END) as replied
+        FROM crm_email_logs
+        WHERE campaign_id = :cid AND ab_variant IS NOT NULL
+        GROUP BY ab_variant
+    """), {"cid": campaign_id}).fetchall()
+
+    result = {}
+    for row in rows:
+        v = row[0]
+        sent_count = row[1]
+        result[v] = {
+            "subject": campaign.subject_a if v == "A" else campaign.subject_b,
+            "sent": sent_count,
+            "opened": row[2],
+            "replied": row[3],
+            "reply_rate": round(row[3] / sent_count * 100, 1) if sent_count else 0,
+        }
+
+    return {
+        "variants": result,
+        "winner": None,
+        "note": "Победитель — по количеству ответов (см. раздел 6.4 плана)",
+    }

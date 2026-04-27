@@ -416,14 +416,14 @@ class TestSeedUpsert:
         assert total == 6
 
     def test_email_templates_contain_url(self, db_session):
-        """MISS-7: Email-шаблоны содержат ссылку monument-web."""
+        """MISS-7: Email-шаблоны содержат ссылку на сайт (retouchgrav)."""
         from granite.database import CrmTemplateRow
         from scripts.seed_crm_templates import _apply_templates
 
         _apply_templates(db_session)
         email_templates = db_session.query(CrmTemplateRow).filter_by(channel="email").all()
         for t in email_templates:
-            assert "monument-web" in t.body, f"{t.name} missing monument-web URL"
+            assert "retouchgrav" in t.body or "monument-web" in t.body, f"{t.name} missing website URL"
 
     def test_messenger_templates_no_url(self, db_session):
         """MISS-7: TG/WA-шаблоны НЕ содержат URL (лучше delivery rate)."""

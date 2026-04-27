@@ -51,6 +51,24 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"CRM API started. DB: {db._db_path}")
 
+    # Задача 2.1: Recovery — все running кампании → paused при старте сервера.
+    # BackgroundTask живёт в памяти процесса; при перезапуске задача теряется.
+    # Кампания остаётся в status="running" без работающего отправщика → зависает.
+    try:
+        from granite.database import CrmEmailCampaignRow
+        recovery_session = db.SessionLocal()
+        running = recovery_session.query(CrmEmailCampaignRow).filter(
+            CrmEmailCampaignRow.status == "running"
+        ).all()
+        for c in running:
+            c.status = "paused"
+        if running:
+            recovery_session.commit()
+            logger.warning(f"Recovery: {len(running)} running campaigns → paused")
+        recovery_session.close()
+    except Exception as e:
+        logger.warning(f"Recovery check failed: {e}")
+
     # Задача 16: предупреждения о missing env vars
     required_smtp_vars = ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS"]
     missing = [v for v in required_smtp_vars if not os.environ.get(v)]

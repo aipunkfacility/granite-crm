@@ -85,7 +85,7 @@ class UpdateCampaignRequest(BaseModel):
 
 
 class CreateTemplateRequest(BaseModel):
-    name: str = Field(..., min_length=1, pattern=r"^[a-z0-9_]+$")
+    name: str = Field(..., min_length=1, pattern=r"^[a-z0-9_\u0410-\u042f\u0430-\u044f]+$")  # Задача 15: кириллица разрешена
     channel: str = Field(..., pattern="^(email|tg|wa)$")
     subject: str = ""
     body: str = Field(..., min_length=1, max_length=500_000)

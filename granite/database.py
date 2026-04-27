@@ -300,6 +300,7 @@ class CrmTemplateRow(Base):
     body = Column(Text, nullable=False)
     body_type = Column(String(10), default="plain", server_default="plain", nullable=False)  # "plain" | "html"
     description = Column(String, default="")
+    retired = Column(Boolean, default=False, server_default="0", nullable=False)  # Задача 12: immutable-шаблон
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(
@@ -374,10 +375,14 @@ class CrmEmailLogRow(Base):
 
     tracking_id = Column(String, unique=True, nullable=True, index=True)
 
+    # Задача 3: A/B вариант и ссылка на immutable-шаблон
+    ab_variant = Column(String(1), nullable=True)  # "A" or "B"
+    template_id = Column(Integer, ForeignKey("crm_templates.id"), nullable=True)  # Задача 12
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
-        return f"<CrmEmailLogRow(id={self.id}, to={self.email_to!r}, status={self.status!r})>"
+        return f"<CrmEmailLogRow(id={self.id}, to={self.email_to!r}, status={self.status!r}, ab={self.ab_variant!r})>"
 
 
 class CrmTaskRow(Base):
@@ -426,6 +431,7 @@ class CrmEmailCampaignRow(Base):
     total_sent = Column(Integer, default=0)
     total_opened = Column(Integer, default=0)
     total_replied = Column(Integer, default=0)
+    total_errors = Column(Integer, default=0)  # Задача 3: счётчик ошибок отправки
 
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
