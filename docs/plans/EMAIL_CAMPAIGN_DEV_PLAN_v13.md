@@ -73,6 +73,10 @@
 | `yield_per` + SQLite: fallback на offset/limit | SQLite не поддерживает `stream_results` нативно | v13 |
 | IMAP helpers — отдельный модуль | Дедупликация кода между process_bounces и process_replies | v13 |
 | Задача 17 перенесена в Этап 2 | Тот же файл `companies.py`, что и задача 4 — избегаем конфликтов | v13 |
+| A/B-логика вынесена в `granite/email/ab.py` | Единая точка входа для determine_ab_variant, реэкспорт через `granite.email` | Этап 2 |
+| `total_recipients` в кампании | Прогресс знает общее число получателей, а не только sent/errors | Этап 2 |
+| Template name: max_length=64 | Защита от слишком длинных имён, согласовано с `schemas.py` | Этап 2 |
+| Тесты реорганизованы по фичам | test_phase2.py → test_campaigns/test_email_validator/test_ab/test_templates/test_crm_api | Этап 2 |
 
 ---
 
@@ -98,13 +102,13 @@
 
 | Утверждение аудита | Реальность в коде | Действие в v13 |
 |--------------------|-------------------|---------------|
-| Template name `^[a-z0-9_]+$` запрещает кириллицу | `schemas.py:88`: `pattern=r"^[a-z0-9_]+$"` — точно так | Задача 15 (этап 2) |
-| `_get_campaign_recipients` загружает `.all()` в память | `campaigns.py:134`: `rows = q.all()` — точно так | Задача 18 (этап 2, внутри задачи 2) |
+| Template name `^[a-z0-9_]+$` запрещает кириллицу | `schemas.py`: pattern обновлён на `^[a-z0-9_\u0410-\u042f\u0430-\u044f]+$` | ✅ Исправлено в Этапе 2 (задача 15) |
+| `_get_campaign_recipients` загружает `.all()` в память | `campaigns.py`: заменено на `yield_per(100)` + батч-итерация | ✅ Исправлено в Этапе 2 (задача 18) |
 | `list_companies`: 2 запроса `count()` + `offset().limit()` | `companies.py:308-309` — точно так | Отложено (низкий приоритет) |
-| Raw SQL через f-string в `companies.py` | `companies.py:126-131,148-158` — f-string с Pydantic-валидацией | Задача 17 (этап 2 — **перенесено из этапа 4**) |
-| Нет `.env.example` | Проверено: файл не существует | Задача 16 (этап 1) |
-| `config_validator.py` не проверяет SMTP/API ключи | `config_validator.py` — только scoring, database, scraping | Задача 16 (этап 1) |
-| Нет SMTP health check при старте | Проверено: нет проверки подключения | Задача 16 (этап 1) |
+| Raw SQL через f-string в `companies.py` | `companies.py`: заменено на `:param` + `text(...).bindparams()` | ✅ Исправлено в Этапе 2 (задача 17) |
+| Нет `.env.example` | Файл создан | ✅ Исправлено в Этапе 1 (задача 16) |
+| `config_validator.py` не проверяет SMTP/API ключи | Warning при старте о недостающих SMTP/API vars | ✅ Исправлено в Этапе 1 (задача 16) |
+| Нет SMTP health check при старте | `/health/smtp` endpoint добавлен | ✅ Исправлено в Этапе 1 (задача 16) |
 | `setattr(contact, key, value)` в цикле | `companies.py:417` — да, но Pydantic ограничивает до 3 полей | Приемлемо, добавить комментарий |
 
 ### 3.3 Неверные номера строк (аудит без кода)
@@ -399,7 +403,7 @@ Telegram: @ganjavagen
 | Tracking pixel + bot-фильтрация | ✅ |
 | SMTP retry на `SMTPTemporaryError` | ✅ |
 | Stale campaign watchdog (`POST /campaigns/stale`) | ✅ Ручной |
-| `EmailSender._smtp_send` | ⚠️ Использует `SMTP+starttls()` — не работает с портом 465 |
+| `EmailSender._smtp_send` | ✅ SMTP_SSL (порт 465) + STARTTLS (порт 587) — исправлено в Этапе 1 |
 | `hmac.compare_digest` для API-ключа | ✅ (подтверждено аудитом) |
 | `html.escape()` в email sender | ✅ (подтверждено аудитом) |
 | `is_safe_url()` в tg_finder | ✅ (подтверждено аудитом) |
@@ -444,34 +448,71 @@ Telegram: @ganjavagen
 
 ---
 
-### Этап 2: Отправка + валидация + A/B + рефакторинг (первые 10 тестовых писем)
+### Этап 2: Отправка + валидация + A/B + рефакторинг (первые 10 тестовых писем) ✅ ВЫПОЛНЕН
 
 **Цель:** CRM может создавать кампанию с A/B тестом, валидировать получатели, отправлять и восстанавливаться после краша. После этого этапа можно запустить первую тестовую кампанию на 5-10 своих адресов.
 
 **Принцип TDD:** для каждого эндпоинта и каждой функции — тест с моками SMTP/IMAP.
 
-| Задача | Что делаем | Тесты (сначала!) |
-|--------|-----------|-----------------|
-| **2. Recovery + отправка** | `lifespan()`: running→paused. `_get_campaign_recipients()`: фильтр + дедуп. `sender.py`: commit после каждого письма (не batch). Полный `_run_campaign_background` | `test_recovery_running_to_paused()` — создать кампанию status=running, запустить lifespan → status=paused. `test_campaign_recipients_dedup()` — два письма одному contact → только 1 получатель. `test_campaign_recipients_filter_stop_automation()` — contact с `stop_automation=1` не в списке. `test_commit_per_email()` — мок БД, после каждого `send()` → `commit()` вызван |
-| **18. Campaign recipients: батч вместо .all()** (из аудита) | Заменить `campaigns.py:134` `q.all()` на батч-итерацию с учётом SQLite. В рамках задачи 2 | `test_campaign_recipients_no_oom()` — мок с 5000 компаний → итерация по батчам, не всё в памяти сразу. `test_yield_per_100_processes_all()` — все 5000 компаний обработаны |
-| **4. Валидатор** | `validate_recipients()`: агрегаторы (SKIP_DOMAINS из scraper-audit A-1), невалидные email, дедуп, `EMAIL_SESSION_GAP_HRS`, признаки блокировки Gmail | `test_aggregator_filtered()` — `tsargranit.ru` → отфильтрован. `test_invalid_email_filtered()` — `test@` → отфильтрован. `test_duplicate_email_deduped()` — две компании с одним email → 1 получатель. `test_session_gap()` — письмо 30 мин назад → отфильтрован. `test_gmail_block_signs()` — 5 bounced @gmail.com → домен помечен |
-| **3. A/B + счётчики** | `determine_ab_variant()`: детерминированное распределение по company_id. `total_errors`, `ab_variant` в логах. A/B stats endpoint | `test_ab_deterministic()` — `determine_ab_variant(company_id=42)` всегда одинаковый результат. `test_ab_50_50_split()` — 100 компаний → ~50/50. `test_total_errors_increment()` — ошибка отправки → `total_errors+1`. `test_ab_variant_in_log()` — письмо → `CrmEmailLogRow.ab_variant` = "A" или "B". `test_ab_stats_endpoint()` — GET `/campaigns/1/ab-stats` → `{A: {...}, B: {...}}` |
-| **12 (impl). Immutable шаблоны** | `data/email_templates.json` с ID. `seed-templates`: INSERT-only. `CrmEmailLogRow.template_id`. `CrmTemplateRow.retired`. Миграция | `test_seed_inserts_new()` — пустая БД → 10 шаблонов. `test_seed_skips_existing()` — повторный seed → 0 новых. `test_template_id_in_log()` — отправка → `template_id=1`. `test_retired_not_in_campaign_list()` — GET `/templates` → `retired=true` не показывается. `test_immutable_no_update()` — изменить JSON, seed → существующий шаблон НЕ обновился |
-| **15. Template name: разрешить кириллицу** (из аудита) | `schemas.py:88`: изменить pattern на `^[a-z0-9_\u0410-\u042f\u0430-\u044f]+$` (включая заглавную кириллицу). Добавить `description` поле + миграция | `test_template_name_cyrillic()` — `name="Холодное_письмо_v1"` → accepted. `test_template_name_still_rejects_spaces()` — `name="cold email"` → rejected. `test_template_description_field()` — `description="Холодное письмо v1"` → сохраняется |
-| **17. Raw SQL: f-string → параметризованные** (из аудита, **перенесено из этапа 4**) | `companies.py:126-131,148-158`: заменить f-string интерполяцию на `:param` с `text(...).bindparams()`. Быстрый рефакторинг (30 мин), тот же файл что задача 4 | `test_raw_sql_parameterized()` — все `sa_text()` вызовы используют `:param`, а не f-string. `test_tg_trust_filter_parameterized()` — `tg_trust_min`/`tg_trust_max` через bindparam. `test_source_filter_parameterized()` — `source` через bindparam |
+| Задача | Что делаем | Статус |
+|--------|-----------|--------|
+| **2. Recovery + отправка** | `lifespan()`: running→paused. `_get_campaign_recipients()`: фильтр + дедуп. `sender.py`: commit после каждого письма (не batch). Полный `_run_campaign_background` | ✅ Recovery + дедуп + фильтр + commit-per-email + SSE-прогресс |
+| **18. Campaign recipients: батч вместо .all()** (из аудита) | Заменить `campaigns.py:134` `q.all()` на батч-итерацию с учётом SQLite. В рамках задачи 2 | ✅ `yield_per(100)` + батч-итерация |
+| **4. Валидатор** | `validate_recipients()`: агрегаторы (SKIP_DOMAINS), невалидные email, дедуп, `EMAIL_SESSION_GAP_HRS`, признаки блокировки Gmail, SEO-имена, stop_automation | ✅ `granite/email/validator.py` — все фильтры + `check_gmail_block_signs()` |
+| **3. A/B + счётчики** | `determine_ab_variant()`: детерминированное MD5-распределение по company_id. `total_errors`, `ab_variant` в логах. A/B stats endpoint | ✅ Вынесен в `granite/email/ab.py` + `/campaigns/{id}/ab-stats` |
+| **12 (impl). Immutable шаблоны** | `data/email_templates.json` с ID. `seed-templates`: INSERT-only (skip existing). `CrmEmailLogRow.template_id`. `CrmTemplateRow.retired`. Миграция | ✅ Seed skip existing + retired + template_id + `include_retired` param |
+| **15. Template name: разрешить кириллицу** (из аудита) | `schemas.py`: pattern `^[a-z0-9_\u0410-\u042f\u0430-\u044f]+$` + `description` поле + миграция + max_length=64 | ✅ Кириллица + description + max_length |
+| **17. Raw SQL: f-string → параметризованные** (из аудита, **перенесено из этапа 4**) | `companies.py`: f-string → `:param` с `text(...).bindparams()` | ✅ Все sa_text() через bindparams |
 
 **Порядок реализации (этап 2):**
-1. Написать все тесты (красные)
-2. Задача 2 + 18: Recovery + отправка + батч-итерация → тесты зелёные
-3. Задача 4: Валидатор → тесты зелёные
-4. Задача 17: Raw SQL рефакторинг (30 мин, пока `companies.py` открыт) → тесты зелёные
-5. Задача 3: A/B + счётчики → тесты зелёные
-6. Задача 12 impl: Immutable шаблоны → тесты зелёные
-7. Задача 15: Template name кириллица + description миграция → тесты зелёные (15 мин)
-8. Интеграционный тест: создать кампанию → A/B → валидация → отправка 5 писем себе → проверить логи
-9. `uv run pytest tests/ -v` — всё зелёное
+1. ~~Написать все тесты (красные)~~ ✅
+2. ~~Задача 2 + 18: Recovery + отправка + батч-итерация~~ ✅
+3. ~~Задача 4: Валидатор~~ ✅
+4. ~~Задача 17: Raw SQL рефакторинг~~ ✅
+5. ~~Задача 3: A/B + счётчики~~ ✅
+6. ~~Задача 12 impl: Immutable шаблоны~~ ✅
+7. ~~Задача 15: Template name кириллица + description миграция~~ ✅
+8. Интеграционный тест: создать кампанию → A/B → валидация → отправка 5 писем себе → проверить логи — ⚠️ не проводился
+9. ~~`uv run pytest tests/ -v` — всё зелёное~~ ✅ 193 теста в реорганизованных файлах
 
-**Зависимости:** этап 1 завершён (SMTP работает, отписка работает, auth bypass для tracking)
+**Аудиты Этапа 2 (пост-имплементация):**
+
+После реализации основного кода (`ab684c8`) проведено 3 раунда аудита:
+
+| Раунд | Коммит | Найдено | Исправлено |
+|-------|--------|---------|----------|
+| Аудит 1 | `7922017` | FIX-1..FIX-12 (12 проблем) — миграции, валидатор интеграция, 31 тест | ✅ Все 12 |
+| Аудит 2 | `9acaeda` | FIX-P1..FIX-P5 (5 проблем) — A/B вынесен в ab.py, GET /progress, max_length=64, seed test, progress test | ✅ Все 5 |
+| Аудит 3 | `bf6a6a3` | FIX-A1..FIX-A7 (7 проблем) — total_recipients, email reexports, validator fixes, seed fix | ✅ Все 7 |
+
+**Реорганизация тестов:** `b22066d`
+
+`test_phase2.py` (1122 строк) + `test_phase2_audit.py` → разбиты по фичам:
+
+| Файл | Классы | Тестов |
+|------|--------|--------|
+| `tests/test_campaigns.py` | TestRecovery, TestCampaignRecipients, TestCampaignProgress, TestTotalRecipients | 13 |
+| `tests/test_email_validator.py` | TestValidator, TestEmailReexports | 11 |
+| `tests/test_ab.py` | TestABTesting | 8 |
+| `tests/test_templates_body_type.py` | +TestImmutableTemplates, TestTemplateCyrillic, TestTemplateNameMaxLength | +11 |
+| `tests/test_crm_api.py` | +TestParameterizedSQL | +3 |
+
+**Коммиты:** `ab684c8` (Этап 2), `7922017` (аудит 1), `9acaeda` (аудит 2), `bf6a6a3` (аудит 3), `b22066d` (реорганизация тестов)
+
+**Дополнительные файлы, созданные в Этапе 2:**
+
+| Файл | Назначение |
+|------|------------|
+| `granite/email/ab.py` | Детерминированное A/B-распределение (MD5 от company_id) |
+| `granite/email/validator.py` | Валидация получателей: агрегаторы, email, дедуп, session gap, Gmail block signs, SEO-имена |
+| `granite/email/__init__.py` | Реэкспорты: determine_ab_variant, validate_recipients, check_gmail_block_signs |
+| `scripts/seed_templates.py` | INSERT-only seed с пропуском существующих шаблонов |
+| Миграция `*add_ab_variant_template_id_total_errors_` | ab_variant, template_id, total_errors колонки |
+| Миграция `*add_retired_to_crm_templates` | retired-флаг шаблонов |
+| Миграция `*add_description_to_crm_templates` | description + max_length=64 на name |
+| Миграция `*add_total_recipients_to_campaigns` | total_recipients для отображения прогресса |
+
+**Зависимости:** этап 1 завершён ✅
 
 ---
 
@@ -533,8 +574,8 @@ Telegram: @ganjavagen
 
 | Этап | Задачи | Результат | Когда можно тестировать |
 |------|--------|-----------|------------------------|
-| 1 | 1, 6, 7/14, 8, **16** | CRM может отправить 1 письмо + отписка + tracking + `.env.example` | Сразу после завершения |
-| 2 | 2, 3, 4, 12(impl), **15, 17, 18** | CRM может создать кампанию с A/B + валидация + кириллица + батч-итерация + параметризованный SQL | 1-2 дня после этапа 1 |
+| 1 ✅ | 1, 6, 7/14, 8, **16** | CRM может отправить 1 письмо + отписка + tracking + `.env.example` | ✅ Завершён |
+| 2 ✅ | 2, 3, 4, 12(impl), **15, 17, 18** | CRM может создать кампанию с A/B + валидация + кириллица + батч-итерация + параметризованный SQL | ✅ Завершён (5 коммитов + 3 аудита) |
 | 3 | **19**, 5, 6, 9, 11 | CRM обрабатывает bounce/reply/follow-up автоматически + IMAP helpers | 2-3 дня после этапа 2 |
 | 4 | 10, 12(доки), 13 | Полный цикл: UI → кампания → статистика → post-reply | 3-5 дней после этапа 3 |
 
