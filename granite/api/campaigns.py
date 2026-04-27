@@ -333,15 +333,8 @@ def run_campaign(campaign_id: int, request: Request):
         EMAIL_DAILY_LIMIT = int(os.environ.get("EMAIL_DAILY_LIMIT", "50"))
         MAX_SENDS_PER_RUN = int(os.environ.get("MAX_SENDS_PER_RUN", "100"))
 
-        # Задача 2.3: функция A/B темы (задача 3 — полная реализация)
-        def get_ab_subject(company_id: int, campaign_row, template_row, render_kw: dict) -> str:
-            """Детерминированное A/B распределение по company_id."""
-            a = campaign_row.subject_a or template_row.render_subject(**render_kw)
-            if not campaign_row.subject_b:
-                return a
-            import hashlib as _hashlib
-            hash_val = int(_hashlib.md5(str(company_id).encode()).hexdigest(), 16)
-            return a if hash_val % 2 == 0 else campaign_row.subject_b
+        # FIX-P1: A/B логика вынесена в granite.email.ab — единый модуль для переиспользования
+        from granite.email.ab import determine_ab_variant
 
         campaign = None
         session = SessionFactory()
@@ -410,12 +403,13 @@ def run_campaign(campaign_id: int, request: Request):
                     "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}" if contact else "",
                 }
 
-                # Задача 3: A/B тема письма
-                subject = get_ab_subject(company.id, campaign, template, render_kwargs)
-
-                # Определяем A/B вариант для лога
+                # Задача 3: A/B тема письма — через модульную функцию
                 subject_a = campaign.subject_a or template.render_subject(**render_kwargs)
-                ab_variant = "A" if subject == subject_a else "B"
+                ab_variant, subject = determine_ab_variant(
+                    company_id=company.id,
+                    subject_a=subject_a,
+                    subject_b=campaign.subject_b,
+                )
                 rendered = template.render(**render_kwargs)
                 if template.body_type == "html":
                     from granite.utils import html_to_plain_text
@@ -494,6 +488,50 @@ def run_campaign(campaign_id: int, request: Request):
             lock.release()
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.get("/campaigns/{campaign_id}/progress")
+def campaign_progress(campaign_id: int, db: Session = Depends(get_db)):
+    """FIX-P2: Прогресс кампании через SSE (без запуска отправки).
+
+    Возвращает Server-Sent Events с текущим статусом кампании.
+    Фронтенд может подключиться к этому эндпоинту после обрыва SSE
+    от POST /run — без перезапуска кампании.
+
+    Формат SSE:
+        data: {"status": "running", "sent": N, "total": M, "errors": E}
+    """
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    # Считаем total — количество получателей по фильтрам
+    # (если кампания ещё running, нам нужно знать сколько всего)
+    recipients_count = 0
+    if campaign.status in ("running", "paused", "paused_daily_limit"):
+        try:
+            recipients = _get_campaign_recipients(campaign, db)
+            recipients_count = len(recipients)
+        except Exception:
+            pass
+
+    # Если кампания завершена — total = total_sent (все отправлены)
+    if campaign.status == "completed":
+        recipients_count = campaign.total_sent or 0
+
+    def _stream():
+        """Отправить одно SSE-событие с текущим прогрессом."""
+        payload = {
+            "status": campaign.status,
+            "sent": campaign.total_sent or 0,
+            "total": recipients_count,
+            "errors": campaign.total_errors or 0,
+            "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
+            "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
+        }
+        yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 @router.get("/campaigns/{campaign_id}/stats", response_model=CampaignStatsResponse)

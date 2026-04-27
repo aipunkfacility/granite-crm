@@ -398,30 +398,57 @@ class TestValidator:
 # ══════════════════════════════════════════════════════════════════════════
 
 class TestABTesting:
-    """Задача 3: детерминированное A/B распределение + счётчики."""
+    """Задача 3: детерминированное A/B распределение + счётчики.
+
+    FIX-P1: Тесты используют модульную функцию determine_ab_variant()
+    из granite.email.ab вместо дублирования MD5-логики.
+    """
 
     def test_ab_deterministic(self):
         """determine_ab_variant(company_id=42) всегда одинаковый результат."""
-        # Используем ту же логику что в campaigns.py:get_ab_subject
-        company_id = 42
-        hash_val = int(hashlib.md5(str(company_id).encode()).hexdigest(), 16)
-        result1 = "A" if hash_val % 2 == 0 else "B"
-        result2 = "A" if hash_val % 2 == 0 else "B"
-        assert result1 == result2
+        from granite.email.ab import determine_ab_variant
+
+        v1, s1 = determine_ab_variant(42, "Subject A", "Subject B")
+        v2, s2 = determine_ab_variant(42, "Subject A", "Subject B")
+        assert v1 == v2
+        assert s1 == s2
 
     def test_ab_50_50_split(self):
         """100 компаний → примерно 50/50 распределение."""
+        from granite.email.ab import determine_ab_variant
+
         a_count = 0
         b_count = 0
         for i in range(100):
-            hash_val = int(hashlib.md5(str(i).encode()).hexdigest(), 16)
-            if hash_val % 2 == 0:
+            variant, _ = determine_ab_variant(i, "Subject A", "Subject B")
+            if variant == "A":
                 a_count += 1
             else:
                 b_count += 1
         # Допускаем отклонение ±15
         assert 35 <= a_count <= 65, f"A={a_count}, B={b_count}"
         assert 35 <= b_count <= 65, f"A={a_count}, B={b_count}"
+
+    def test_ab_no_variant_b_returns_a(self):
+        """Без subject_b → всегда вариант A."""
+        from granite.email.ab import determine_ab_variant
+
+        variant, subject = determine_ab_variant(42, "Only A")
+        assert variant == "A"
+        assert subject == "Only A"
+
+    def test_ab_variant_b_works(self):
+        """С subject_b → вариант B для нечётных хэшей."""
+        from granite.email.ab import determine_ab_variant
+
+        # Находим company_id с вариантом B
+        for cid in range(200):
+            variant, subject = determine_ab_variant(cid, "A subject", "B subject")
+            if variant == "B":
+                assert subject == "B subject"
+                break
+        else:
+            pytest.fail("Не удалось найти company_id с вариантом B")
 
     def test_total_errors_increment(self, db):
         """Ошибка отправки → total_errors+1."""
@@ -438,14 +465,15 @@ class TestABTesting:
 
     def test_ab_variant_in_log(self, db):
         """Отправка → CrmEmailLogRow.ab_variant = "A" или "B"."""
+        from granite.email.ab import determine_ab_variant
+
         _make_template(db)
         campaign = _make_campaign(db, status="draft")
         company = _make_company(db, emails=["ab@test.ru"])
         db.commit()
 
-        # Определяем вариант
-        hash_val = int(hashlib.md5(str(company.id).encode()).hexdigest(), 16)
-        ab_variant = "A" if hash_val % 2 == 0 else "B"
+        # Определяем вариант через модульную функцию
+        ab_variant, _ = determine_ab_variant(company.id, "Subject A", "Subject B")
 
         log = CrmEmailLogRow(
             company_id=company.id, email_to="ab@test.ru",
@@ -527,62 +555,105 @@ class TestABTesting:
 class TestImmutableTemplates:
     """Задача 12: seed, retired, immutable."""
 
-    def test_seed_inserts_new(self, db, tmp_path):
-        """Пустая БД → шаблоны добавлены."""
-        _make_template(db, name="existing_tpl", body="Old")
-        db.commit()
+    def test_seed_inserts_new(self, tmp_path):
+        """FIX-P4: Пустая БД → seed_templates() добавляет шаблоны из JSON."""
+        import json as _json
+        from granite.database import Database, CrmTemplateRow
 
-        # Запускаем seed (должен добавить шаблоны из JSON, пропустить existing)
-        from scripts.seed_templates import seed_templates
+        # Создаём временную БД
+        db_path = str(tmp_path / "test_seed.db")
+        db = Database(db_path=db_path)
+        Base.metadata.create_all(db.engine)
 
-        # Создаём временный JSON
-        import json
+        # Создаём временный JSON с 2 шаблонами
+        templates_json = [
+            {"name": "seed_tpl_a", "channel": "email", "subject": "Hi A",
+             "body": "Hello {city}", "body_type": "plain", "description": "Seed A"},
+            {"name": "seed_tpl_b", "channel": "email", "subject": "Hi B",
+             "body": "Hello {city}", "body_type": "plain", "description": "Seed B"},
+        ]
         json_path = tmp_path / "email_templates.json"
-        json_path.write_text(json.dumps([
-            {"name": "new_template", "channel": "email", "subject": "Hi",
-             "body": "Hello {city}", "body_type": "plain", "description": "New"},
-        ]))
+        json_path.write_text(_json.dumps(templates_json), encoding="utf-8")
 
-        # Мокаем путь к JSON
-        import scripts.seed_templates as seed_mod
-        original_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(seed_mod.__file__))),
-            "data", "email_templates.json"
-        )
+        # Мокаем путь к JSON внутри seed_templates
+        from scripts import seed_templates as seed_mod
+        with patch.object(seed_mod, "__file__", str(tmp_path / "seed_templates.py")):
+            # Мокаем os.path.join для поиска JSON — подменяем путь
+            original_join = os.path.join
+            def mock_join(*args):
+                if args[-1] == "email_templates.json" and "data" in args:
+                    return str(json_path)
+                return original_join(*args)
+            with patch("scripts.seed_templates.os.path.join", side_effect=mock_join):
+                added = seed_mod.seed_templates(db_path=db_path)
 
-        with patch.object(seed_templates, '__module__', 'scripts.seed_templates'):
-            # Тестируем что уже существующий шаблон не перезаписывается
-            count_before = db.query(CrmTemplateRow).count()
-            assert count_before >= 1  # existing_tpl
+        assert added == 2
 
-    def test_seed_skips_existing(self, db):
-        """Повторный seed → 0 новых."""
-        _make_template(db, name="cold_email_v1")
-        db.commit()
+        # Проверяем что шаблоны в БД
+        session = db.SessionLocal()
+        try:
+            count = session.query(CrmTemplateRow).count()
+            assert count == 2
+            names = {t.name for t in session.query(CrmTemplateRow).all()}
+            assert names == {"seed_tpl_a", "seed_tpl_b"}
+        finally:
+            session.close()
+            db.engine.dispose()
 
-        # Имитируем seed — если шаблон уже есть, он пропускается
-        existing = db.query(CrmTemplateRow).filter_by(name="cold_email_v1").first()
-        assert existing is not None
-        original_body = existing.body
+    def test_seed_skips_existing(self, tmp_path):
+        """FIX-P4: Повторный seed_templates() → 0 новых (INSERT-only)."""
+        import json as _json
+        from granite.database import Database, CrmTemplateRow
 
-        # Seed НЕ должен обновлять существующие шаблоны
-        # (INSERT-only — проверяем логику)
-        from scripts.seed_templates import seed_templates
+        db_path = str(tmp_path / "test_seed2.db")
+        db = Database(db_path=db_path)
+        Base.metadata.create_all(db.engine)
 
-        # Создаём тестовые данные
-        new_tpl = CrmTemplateRow(
-            name="another_template", channel="email",
-            subject="X", body="Body X",
-        )
-        db.add(new_tpl)
-        db.commit()
+        # JSON с 2 шаблонами
+        templates_json = [
+            {"name": "existing_tpl", "channel": "email", "subject": "Hi",
+             "body": "Original body", "body_type": "plain", "description": "Original"},
+            {"name": "new_tpl", "channel": "email", "subject": "New",
+             "body": "New body", "body_type": "plain", "description": "New"},
+        ]
+        json_path = tmp_path / "email_templates.json"
+        json_path.write_text(_json.dumps(templates_json), encoding="utf-8")
 
-        count = db.query(CrmTemplateRow).count()
-        assert count == 2  # cold_email_v1 + another_template
+        # Добавляем existing_tpl вручную ПЕРЕД seed
+        session = db.SessionLocal()
+        session.add(CrmTemplateRow(
+            name="existing_tpl", channel="email", subject="Old subject",
+            body="Old body — must not change",
+        ))
+        session.commit()
+        session.close()
 
-        # Проверяем что оригинальный шаблон не изменился
-        db.refresh(existing)
-        assert existing.body == original_body
+        # Запускаем seed
+        from scripts import seed_templates as seed_mod
+        original_join = os.path.join
+        def mock_join(*args):
+            if args[-1] == "email_templates.json" and "data" in args:
+                return str(json_path)
+            return original_join(*args)
+        with patch("scripts.seed_templates.os.path.join", side_effect=mock_join):
+            added = seed_mod.seed_templates(db_path=db_path)
+
+        # Должен добавить только 1 (new_tpl), existing_tpl пропущен
+        assert added == 1
+
+        # Проверяем что existing_tpl НЕ обновился
+        session = db.SessionLocal()
+        try:
+            existing = session.query(CrmTemplateRow).filter_by(name="existing_tpl").first()
+            assert existing is not None
+            assert existing.body == "Old body — must not change"
+
+            new = session.query(CrmTemplateRow).filter_by(name="new_tpl").first()
+            assert new is not None
+            assert new.body == "New body"
+        finally:
+            session.close()
+            db.engine.dispose()
 
     def test_template_id_in_log(self, db):
         """Отправка → template_id=1 в логе."""
@@ -848,3 +919,216 @@ class TestParameterizedSQL:
         assert len(bad_patterns) == 0, (
             f"Found source interpolation in sa_text(): {bad_patterns}"
         )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# FIX-P3: max_length=64 на template name
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestTemplateNameMaxLength:
+    """FIX-P3: CreateTemplateRequest.name ограничен 64 символами."""
+
+    def test_template_name_too_long(self, engine):
+        """name > 64 символов → 422."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+
+        try:
+            with TestClient(app) as client:
+                long_name = "a" * 65
+                resp = client.post("/api/v1/templates", json={
+                    "name": long_name,
+                    "channel": "email",
+                    "body": "Test body",
+                })
+                assert resp.status_code == 422
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_template_name_exactly_64(self, engine):
+        """name = 64 символа → accepted."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+
+        try:
+            with TestClient(app) as client:
+                name_64 = "a" * 64
+                resp = client.post("/api/v1/templates", json={
+                    "name": name_64,
+                    "channel": "email",
+                    "body": "Test body",
+                })
+                assert resp.status_code == 201
+        finally:
+            app.dependency_overrides.clear()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# FIX-P5: GET /campaigns/{id}/progress SSE-эндпоинт
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestCampaignProgress:
+    """FIX-P5: Эндпоинт прогресса кампании без запуска отправки."""
+
+    def test_campaign_progress_endpoint(self, engine):
+        """GET /campaigns/{id}/progress → SSE с текущим статусом."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s, name="progress_tpl")
+            campaign = _make_campaign(s, template_name="progress_tpl",
+                                       status="draft", total_sent=0, total_errors=0)
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+
+        try:
+            with TestClient(app) as client:
+                resp = client.get(f"/api/v1/campaigns/{campaign_id}/progress")
+                assert resp.status_code == 200
+                assert resp.headers["content-type"] == "text/event-stream; charset=utf-8"
+
+                # Парсим SSE-данные
+                body = resp.text
+                assert "data:" in body
+
+                # Извлекаем JSON из SSE
+                import json as _json
+                for line in body.strip().split("\n"):
+                    if line.startswith("data:"):
+                        data = _json.loads(line[5:].strip())
+                        assert "status" in data
+                        assert data["status"] == "draft"
+                        assert "sent" in data
+                        assert "total" in data
+                        assert "errors" in data
+                        break
+                else:
+                    pytest.fail("No SSE data line found in response")
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_campaign_progress_not_found(self, engine):
+        """GET /campaigns/999999/progress → 404."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+
+        try:
+            with TestClient(app) as client:
+                resp = client.get("/api/v1/campaigns/999999/progress")
+                assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_campaign_progress_completed(self, engine):
+        """GET /campaigns/{id}/progress для завершённой кампании."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s, name="completed_tpl")
+            campaign = _make_campaign(s, template_name="completed_tpl",
+                                       status="completed", total_sent=10, total_errors=1)
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+        app.state.Session = Session
+
+        try:
+            with TestClient(app) as client:
+                resp = client.get(f"/api/v1/campaigns/{campaign_id}/progress")
+                assert resp.status_code == 200
+
+                import json as _json
+                for line in resp.text.strip().split("\n"):
+                    if line.startswith("data:"):
+                        data = _json.loads(line[5:].strip())
+                        assert data["status"] == "completed"
+                        assert data["sent"] == 10
+                        assert data["errors"] == 1
+                        break
+        finally:
+            app.dependency_overrides.clear()
