@@ -1,0 +1,5 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+6040,Наши офисы и контакты,79277382374; 79379929991; 79649698435; 79272114261; 79024289663; 79626147979; 79279014100; 79376668858; 79270292030; 79278076169; 79179375233; 79172463366; 79179300808,,https://pokhvistnevo.smemorial.ru/,smemorial-ru@ya.ru,Похвистнево,,A,48,Yes,wordpress,No,https://t.me/+79277382374,,https://api.whatsapp.com/send?phone=79277382374
+6039,Салон камня,79277070017,"ул. Шевченко, 9, Похвистнево, Похвистнево",https://salon-kamnja.clients.site/,,Похвистнево,,B,25,Yes,unknown,No,,,https://api.whatsapp.com/send?phone=79277162374
+6037,Салон ритуальных услуг,78465621010,"Самарская область, Похвистнево, Похвистнево",,,Похвистнево,,C,20,No,unknown,No,https://t.me/+78465621010,,
+6038,Памятники,,"Самарская область, Похвистнево,Шевченко, Похвистнево",,,Похвистнево,,D,5,No,unknown,No,,,

@@ -1,0 +1,2 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+6379,Главная,79603351888,"бул. Горшкова, 5, Рузаевка, Рузаевка",https://памятникиврузаевке.рф/,kontrolkok@yandex.ru; ruzaevka5@yandex.ru,Рузаевка,,A,43,No,wordpress,No,https://t.me/+79603351888,,https://api.whatsapp.com/send?phone=79603351888

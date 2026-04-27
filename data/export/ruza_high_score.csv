@@ -1,0 +1,4 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+6372,GRANT-STONE,74951065606; 79265255531; 79852726318,,https://grant-stone.ru/,sales@grant-stone.ru; shop@shop.ru,Руза,,A,51,Yes,wordpress,No,https://t.me/AnnaFreeMind,,https://api.whatsapp.com/send?phone=79852726318
+6370,Небо Одно,79097535050,,https://ruza.nebo-odno.ru/,op.nebo1@gmail.com,Руза,,A,44,Yes,drupal,Yes,https://t.me/neboodnosalebot,https://vk.com/nebo_stavropol,
+6374,stoun.ru,79265393503; 79250033785,,https://www.stoun.ru/,,Руза,,A,40,Yes,bitrix,No,https://t.me/+79265393503,,

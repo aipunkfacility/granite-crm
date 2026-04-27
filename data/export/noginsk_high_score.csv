@@ -1,0 +1,6 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+5443,iGranit,74956635148; 79295011888; 79996761106,"ул. Белякова, 2, микрорайон Заречье, Ногинск, Ногинск",https://igranit.ru/,info@igranit.ru,Ногинск,,A,56,Yes,wordpress,No,https://t.me/monuments_igranit,https://vk.com/igranitru,https://api.whatsapp.com/send?phone=79295011888
+5433,Ритуал,79152993219; 79858481112; 79299298364; 79175887824; 74965151394,"ул. Декабристов, 79, Ногинск, Ногинск",https://ritual-polimer.clients.site/,,Ногинск,,A,45,Yes,unknown,No,https://t.me/+79299298364,,https://api.whatsapp.com/send?phone=79152993219
+5455,Небо Одно,79097535050,,https://noginsk.nebo-odno.ru/,op.nebo1@gmail.com,Ногинск,,A,44,Yes,drupal,Yes,https://t.me/neboodnosalebot,https://vk.com/nebo_stavropol,
+5432,Гранитпром,74951204121; 79255933693,"Электростальское ш., 29Б, Ногинск, Ногинск",https://granitprom.ru/,,Ногинск,,A,40,No,unknown,No,https://t.me/+79255933693,https://vk.com/granitprom,https://api.whatsapp.com/send?phone=79255933693
+5452,Памятники. Moscow,79268252866; 74953694359; 79057057777,"Ямкинское ш., 14, Ногинск, Ногинск",https://pamyatniki.moscow/,info@pamyatniki.moscow,Ногинск,,A,40,Yes,opencart,No,https://t.me/+79268252866,,

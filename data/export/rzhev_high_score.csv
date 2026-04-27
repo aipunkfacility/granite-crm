@@ -1,0 +1,4 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+6290,Каменный дворик,79040002580; 79157135334; 79001108718; 79806372316; 79206868355; 79157448280,"Тверская область, Ржев, улица Никиты Головни, Ржев",https://каменный-дворик-ржев.online/,info@etalongranit.ru; etalongranit@mail.ru,Ржев,,A,50,Yes,unknown,No,https://t.me/+79040002580,,https://api.whatsapp.com/send?phone=79206868355
+6291,Памятники Карелии,79969237455; 74822750517; 79040187388,"Трудовая ул., 3, Ржев, Ржев",http://pamyatniki-karelii.ru/,pamyatniki-karelii@mail.ru,Ржев,,A,44,No,wordpress,No,https://t.me/PamyatnikiKarelii,https://vk.com/pamyatniki_karelii,
+6298,rzhev.rm-ryabina.ru,79785971717; 79885811717; 70172111195,"г. Ржев, ул. Большая",https://rzhev.rm-ryabina.ru/,rim-ryabina@yandex.ru,Ржев,,A,40,Yes,unknown,No,https://t.me/+79785971717,,

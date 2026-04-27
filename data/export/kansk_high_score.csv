@@ -1,0 +1,3 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+3127,Стикс,79029113243; 79082142274; 79951722274,"ул. Шабалина, 63, Канск, Канск",https://styx.tb.ru/,,Канск,,A,45,Yes,unknown,No,https://t.me/+79029113243,,https://api.whatsapp.com/send?phone=79029113243
+3128,Ритуальная Галерея,79509933493; 79504300555,"ул. 40 лет Октября, 88А, Канск, Канск",https://ritualgallery.ru/,ogradki@internet.ru,Канск,,A,45,No,unknown,No,https://t.me/79509933493,,https://api.whatsapp.com/send?phone=79509933493

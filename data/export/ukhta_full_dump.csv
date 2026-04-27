@@ -1,0 +1,15 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+7900,uhta.bilkam.ru,73833830392; 73517009492,"г. Ухта, ул. Западная",https://uhta.bilkam.ru/,sales@bilkam.ru,Ухта,,A,50,Yes,bitrix,No,https://t.me/+73833830392,https://vk.com/bilkam,
+7902,Данила-Мастер,79022234935; 79022202052,"г. Ухта, ул. Западная",https://ukhta.danila-master.ru/,info@danila-master.ru; dm-on-line@danila-master.ru; mail@danila-master.ru,Ухта,,A,40,Yes,unknown,No,https://t.me/+79022202052,https://vk.com/share.php?url=https://danila-master.ru/products/model-m-12.html?city_name=ukhta,
+7904,uhta.evlitos.ru,79039558117; 70170439939; 70170530015,г товаров Сравнение 0,https://uhta.evlitos.ru/,227298@mail.ru; 221737@bk.ru,Ухта,,A,40,Yes,unknown,No,https://t.me/+79039558117,,
+7890,Реквием мастерская камня,79087191220; 78216740470; 79042008012,"просп. Космонавтов, 50, Ухта, Ухта",,,Ухта,,B,35,No,unknown,No,https://t.me/+79087191220,,https://api.whatsapp.com/send?phone=79042008012
+7903,ukhta.rm-ryabina.ru,79785971717; 79885811717; 70172111195,,https://ukhta.rm-ryabina.ru/,rim-ryabina@yandex.ru,Ухта,,B,35,Yes,unknown,No,https://t.me/+79785971717,,
+7889,Стоун,79121293070,"просп. Космонавтов, 20, Ухта, Ухта",https://pamjatniki-stoun.clients.site/,,Ухта,,B,30,Yes,unknown,No,https://t.me/+79121293070,,
+7892,Ритуальные Услуги,78216740526; 79087181311; 79121655957,"просп. Ленина, 65, Ухта, Ухта",,,Ухта,,B,25,No,unknown,No,https://t.me/+78216740526,https://vk.com/capturethememory,
+7888,Стела,79129468181,"ул. Сенюкова, 16, Ухта, Ухта",,,Ухта,,C,20,No,unknown,No,https://t.me/+79129468181,https://vk.com/salonkamnyastela,
+7895,Лик,79129476375,"2-я Берёзовская ул., 6, посёлок Озёрный, Ухта, Ухта",,,Ухта,,C,20,No,unknown,No,https://t.me/+79129476375,,
+7897,Север-Мемориал,79125002500,"просп. Ленина, 22, Ухта, Ухта",,,Ухта,,C,20,No,unknown,No,https://t.me/+79125002500,https://vk.com/public220054310,
+7898,Обелиск,78216712400,"Чибьюская ул., 15/13, Ухта, Ухта",,,Ухта,,C,20,No,unknown,No,https://t.me/+78216712400,,
+7896,Мастерская по обработке камня Карелия,,"просп. Ленина, 53Б, Ухта, Ухта",http://karelia-uhta.ru/,,Ухта,,D,10,No,unknown,No,,,
+7901,Реквием в граните,,,https://rekviem-uhta.ru/,rekviem-uhta@mail.ru,Ухта,,D,10,No,unknown,No,,,
+7899,ГазМедиаСервис,,"просп. Ленина, 10, Ухта, Ухта",,,Ухта,,D,5,No,unknown,No,,,

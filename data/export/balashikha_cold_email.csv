@@ -1,0 +1,4 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+767,Наследие-проект реставрационно-проектная мастерская,74955175310; 79255175310; 70281064004,"Посадская ул., 10, д. Чёрное, Балашиха",http://granitka.ru/,zakaz@granitka.ru,Балашиха,,B,25,Yes,unknown,No,,,
+743,Гранитариум,74959990032; 79164050044; 79859990032,"Московская область, Балашиха, Окольная улица, Балашиха",http://granitarium.ru/,info@granitarium.ru,Балашиха,,C,20,No,unknown,No,,,
+747,Памятники РФ,74994041101; 78123095101,"Звёздная ул., 13, Балашиха, Балашиха",https://pamyatnikirf.ru/,info@pamyatnikirf.ru; support@axelname.ru,Балашиха,,C,20,No,unknown,No,,,

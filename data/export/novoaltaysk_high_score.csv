@@ -1,0 +1,4 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+5192,Гранит Мастер,79237291065; 79130985691; 79293972510; 79293970402; 79236454216,"Алтайский край, городской округ Новоалтайск, Новоалтайск",https://granit-ab.ru/,granit-ab@yandex.ru,Новоалтайск,,A,56,Yes,unknown,No,https://t.me/GranitAbNovoaltaisk,,https://api.whatsapp.com/send?phone=79237291065
+5194,Салон ритуальных услуг Ангел ритуальный салон,79039900221; 79609594864; 73853246090; 79635194229; 79095079696; 72949707010,"Вагоностроительная ул., 1А, Новоалтайск, Россия, Новоалтайск",https://ангел22.рф/,angel.ritual@rambler.ru,Новоалтайск,,A,45,No,unknown,No,https://t.me/79059825188,https://vk.com/angel_novoaltaisk,https://api.whatsapp.com/send?phone=79059825188
+5201,Гранит памяти,79634714252,,https://barnaul.granit-pamyati.ru/,office@granit-pamyati.ru,Новоалтайск,,A,40,Yes,bitrix,No,https://t.me/granitpamyatibot,https://vk.com/granit_pamyati,

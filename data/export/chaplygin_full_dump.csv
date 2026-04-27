@@ -1,0 +1,6 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+8100,Памятники,79103595775; 79158516513,"Строительная ул., 3, Чаплыгин, Чаплыгин",,,Чаплыгин,,B,35,No,unknown,No,https://t.me/+79103595775,,https://api.whatsapp.com/send?phone=79103595775
+8101,Данила-Мастер,74742200407; 79022234935; 79022202052; 76032210001; 79022201954; 79201305344; 79201305357,,https://chaplygin.danila-master.ru/,mail@danila-master.ru; natalia.streletskaya@danila-master.ru; tatiana.bronnikova@danila-master.ru; info@danila-master.ru; marina.burykina@danila-master.ru; dm-on-line@danila-master.ru,Чаплыгин,,B,35,Yes,unknown,No,https://t.me/+79022202052,https://vk.com/share.php?url=https://danila-master.ru/products/model-m-12.html?city_name=chaplygin,
+8098,Рубин-М,,"ул. Крупской, 42/1, Чаплыгин, Чаплыгин",https://rybin-m.okis.ru/,taxi-chap@mail.ru,Чаплыгин,,C,20,Yes,unknown,No,,,
+8097,Ритуальный,,"Хлебная площадь, 1, Чаплыгин, Чаплыгин",,,Чаплыгин,,D,5,No,unknown,No,,,
+8099,"Благоустройство могил, оградки",,"ул. Горького, 33Б, Чаплыгин, Чаплыгин",,,Чаплыгин,,D,5,No,unknown,No,,,

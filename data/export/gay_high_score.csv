@@ -1,0 +1,4 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+1942,gaj.bilkam.ru,73833830392; 73517009492,,https://gaj.bilkam.ru/,sales@bilkam.ru,Гай,,A,45,Yes,bitrix,No,https://t.me/+73833830392,https://vk.com/bilkam,
+1945,ГРАНИТ — МЕМОРИ,79162582013; 76145021873; 73116191126,,https://granit-memory.ru/,granit-memory@yandex.ru,Гай,,A,42,No,bitrix,No,https://t.me/Granit_Memory,,
+1938,Обелиск,79058450707; 79058967321; 79058975265; 73537402060,"Коммунистическая ул., 8, г. Гай, Россия, Гай",https://obeliskorsk.ru/,,Гай,,A,40,No,unknown,No,https://t.me/+79058450707,https://vk.com/obelisk_orsk,https://api.whatsapp.com/send?phone=79058162383

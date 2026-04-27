@@ -1,0 +1,10 @@
+﻿id,name,phones,address,website,emails,city,region,segment,crm_score,is_network,cms,has_marquiz,telegram,vk,whatsapp
+1942,gaj.bilkam.ru,73833830392; 73517009492,,https://gaj.bilkam.ru/,sales@bilkam.ru,Гай,,A,45,Yes,bitrix,No,https://t.me/+73833830392,https://vk.com/bilkam,
+1945,ГРАНИТ — МЕМОРИ,79162582013; 76145021873; 73116191126,,https://granit-memory.ru/,granit-memory@yandex.ru,Гай,,A,42,No,bitrix,No,https://t.me/Granit_Memory,,
+1938,Обелиск,79058450707; 79058967321; 79058975265; 73537402060,"Коммунистическая ул., 8, г. Гай, Россия, Гай",https://obeliskorsk.ru/,,Гай,,A,40,No,unknown,No,https://t.me/+79058450707,https://vk.com/obelisk_orsk,https://api.whatsapp.com/send?phone=79058162383
+1940,Камнерезная мастерская,79058135844; 73536240260,"Орское ш., 6А, г. Гай, Гай",,,Гай,,B,35,No,unknown,No,https://t.me/+79058135844,,https://api.whatsapp.com/send?phone=79058135844
+1943,Uslugika,79016348176,,https://uslugika.ru/,admin.uslugika@yandex.ru,Гай,,B,33,Yes,wordpress,No,https://t.me/+79016348176,,
+1937,Гранит Мастер,79228060500,"ул. Войченко, 1, Гай, Гай",,,Гай,,B,30,No,unknown,No,https://t.me/+79228060500,,https://api.whatsapp.com/send?phone=79228060500
+1944,gm-master,79802123029; 79257973910; 77460031231,,https://gm-master.ru/,info@gm-master.ru,Гай,,B,30,No,lpmotor,No,https://telegram.me/gartmemorial,,
+1939,Вознесение,,"Орское ш., 5Г, Гай, Гай",,,Гай,,D,5,No,unknown,No,,,
+1941,Памятники,,"ул. Ленина, 36, Гай, Гай",,,Гай,,D,5,No,unknown,No,,,
