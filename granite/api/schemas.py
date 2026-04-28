@@ -141,7 +141,12 @@ class MergeRequest(BaseModel):
 
 class MarkSpamRequest(BaseModel):
     """Запрос на пометку компании как спам."""
-    reason: str = Field("", min_length=0, description="Причина пометки")
+    reason: str = Field(
+        ...,
+        min_length=1,
+        pattern="^(aggregator|duplicate|foreign_city|not_target|closed|other|spam_complaint)$",
+        description="Причина пометки: aggregator, duplicate, foreign_city, not_target, closed, other, spam_complaint",
+    )
 
 
 class MarkDuplicateRequest(BaseModel):

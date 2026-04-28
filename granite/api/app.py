@@ -339,7 +339,7 @@ async def api_key_auth_middleware(request: Request, call_next):
 from granite.api import (
     companies, touches, tasks, tracking, campaigns,
     followup, funnel, messenger, templates, stats, export,
-    unsubscribe, admin,
+    unsubscribe, admin, replies,
 )
 app.include_router(companies.router, prefix="/api/v1", tags=["companies"])
 app.include_router(touches.router, prefix="/api/v1", tags=["touches"])
@@ -354,6 +354,7 @@ app.include_router(stats.router, prefix="/api/v1", tags=["stats"])
 app.include_router(export.router, prefix="/api/v1", tags=["export"])
 app.include_router(unsubscribe.router, prefix="/api/v1", tags=["unsubscribe"])
 app.include_router(admin.router, prefix="/api/v1", tags=["admin"])
+app.include_router(replies.router, prefix="/api/v1", tags=["replies"])
 
 from granite.api import pipeline_status
 app.include_router(pipeline_status.router, prefix="/api/v1", tags=["pipeline"])
