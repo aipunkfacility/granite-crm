@@ -76,6 +76,40 @@ class TestPreviewReply:
         })
         assert resp.status_code == 404
 
+    # P4R-M14: Тест для компании без email
+    def test_preview_no_email(self, client, db_session):
+        """Предпросмотр reply для компании без email — 400."""
+        company_id = create_company(db_session, emails=[])
+        _seed_reply_template(db_session)
+        db_session.commit()
+
+        resp = client.post(f"/api/v1/companies/{company_id}/reply/preview", json={
+            "template_name": "reply_price",
+        })
+        assert resp.status_code == 400
+
+    # P4R-M10: Тест stop_automation в preview — должен вернуть предупреждение
+    def test_preview_stop_automation_warning(self, client, db_session):
+        """Предпросмотр reply для компании с stop_automation — предупреждение."""
+        company_id = create_company(db_session, emails=["stop-preview@test.com"])
+        _seed_reply_template(db_session)
+        # Устанавливаем stop_automation
+        contact = db_session.query(CrmContactRow).filter_by(company_id=company_id).first()
+        if contact:
+            contact.stop_automation = True
+        else:
+            contact = CrmContactRow(company_id=company_id, stop_automation=True)
+            db_session.add(contact)
+        db_session.commit()
+
+        resp = client.post(f"/api/v1/companies/{company_id}/reply/preview", json={
+            "template_name": "reply_price",
+        })
+        # Preview должен вернуть 200 с предупреждением
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("stop_automation_warning") is not None
+
 
 class TestSendReply:
     """POST /companies/{id}/reply — отправка reply с шаблоном."""
@@ -145,3 +179,34 @@ class TestSendReply:
         touch = touches[-1]
         assert "100 000" in touch.body or "Цены" in touch.body
         assert "reply_template=reply_price" in (touch.note or "")
+
+    # P4R-M13: Тест stop_automation — отправка должна вернуть 409
+    def test_send_stop_automation(self, client, db_session):
+        """Отправка reply при stop_automation=True — 409."""
+        company_id = create_company(db_session, emails=["stop-test@example.com"])
+        _seed_reply_template(db_session)
+        # Устанавливаем stop_automation
+        contact = db_session.query(CrmContactRow).filter_by(company_id=company_id).first()
+        if contact:
+            contact.stop_automation = True
+        else:
+            contact = CrmContactRow(company_id=company_id, stop_automation=True)
+            db_session.add(contact)
+        db_session.commit()
+
+        resp = client.post(f"/api/v1/companies/{company_id}/reply", json={
+            "template_name": "reply_price",
+        })
+        assert resp.status_code == 409
+
+    # P4R-M14: Тест компании без email
+    def test_send_no_email(self, client, db_session):
+        """Отправка reply для компании без email — 400."""
+        company_id = create_company(db_session, emails=[])
+        _seed_reply_template(db_session)
+        db_session.commit()
+
+        resp = client.post(f"/api/v1/companies/{company_id}/reply", json={
+            "template_name": "reply_price",
+        })
+        assert resp.status_code == 400

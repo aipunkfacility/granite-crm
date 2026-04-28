@@ -1,13 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useCampaignTemplates } from '@/lib/hooks/use-campaigns';
 import { createCampaign, previewRecipients } from '@/lib/api/campaigns';
 import { type Template } from '@/lib/api/templates';
+import { type Segment } from '@/lib/types/api';  // P4R-M21: Сегменты из типа
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';  // P4R-L16: shadcn/ui Select вместо нативного
 import {
   Send,
   X,
@@ -23,6 +32,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api/client';
+import { toast } from 'sonner';  // P4R-M17: Toast для ошибки загрузки городов
 
 /* ─── Multi-step Campaign Wizard ───
   Step 1: Название + шаблон
@@ -42,6 +52,15 @@ const STEPS = [
   { id: 2, label: 'Фильтры', icon: Users },
   { id: 3, label: 'A/B тест', icon: FlaskConical },
   { id: 4, label: 'Подтверждение', icon: Check },
+];
+
+// P4R-M21: Сегменты из типа Segment вместо хардкода
+const SEGMENT_OPTIONS: { value: Segment; label: string }[] = [
+  { value: 'A', label: 'A — Горячие' },
+  { value: 'B', label: 'B — Тёплые' },
+  { value: 'C', label: 'C — Прохладные' },
+  { value: 'D', label: 'D — Холодные' },
+  { value: 'spam', label: 'Spam' },
 ];
 
 export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
@@ -65,6 +84,9 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
   const [subjectB, setSubjectB] = useState('');
   const [showVariantB, setShowVariantB] = useState(false);
 
+  // P4R-M22: Отслеживание «пользователь редактировал subject»
+  const subjectEditedByUserRef = useRef(false);
+
   // Состояние
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,21 +94,31 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
   const { data: templates } = useCampaignTemplates();
   const emailTemplates = (templates || []).filter(t => t.channel === 'email');
 
-  // Загрузка городов
+  // P4R-M16: Загрузка городов через useQuery с кешированием
+  const { data: citiesData } = useQuery({
+    queryKey: ['cities'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ items: string[] }>('cities', { params: { per_page: 500 } });
+      return data.items || [];
+    },
+    enabled: isOpen,  // Запрос только когда wizard открыт
+    staleTime: 5 * 60 * 1000,  // Кеш на 5 минут
+  });
+
+  // P4R-M17: Обновляем cities из useQuery, показываем ошибку при неудаче
   useEffect(() => {
-    if (isOpen) {
-      apiClient.get<{ items: string[] }>('cities', { params: { per_page: 500 } })
-        .then(({ data }) => setCities(data.items || []))
-        .catch(() => {});
+    if (citiesData) {
+      setCities(citiesData);
     }
-  }, [isOpen]);
+  }, [citiesData]);
 
   // Автозаполнение темы из шаблона
+  // P4R-M22: Обновляем тему при смене шаблона, если пользователь не редактировал
   useEffect(() => {
     if (templateName) {
       const tmpl = emailTemplates.find(t => t.name === templateName);
       setSelectedTemplate(tmpl || null);
-      if (tmpl?.subject && !subjectA) {
+      if (tmpl?.subject && !subjectEditedByUserRef.current) {
         setSubjectA(tmpl.subject);
       }
     } else {
@@ -132,6 +164,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
     setPreviewTotal(null);
     setError(null);
     setStep(1);
+    subjectEditedByUserRef.current = false;  // P4R-M22
     onClose();
   };
 
@@ -174,8 +207,15 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/60 backdrop-blur-sm p-4">
-      <div className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-border">
+    // P4R-L4/P4R-L15: Закрытие по клику на backdrop
+    <div 
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-foreground/60 backdrop-blur-sm p-4"
+      onClick={handleResetAndClose}
+    >
+      <div 
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-border"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="p-6 border-b bg-primary/5">
           <div className="flex items-center justify-between mb-4">
@@ -230,16 +270,19 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
               </div>
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Шаблон письма</label>
-                <select
-                  value={templateName}
-                  onChange={e => setTemplateName(e.target.value)}
-                  className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                >
-                  <option value="">Выберите шаблон...</option>
-                  {emailTemplates.map(t => (
-                    <option key={t.name} value={t.name}>{t.name} {t.subject ? `— ${t.subject}` : ''}</option>
-                  ))}
-                </select>
+                {/* P4R-L16: shadcn/ui Select вместо нативного <select> */}
+                <Select value={templateName} onValueChange={setTemplateName}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Выберите шаблон..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {emailTemplates.map(t => (
+                      <SelectItem key={t.name} value={t.name}>
+                        {t.name} {t.subject ? `— ${t.subject}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {emailTemplates.length === 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
                     Нет email-шаблонов. Создайте шаблон на странице «Шаблоны».
@@ -278,30 +321,32 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Город</label>
-                  <select
-                    value={filterCity}
-                    onChange={e => setFilterCity(e.target.value)}
-                    className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  >
-                    <option value="">Все города</option>
-                    {cities.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                  <Select value={filterCity} onValueChange={setFilterCity}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Все города" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Все города</SelectItem>
+                      {cities.map(c => (
+                        <SelectItem key={c} value={c}>{c}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Сегмент</label>
-                  <select
-                    value={filterSegment}
-                    onChange={e => setFilterSegment(e.target.value)}
-                    className="w-full rounded-md border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
-                  >
-                    <option value="">Все сегменты</option>
-                    <option value="A">A — Горячие</option>
-                    <option value="B">B — Тёплые</option>
-                    <option value="C">C — Прохладные</option>
-                    <option value="D">D — Холодные</option>
-                  </select>
+                  <Select value={filterSegment} onValueChange={setFilterSegment}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Все сегменты" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__all__">Все сегменты</SelectItem>
+                      {/* P4R-M21: Сегменты из типа Segment */}
+                      {SEGMENT_OPTIONS.map(s => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground mb-1 block">Мин. скор</label>
@@ -337,7 +382,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                         <p className="text-xs text-muted-foreground">
                           {previewTotal === 0
                             ? 'Нет компаний по выбранным фильтрам'
-                            : 'компаний получат письмо'}
+                            : 'компаний получат письмо (приблизительно)'}
                         </p>
                       </>
                     ) : (
@@ -357,7 +402,10 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                 <Input
                   placeholder="Тема письма (вариант A)"
                   value={subjectA}
-                  onChange={e => setSubjectA(e.target.value)}
+                  onChange={e => {
+                    setSubjectA(e.target.value);
+                    subjectEditedByUserRef.current = true;  // P4R-M22
+                  }}
                 />
                 {selectedTemplate?.subject && !subjectA && (
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -483,7 +531,8 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
             ) : (
               <Button
                 onClick={handleCreate}
-                disabled={!name.trim() || !templateName || isSaving || previewTotal === 0}
+                // P4R-M15: Кнопка disabled при previewTotal === null (ещё не загружен)
+                disabled={!name.trim() || !templateName || isSaving || previewTotal === null || previewTotal === 0}
                 className="bg-success hover:bg-success/90 text-success-foreground"
               >
                 {isSaving ? (

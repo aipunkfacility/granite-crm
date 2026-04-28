@@ -80,7 +80,9 @@ export function TouchHistory({ companyId }: TouchHistoryProps) {
         <CardTitle className="text-sm flex items-center gap-2">
           <Clock className="h-4 w-4" />
           История касаний
-          <Badge variant="outline" className="text-[10px] px-1.5">{data?.total || 0}</Badge>
+          <Badge variant="outline" className="text-[10px] px-1.5">
+            {data?.total || 0}{(data?.total || 0) > 20 ? ` (показано ${touches.length})` : ''}  {/* P4R-L19 */}
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -110,7 +112,15 @@ export function TouchHistory({ companyId }: TouchHistoryProps) {
                     </Badge>
                   )}
                   <span className="text-[10px] text-muted-foreground">
-                    {touch.created_at ? format(new Date(touch.created_at), 'd MMM, HH:mm', { locale: ru }) : ''}
+                    {/* P4R-M24: try/catch для невалидных дат */}
+                    {(() => {
+                      if (!touch.created_at) return '';
+                      try {
+                        return format(new Date(touch.created_at), 'd MMM, HH:mm', { locale: ru });
+                      } catch {
+                        return touch.created_at;
+                      }
+                    })()}
                   </span>
                 </div>
               </div>

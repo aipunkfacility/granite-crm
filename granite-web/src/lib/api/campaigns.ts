@@ -4,11 +4,14 @@ import { PaginatedResponse } from '@/lib/types/api';
 // Re-export Template from templates.ts для обратной совместимости
 export { type Template, type Channel, type BodyType, fetchTemplates } from './templates';
 
+// P4R-H7: Union type для статуса кампании — единый источник истины
+export type CampaignStatus = 'draft' | 'running' | 'paused' | 'paused_daily_limit' | 'completed';
+
 export interface Campaign {
   id: number;
   name: string;
   template_name: string;
-  status: 'draft' | 'running' | 'paused' | 'paused_daily_limit' | 'completed';
+  status: CampaignStatus;  // P4R-H7: был string, теперь union
   subject_a: string | null;
   subject_b: string | null;
   total_sent: number;
@@ -23,7 +26,7 @@ export interface CampaignDetail {
   id: number;
   name: string;
   template_name: string;
-  status: string;
+  status: CampaignStatus;  // P4R-H7: был string, теперь union как у Campaign
   filters: Record<string, any>;
   subject_a: string | null;
   subject_b: string | null;
@@ -60,6 +63,7 @@ export interface PreviewRecipientsResponse {
     segment: string | null;
     crm_score: number;
   }[];
+  is_approximate?: boolean;  // P4R-M6: признак приблизительного подсчёта
 }
 
 export interface CreateCampaignPayload {
@@ -80,28 +84,29 @@ export const fetchCampaignDetail = async (campaignId: number): Promise<CampaignD
   return data;
 };
 
-export const createCampaign = async (payload: CreateCampaignPayload) => {
-  const { data } = await apiClient.post('campaigns', payload);
+// P4R-M20: Типизируем возврат всех API-функций
+export const createCampaign = async (payload: CreateCampaignPayload): Promise<{ ok: boolean; id?: number }> => {
+  const { data } = await apiClient.post<{ ok: boolean; id?: number }>('campaigns', payload);
   return data;
 };
 
-export const updateCampaign = async (campaignId: number, payload: Partial<CreateCampaignPayload> & { filters?: Record<string, any> }) => {
-  const { data } = await apiClient.patch(`campaigns/${campaignId}`, payload);
+export const updateCampaign = async (campaignId: number, payload: Partial<CreateCampaignPayload> & { filters?: Record<string, any> }): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.patch<{ ok: boolean }>(`campaigns/${campaignId}`, payload);
   return data;
 };
 
-export const runCampaign = async (campaignId: number) => {
-  const { data } = await apiClient.post(`campaigns/${campaignId}/run`);
+export const runCampaign = async (campaignId: number): Promise<{ ok?: boolean; error?: string }> => {
+  const { data } = await apiClient.post<{ ok?: boolean; error?: string }>(`campaigns/${campaignId}/run`);
   return data;
 };
 
-export const pauseCampaign = async (campaignId: number) => {
-  const { data } = await apiClient.patch(`campaigns/${campaignId}`, { status: 'paused' });
+export const pauseCampaign = async (campaignId: number): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.patch<{ ok: boolean }>(`campaigns/${campaignId}`, { status: 'paused' });
   return data;
 };
 
-export const deleteCampaign = async (campaignId: number) => {
-  const { data } = await apiClient.delete(`campaigns/${campaignId}`);
+export const deleteCampaign = async (campaignId: number): Promise<{ ok: boolean }> => {
+  const { data } = await apiClient.delete<{ ok: boolean }>(`campaigns/${campaignId}`);
   return data;
 };
 
@@ -115,35 +120,5 @@ export const previewRecipients = async (filters: Record<string, any>): Promise<P
   return data;
 };
 
-export const fetchCampaignProgress = async (campaignId: number): Promise<{
-  status: string;
-  sent: number;
-  total: number;
-  errors: number;
-  started_at: string | null;
-  completed_at: string | null;
-}> => {
-  // Используем SSE endpoint для получения текущего прогресса
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-  const response = await fetch(
-    `${baseUrl}/campaigns/${campaignId}/progress`
-  );
-  if (!response.ok) throw new Error('Failed to fetch progress');
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('No reader');
-  const decoder = new TextDecoder();
-  let result = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    result += decoder.decode(value, { stream: true });
-  }
-  // Parse SSE data
-  const lines = result.split('\n');
-  for (const line of lines) {
-    if (line.startsWith('data: ')) {
-      return JSON.parse(line.slice(6));
-    }
-  }
-  throw new Error('No SSE data received');
-};
+// P4R-H8: Удалена fetchCampaignProgress — мёртвый код с неправильным SSE-паттерном.
+// Dashboard использует EventSource напрямую для SSE.

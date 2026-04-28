@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchCampaignDetail, fetchABStats, fetchCampaignProgress } from '@/lib/api/campaigns';
+import { fetchCampaignDetail, fetchABStats, type ABStats, type CampaignStatus } from '@/lib/api/campaigns';
+import { apiClient } from '@/lib/api/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,10 +23,16 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface DashboardProps {
   campaignId: number;
   onClose: () => void;
+}
+
+// P4R-L17: Единая константа для API URL
+function getApiBaseUrl(): string {
+  return (apiClient.defaults.baseURL || '').replace(/\/$/, '');
 }
 
 export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
@@ -36,9 +43,14 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
     errors: number;
   } | null>(null);
 
-  const [abStats, setAbStats] = useState<any>(null);
+  // P4R-M18: abStats типизирован как ABStats | null вместо any
+  const [abStats, setAbStats] = useState<ABStats | null>(null);
+  const [abStatsError, setAbStatsError] = useState<string | null>(null);  // P4R-M19
   const eventSourceRef = useRef<EventSource | null>(null);
   const prevStatusRef = useRef<string | null>(null);
+  // P4R-H5: Реф для exponential backoff при SSE реконнекте
+  const retryCountRef = useRef(0);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Загрузка деталей кампании
   const { data: campaign, isLoading, refetch } = useQuery({
@@ -53,9 +65,73 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
   // Загрузка A/B статистики
   useEffect(() => {
     if (campaign?.subject_b) {
-      fetchABStats(campaignId).then(setAbStats).catch(() => {});
+      setAbStatsError(null);
+      fetchABStats(campaignId)
+        .then(setAbStats)
+        .catch((err) => {
+          // P4R-M19: Показываем ошибку вместо молчаливого проглатывания
+          setAbStatsError(err?.message || 'Не удалось загрузить A/B статистику');
+        });
     }
   }, [campaignId, campaign?.subject_b]);
+
+  // P4R-H4: Получение auth-токена для SSE (query param).
+  // EventSource не поддерживает кастомные заголовки, поэтому передаём
+  // токен через URL. Пока auth не реализован — токен пустой.
+  const getSSEToken = useCallback((): string => {
+    // TODO: Заменить на реальный токен когда будет auth
+    // Пример: return localStorage.getItem('auth_token') || '';
+    return '';
+  }, []);
+
+  // P4R-H5: Подключение к SSE с exponential backoff
+  const connectSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    const baseUrl = getApiBaseUrl();
+    const token = getSSEToken();
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    const es = new EventSource(`${baseUrl}/campaigns/${campaignId}/progress${tokenParam}`);
+    eventSourceRef.current = es;
+
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setLiveProgress(data);
+        // Успешное сообщение — сбрасываем retry counter
+        retryCountRef.current = 0;
+        // Если кампания завершилась — обновляем данные
+        if (data.status === 'completed' || data.status === 'paused' || data.status === 'paused_daily_limit') {
+          refetch();
+          es.close();
+          eventSourceRef.current = null;
+        }
+      } catch {}
+    };
+
+    es.onerror = () => {
+      es.close();
+      eventSourceRef.current = null;
+
+      // P4R-H5: Exponential backoff — 1s → 2s → 4s → 8s → 16s → 30s max
+      const maxDelay = 30000;
+      const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), maxDelay);
+      retryCountRef.current += 1;
+
+      // Проверяем, что кампания всё ещё running перед реконнектом
+      if (campaign?.status === 'running') {
+        retryTimerRef.current = setTimeout(() => {
+          connectSSE();
+        }, delay);
+      } else {
+        // Не running — просто обновляем через polling
+        refetch();
+      }
+    };
+  }, [campaignId, campaign?.status, getSSEToken, refetch]);
 
   // SSE live-прогресс — подключаемся только при status=running
   useEffect(() => {
@@ -68,42 +144,33 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
       }
+      // Очищаем таймер реконнекта
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+      retryCountRef.current = 0;
       return;
     }
 
     // Переподключаемся только при смене статуса на running
     if (prevStatus === 'running') return;
 
-    // Подключаемся к SSE прогресса
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-    const es = new EventSource(`${baseUrl}/campaigns/${campaignId}/progress`);
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        setLiveProgress(data);
-        // Если кампания завершилась — обновляем данные
-        if (data.status === 'completed' || data.status === 'paused' || data.status === 'paused_daily_limit') {
-          refetch();
-          es.close();
-          eventSourceRef.current = null;
-        }
-      } catch {}
-    };
-
-    es.onerror = () => {
-      // SSE обрыв — обновляем через polling
-      refetch();
-      es.close();
-      eventSourceRef.current = null;
-    };
+    connectSSE();
 
     return () => {
-      es.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
     };
-  }, [campaignId, campaign?.status]); // Убран refetch из deps
+    // P4R-L6: refetch стабилен от React Query, connectSSE зависит от нужных значений
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [campaignId, campaign?.status, connectSSE]);
 
   if (isLoading || !campaign) {
     return (
@@ -286,6 +353,14 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* P4R-M19: Ошибка загрузки A/B статистики */}
+      {hasAB && abStatsError && !abStats && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <p className="text-sm text-destructive">{abStatsError}</p>
+        </div>
       )}
 
       {/* Фильтры кампании */}

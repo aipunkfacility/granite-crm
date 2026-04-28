@@ -1,7 +1,7 @@
 'use client';
 
 import { useCampaigns, useCampaignTemplates } from "@/lib/hooks/use-campaigns";
-import { runCampaign, pauseCampaign, deleteCampaign, fetchCampaignDetail, fetchABStats } from "@/lib/api/campaigns";
+import { runCampaign, pauseCampaign, deleteCampaign, type CampaignStatus } from "@/lib/api/campaigns";
 import { CampaignWizard } from "@/components/campaigns/CampaignWizard";
 import { CampaignDashboard } from "@/components/campaigns/CampaignDashboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,17 +22,28 @@ import {
   Send,
   AlertTriangle,
   Eye,
+  LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
-const STATUS_CONFIG: Record<string, { label: string, variant: string, icon: any }> = {
+// P4R-L13: Типизация STATUS_CONFIG — variant как union Badge, icon как LucideIcon
+type BadgeVariant = "default" | "secondary" | "outline" | "destructive" | "success";
+
+interface StatusConfig {
+  label: string;
+  variant: BadgeVariant;
+  icon: LucideIcon;
+}
+
+const STATUS_CONFIG: Record<CampaignStatus, StatusConfig> = {
   draft: { label: "Черновик", variant: "secondary", icon: Clock },
   running: { label: "Запущена", variant: "default", icon: Play },
   paused: { label: "Пауза", variant: "outline", icon: Pause },
   paused_daily_limit: { label: "Лимит", variant: "outline", icon: Pause },
-  completed: { label: "Завершена", variant: "success" as any, icon: CheckCircle2 },
+  completed: { label: "Завершена", variant: "success", icon: CheckCircle2 },
 };
 
 export default function CampaignsPage() {
@@ -42,6 +53,8 @@ export default function CampaignsPage() {
   const [runningId, setRunningId] = useState<number | null>(null);
   const [pausingId, setPausingId] = useState<number | null>(null);
   const [dashboardId, setDashboardId] = useState<number | null>(null);
+  // P4R-M14: Состояние для диалога подтверждения удаления
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
   const handleRun = async (id: number) => {
@@ -50,7 +63,8 @@ export default function CampaignsPage() {
       await runCampaign(id);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
     } catch (e: any) {
-      alert(e?.message || 'Ошибка запуска');
+      // P4R-M13: alert() → toast.error()
+      toast.error(e?.message || 'Ошибка запуска');
     } finally {
       setRunningId(null);
     }
@@ -62,19 +76,24 @@ export default function CampaignsPage() {
       await pauseCampaign(id);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
     } catch (e: any) {
-      alert(e?.message || 'Ошибка паузы');
+      // P4R-M13: alert() → toast.error()
+      toast.error(e?.message || 'Ошибка паузы');
     } finally {
       setPausingId(null);
     }
   };
 
+  // P4R-M14: confirm() → state-based диалог подтверждения
   const handleDelete = async (id: number) => {
-    if (!confirm('Удалить черновик кампании?')) return;
     try {
       await deleteCampaign(id);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
+      toast.success('Черновик удалён');
     } catch (e: any) {
-      alert(e?.message || 'Ошибка удаления');
+      // P4R-M13: alert() → toast.error()
+      toast.error(e?.message || 'Ошибка удаления');
+    } finally {
+      setDeleteConfirmId(null);
     }
   };
 
@@ -100,7 +119,8 @@ export default function CampaignsPage() {
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Кампании</h1>
           <p className="text-muted-foreground">Управление массовыми email-рассылками и отслеживание прогресса.</p>
         </div>
-        <Button className="bg-primary hover:bg-primary" onClick={() => setCreateOpen(true)}>
+        {/* P4R-L12: Убран бессмысленный hover:bg-primary */}
+        <Button className="bg-primary" onClick={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Создать кампанию
         </Button>
       </div>
@@ -147,7 +167,8 @@ export default function CampaignsPage() {
                       )}
                     </div>
                   </div>
-                  <Badge variant={status.variant as any} className="flex items-center gap-1.5 px-3 py-1">
+                  {/* P4R-L14: variant "success" теперь поддерживается в STATUS_CONFIG */}
+                  <Badge variant={status.variant} className="flex items-center gap-1.5 px-3 py-1">
                     <status.icon className={cn("h-3 w-3", campaign.status === 'running' && "animate-pulse")} />
                     {status.label}
                   </Badge>
@@ -222,15 +243,39 @@ export default function CampaignsPage() {
                       </Button>
                     ) : null}
                     {campaign.status === 'draft' && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDelete(campaign.id)}
-                        title="Удалить черновик"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <>
+                        {deleteConfirmId === campaign.id ? (
+                          // P4R-M14: Inline подтверждение вместо confirm()
+                          <div className="flex gap-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-9 text-xs"
+                              onClick={() => handleDelete(campaign.id)}
+                            >
+                              Да
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-9 text-xs"
+                              onClick={() => setDeleteConfirmId(null)}
+                            >
+                              Нет
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteConfirmId(campaign.id)}
+                            title="Удалить черновик"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </CardContent>

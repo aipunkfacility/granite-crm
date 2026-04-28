@@ -3,12 +3,11 @@ import json
 import os
 import threading
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import String, text as sa_text
+from sqlalchemy import String, text as sa_text, func, case
 
 from granite.api.deps import get_db
 from granite.api.schemas import (
@@ -43,15 +42,25 @@ def _get_campaign_lock(campaign_id: int) -> threading.Lock:
         return _campaign_locks_storage[campaign_id]
 
 
-@router.post("/campaigns/preview-recipients")
-def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
-    """Phase 4: Предпросмотр кол-ва получателей по фильтрам (без создания кампании).
+def _release_campaign_lock(campaign_id: int):
+    """Освободить Lock и очистить storage (P4R-M1: предотвращаем утечку памяти)."""
+    with _campaign_locks_meta:
+        lock = _campaign_locks_storage.get(campaign_id)
+        if lock and not lock.locked():
+            del _campaign_locks_storage[campaign_id]
 
-    Позволяет wizard показать «Будет отправлено: N компаниям» до создания.
-    Возвращает количество и первые 5 компаний-получателей для проверки.
+
+# P4R-M4: Общая функция построения запроса получателей по фильтрам.
+# Ранее логика дублировалась между preview_recipients и _get_campaign_recipients.
+def _build_recipients_query(filters: dict, db: Session):
+    """Построить базовый запрос получателей с фильтрами.
+
+    Общая логика для preview_recipients и _get_campaign_recipients:
+    - JOIN CompanyRow + EnrichedCompanyRow + CrmContactRow
+    - Фильтр по наличию email и не-удалённым компаниям
+    - Фильтр по city/cities, segment, min_score
+    - Фильтр stop_automation
     """
-    filters = data.model_dump(exclude_none=True)
-
     q = (
         db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
         .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
@@ -82,6 +91,22 @@ def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
         (CrmContactRow.stop_automation == 0)
         | (CrmContactRow.stop_automation.is_(None))
     )
+    return q
+
+
+@router.post("/campaigns/preview-recipients")
+def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
+    """Phase 4: Предпросмотр кол-ва получателей по фильтрам (без создания кампании).
+
+    Позволяет wizard показать «Будет отправлено: N компаниям» до создания.
+    Возвращает количество и первые 5 компаний-получателей для проверки.
+
+    P4R-M6: Число приблизительное — preview не применяет dedup и validate_recipients.
+    """
+    filters = data.model_dump(exclude_none=True)
+
+    # P4R-M4: Используем общую функцию _build_recipients_query
+    q = _build_recipients_query(filters, db)
 
     total = q.count()
 
@@ -99,7 +124,11 @@ def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
         for c, e, crm in sample_rows
     ]
 
-    return {"total": total, "sample": sample}
+    return {
+        "total": total,
+        "sample": sample,
+        "is_approximate": True,  # P4R-M6: помечаем как приблизительное
+    }
 
 
 @router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
@@ -142,9 +171,15 @@ def list_campaigns(
     per_page: int = Query(50, ge=1, le=200),
 ):
     """Список кампаний с пагинацией. Сортировка: новые первые."""
-    q = db.query(CrmEmailCampaignRow).order_by(CrmEmailCampaignRow.created_at.desc())
-    total = q.count()
-    rows = q.offset((page - 1) * per_page).limit(per_page).all()
+    # P4R-M2: total считаем БЕЗ order_by — бессмысленная сортировка для COUNT
+    total = db.query(CrmEmailCampaignRow).count()
+    rows = (
+        db.query(CrmEmailCampaignRow)
+        .order_by(CrmEmailCampaignRow.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
     items = [
         {
             "id": c.id, "name": c.name, "template_name": c.template_name,
@@ -153,7 +188,7 @@ def list_campaigns(
             "total_sent": c.total_sent,
             "total_opened": c.total_opened, "total_replied": c.total_replied,
             "total_errors": c.total_errors or 0,
-            "total_recipients": c.total_recipients,
+            "total_recipients": c.total_recipients,  # P4R-M5: включаем в ответ
             "created_at": c.created_at.isoformat() if c.created_at else None,
         }
         for c in rows
@@ -181,42 +216,21 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
         .all()
     }
 
-    q = (
-        db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
-        .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
-        .outerjoin(CrmContactRow, CompanyRow.id == CrmContactRow.company_id)
-        .filter(
-            CompanyRow.emails.isnot(None),
-            CompanyRow.emails.cast(String) != "[]",
-            CompanyRow.emails.cast(String) != "",
-            CompanyRow.deleted_at.is_(None),
-        )
-    )
-
-    if filters.get("city"):
-        q = q.filter(CompanyRow.city == filters["city"])
-    elif filters.get("cities"):
-        # Phase 4: мульти-фильтр по списку городов
-        cities_list = filters["cities"]
-        if len(cities_list) == 1:
-            q = q.filter(CompanyRow.city == cities_list[0])
-        elif len(cities_list) > 1:
-            q = q.filter(CompanyRow.city.in_(cities_list))
-    if filters.get("segment"):
-        q = q.filter(EnrichedCompanyRow.segment == filters["segment"])
-    if filters.get("min_score"):
-        q = q.filter(EnrichedCompanyRow.crm_score >= filters["min_score"])
+    # P4R-M4: Используем общую функцию _build_recipients_query
+    q = _build_recipients_query(filters, db)
 
     # Задача 18: батч-итерация вместо .all() с учётом SQLite.
     # PostgreSQL: yield_per + stream_results для потоковой обработки.
     # SQLite: yield_per работает, stream_results не поддерживается.
+    # P4R-L4: Ловим конкретные исключения вместо bare except Exception
+    from sqlalchemy.exc import StatementError
     try:
         rows_iter = q.yield_per(100).execution_options(stream_results=True)
-    except Exception:
+    except StatementError:
         # SQLite fallback — yield_per без stream_results
         try:
             rows_iter = q.yield_per(100)
-        except Exception:
+        except StatementError:
             rows_iter = q.all()
 
     raw_recipients = []
@@ -262,29 +276,30 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     # FIX-A6: Оптимизация — для завершённых/приостановленных кампаний
     # берём total_recipients из БД, не пересчитываем получателей.
     if campaign.status in ("completed",) and (campaign.total_recipients or campaign.total_sent):
-        preview_recipients = campaign.total_recipients or campaign.total_sent or 0
+        preview_recipients_count = campaign.total_recipients or campaign.total_sent or 0
     elif campaign.status in ("paused", "paused_daily_limit") and campaign.total_recipients:
-        preview_recipients = campaign.total_recipients
+        preview_recipients_count = campaign.total_recipients
     else:
         # Для draft и running — считаем реальных получателей
         recipients = _get_campaign_recipients(campaign, db)
-        preview_recipients = len(recipients)
+        preview_recipients_count = len(recipients)
 
     open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
+
+    # P4R-M3: Один запрос шаблона вместо двух
+    tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
 
     # Phase 4: Validator warnings — предупреждения для draft кампаний
     validator_warnings: list[str] = []
     if campaign.status == "draft":
         # Проверяем тему письма
         if not campaign.subject_a and not campaign.subject_b:
-            tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
             if tmpl and not tmpl.subject:
                 validator_warnings.append("Шаблон не содержит тему письма — задайте subject_a вручную")
         # Проверяем получателей
-        if preview_recipients == 0:
+        if preview_recipients_count == 0:
             validator_warnings.append("Нет получателей по заданным фильтрам")
         # Проверяем retired шаблон
-        tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
         if tmpl and tmpl.retired:
             validator_warnings.append("Шаблон помечен как архивный (retired) — выберите актуальный")
         # Проверяем A/B: только один вариант заполнен
@@ -305,7 +320,7 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
         "total_replied": campaign.total_replied,
         "total_errors": campaign.total_errors or 0,
         "open_rate": open_rate,
-        "preview_recipients": preview_recipients,
+        "preview_recipients": preview_recipients_count,
         "validator_warnings": validator_warnings,
         "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
         "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
@@ -409,7 +424,6 @@ def run_campaign(campaign_id: int, request: Request):
                 media_type="text/event-stream",
             )
         if db_campaign.status == "running":
-            check_session.close()
             return StreamingResponse(
                 iter([f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"]),
                 media_type="text/event-stream",
@@ -439,7 +453,9 @@ def run_campaign(campaign_id: int, request: Request):
         )
         pre_session.commit()
         if result.rowcount == 0:
-            pre_session.close()
+            # P4R-H1: Обязательно освобождаем lock перед return!
+            lock.release()
+            _release_campaign_lock(campaign_id)
             return StreamingResponse(
                 iter([f"data: {json.dumps({'error': 'Campaign already running or completed'})}\n\n"]),
                 media_type="text/event-stream",
@@ -462,6 +478,9 @@ def run_campaign(campaign_id: int, request: Request):
         # FIX-P1: A/B логика вынесена в granite.email.ab — единый модуль для переиспользования
         from granite.email.ab import determine_ab_variant
 
+        # P4R-M7: Импорт func вынесен наверх generate(), вне цикла
+        from sqlalchemy import func as _func
+
         campaign = None
         session = SessionFactory()
         try:
@@ -470,8 +489,9 @@ def run_campaign(campaign_id: int, request: Request):
                 yield f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"
                 return
 
-            # FIX MISS-10: Запрещаем перезапуск завершённых и активных кампаний
-            if campaign.status in ("running", "completed"):
+            # P4R-H2: После atomic UPDATE статус 'running' — ОЖИДАЕМЫЙ.
+            # Guard проверяет только 'completed' — запрещаем перезапуск завершённых.
+            if campaign.status == "completed":
                 yield f"data: {json.dumps({'error': f'Cannot restart campaign in status {campaign.status}'})}\n\n"
                 return
 
@@ -510,11 +530,21 @@ def run_campaign(campaign_id: int, request: Request):
                     logger.info(f"Campaign {campaign_id}: status '{campaign.status}', exiting")
                     return
 
+                # P4R-H3: Пропуск получателей без contact — нет unsubscribe (152-ФЗ)
+                if not contact:
+                    logger.warning(
+                        f"Campaign {campaign_id}: skipping company {company.id} — "
+                        f"no contact (unsubscribe unavailable)"
+                    )
+                    campaign.total_errors = (campaign.total_errors or 0) + 1
+                    session.commit()
+                    yield f"data: {json.dumps({'status': 'skipped', 'reason': 'no_contact', 'company_id': company.id})}\n\n"
+                    continue
+
                 # Задача 2.3: проверка дневного лимита
-                from sqlalchemy import func
                 last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
                 sent_today = (
-                    session.query(func.count(CrmEmailLogRow.id))
+                    session.query(_func.count(CrmEmailLogRow.id))
                     .filter(CrmEmailLogRow.sent_at >= last_24h)
                     .scalar()
                 )
@@ -531,7 +561,7 @@ def run_campaign(campaign_id: int, request: Request):
                     "city": city,
                     "company_name": company.name_best or "",
                     "website": company.website or "",
-                    "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}" if contact else "",
+                    "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}",
                 }
 
                 # Задача 3: A/B тема письма — через модульную функцию
@@ -578,9 +608,8 @@ def run_campaign(campaign_id: int, request: Request):
                         company_id=company.id, channel="email", direction="outgoing",
                         subject=subject, body=f"[tracking_id={tracking_id}] [ab={ab_variant}]",
                     ))
-                    if contact:
-                        from granite.api.stage_transitions import apply_outgoing_touch
-                        apply_outgoing_touch(contact, "email")
+                    from granite.api.stage_transitions import apply_outgoing_touch
+                    apply_outgoing_touch(contact, "email")
                     # Commit после каждого письма
                     campaign.updated_at = datetime.now(timezone.utc)
                     session.commit()
@@ -598,7 +627,7 @@ def run_campaign(campaign_id: int, request: Request):
                 yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'company_id': company.id})}\n\n"
                 _time.sleep(delay)
 
-            session.commit()
+            # P4R-L5: Убран лишний session.commit() — статус обновится ниже
 
             campaign.status = "completed"
             campaign.completed_at = datetime.now(timezone.utc)
@@ -617,6 +646,8 @@ def run_campaign(campaign_id: int, request: Request):
         finally:
             session.close()
             lock.release()
+            # P4R-M1: Очищаем lock из storage после release
+            _release_campaign_lock(campaign_id)
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -644,7 +675,6 @@ def campaign_progress(campaign_id: int, db: Session = Depends(get_db)):
     recipients_count = campaign.total_recipients or 0
     if not recipients_count and campaign.status in ("running", "paused", "paused_daily_limit"):
         # Fallback: считаем количество отправленных + оставшихся логов
-        from sqlalchemy import func
         sent_count = campaign.total_sent or 0
         if sent_count > 0:
             # Если уже отправляли — total = sent + ещё не отправленные
@@ -731,6 +761,8 @@ def get_ab_stats(campaign_id: int, db: Session = Depends(get_db)):
 
     Возвращает статистику отправок, открытий и ответов
     для каждого варианта (A/B) темы письма.
+
+    P4R-L6: Переписано с raw SQL на ORM-запрос.
     """
     campaign = db.get(CrmEmailCampaignRow, campaign_id)
     if not campaign:
@@ -739,26 +771,31 @@ def get_ab_stats(campaign_id: int, db: Session = Depends(get_db)):
     if not campaign.subject_b:
         return {"variants": {}, "winner": None, "note": "Не A/B тест"}
 
-    rows = db.execute(sa_text("""
-        SELECT ab_variant,
-               COUNT(*) as sent,
-               SUM(CASE WHEN opened_at IS NOT NULL THEN 1 ELSE 0 END) as opened,
-               SUM(CASE WHEN status = 'replied' THEN 1 ELSE 0 END) as replied
-        FROM crm_email_logs
-        WHERE campaign_id = :cid AND ab_variant IS NOT NULL
-        GROUP BY ab_variant
-    """), {"cid": campaign_id}).fetchall()
+    rows = (
+        db.query(
+            CrmEmailLogRow.ab_variant,
+            func.count(CrmEmailLogRow.id).label("sent"),
+            func.sum(case((CrmEmailLogRow.opened_at.isnot(None), 1), else_=0)).label("opened"),
+            func.sum(case((CrmEmailLogRow.status == "replied", 1), else_=0)).label("replied"),
+        )
+        .filter(
+            CrmEmailLogRow.campaign_id == campaign_id,
+            CrmEmailLogRow.ab_variant.isnot(None),
+        )
+        .group_by(CrmEmailLogRow.ab_variant)
+        .all()
+    )
 
     result = {}
     for row in rows:
-        v = row[0]
-        sent_count = row[1]
+        v = row.ab_variant
+        sent_count = row.sent
         result[v] = {
             "subject": campaign.subject_a if v == "A" else campaign.subject_b,
             "sent": sent_count,
-            "opened": row[2],
-            "replied": row[3],
-            "reply_rate": round(row[3] / sent_count * 100, 1) if sent_count else 0,
+            "opened": row.opened,
+            "replied": row.replied,
+            "reply_rate": round(row.replied / sent_count * 100, 1) if sent_count else 0,
         }
 
     return {

@@ -59,23 +59,28 @@ class TestCampaignABSubjects:
         assert d["subject_a"] == "New Subject A"
         assert d["subject_b"] == "New Subject B"
 
+    # P4R-L8: Поиск по ID вместо [0]
     def test_campaign_list_includes_ab_fields(self, client, db_session):
-        """Список кампаний включает subject_a, subject_b, total_errors."""
-        client.post("/api/v1/campaigns", json={
+        """Список кампаний включает subject_a, subject_b, total_errors, total_recipients."""
+        resp = client.post("/api/v1/campaigns", json={
             "name": "List AB Fields Test",
             "template_name": "cold_email_1",
             "subject_a": "A",
             "subject_b": "B",
         })
+        assert resp.status_code == 201
+        cid = resp.json()["id"]
 
-        resp = client.get("/api/v1/campaigns")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert len(data["items"]) > 0
-        item = data["items"][0]
+        list_resp = client.get("/api/v1/campaigns")
+        assert list_resp.status_code == 200
+        data = list_resp.json()
+        # P4R-L8: Находим созданную кампанию по ID
+        item = next((i for i in data["items"] if i["id"] == cid), None)
+        assert item is not None, f"Created campaign {cid} not found in list"
         assert "subject_a" in item
         assert "subject_b" in item
         assert "total_errors" in item
+        assert "total_recipients" in item  # P4R-M5
 
 
 class TestCampaignFilters:
@@ -109,6 +114,8 @@ class TestCampaignFilters:
         assert resp.status_code == 200
         data = resp.json()
         assert "total" in data
+        # P4R-M6: preview возвращает is_approximate
+        assert "is_approximate" in data
 
 
 class TestPreviewRecipients:
@@ -140,6 +147,7 @@ class TestPreviewRecipients:
 class TestValidatorWarnings:
     """validator_warnings в деталях draft-кампании."""
 
+    # P4R-L7: Безусловный assert — убран условный if
     def test_warnings_on_zero_recipients(self, client, db_session):
         """Несуществующий город в фильтрах → предупреждение о 0 получателях."""
         resp = client.post("/api/v1/campaigns", json={
@@ -153,8 +161,11 @@ class TestValidatorWarnings:
         detail = client.get(f"/api/v1/campaigns/{cid}")
         d = detail.json()
         assert isinstance(d["validator_warnings"], list)
-        if d["preview_recipients"] == 0:
-            assert any("Нет получателей" in w for w in d["validator_warnings"])
+        # P4R-L7: Безусловная проверка — фильтр по несуществующему городу должен давать 0
+        assert d["preview_recipients"] == 0, (
+            f"Expected 0 recipients for nonexistent city, got {d['preview_recipients']}"
+        )
+        assert any("Нет получателей" in w for w in d["validator_warnings"])
 
     def test_detail_includes_total_errors(self, client, db_session):
         """Детали кампании включают total_errors."""
@@ -172,8 +183,9 @@ class TestValidatorWarnings:
 class TestABStats:
     """GET /campaigns/{id}/ab-stats — статистика A/B теста."""
 
+    # P4R-L11: Проверяем структуру AB-stats ответа
     def test_ab_stats_endpoint(self, client, db_session):
-        """ab-stats возвращает 200 для кампании с A/B."""
+        """ab-stats возвращает 200 для кампании с A/B, проверяем структуру."""
         resp = client.post("/api/v1/campaigns", json={
             "name": "AB Stats Endpoint Test",
             "template_name": "cold_email_1",
@@ -184,3 +196,103 @@ class TestABStats:
 
         resp2 = client.get(f"/api/v1/campaigns/{cid}/ab-stats")
         assert resp2.status_code == 200
+        data = resp2.json()
+        # P4R-L11: Проверяем структуру ответа
+        assert "variants" in data
+        assert "winner" in data
+        assert "note" in data
+        assert isinstance(data["variants"], dict)
+
+    def test_ab_stats_no_ab_campaign(self, client, db_session):
+        """ab-stats для кампании без A/B — возвращает «Не A/B тест»."""
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "No AB Stats Test",
+            "template_name": "cold_email_1",
+        })
+        cid = resp.json()["id"]
+
+        resp2 = client.get(f"/api/v1/campaigns/{cid}/ab-stats")
+        assert resp2.status_code == 200
+        data = resp2.json()
+        assert data["note"] == "Не A/B тест"
+
+
+# P4R-L9: Тест PATCH 409 для running-кампании
+class TestUpdateCampaignStatusGuard:
+    """Защита от обновления запущенных/завершённых кампаний."""
+
+    def test_update_running_campaign_returns_409(self, client, db_session):
+        """PATCH для running кампании → 409."""
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "Running Campaign Update Test",
+            "template_name": "cold_email_1",
+        })
+        cid = resp.json()["id"]
+
+        # Устанавливаем статус manually
+        campaign = db_session.get(CrmEmailCampaignRow, cid)
+        campaign.status = "running"
+        db_session.commit()
+
+        resp2 = client.patch(f"/api/v1/campaigns/{cid}", json={
+            "name": "Should Fail",
+        })
+        assert resp2.status_code == 409
+
+    def test_update_completed_campaign_returns_409(self, client, db_session):
+        """PATCH для completed кампании → 409."""
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "Completed Campaign Update Test",
+            "template_name": "cold_email_1",
+        })
+        cid = resp.json()["id"]
+
+        campaign = db_session.get(CrmEmailCampaignRow, cid)
+        campaign.status = "completed"
+        db_session.commit()
+
+        resp2 = client.patch(f"/api/v1/campaigns/{cid}", json={
+            "name": "Should Fail",
+        })
+        assert resp2.status_code == 409
+
+
+# P4R-L10: Тесты DELETE endpoint
+class TestDeleteCampaign:
+    """DELETE /campaigns/{id} — удаление кампании-черновика."""
+
+    def test_delete_draft_success(self, client, db_session):
+        """Удаление черновика — успешно."""
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "Delete Draft Test",
+            "template_name": "cold_email_1",
+        })
+        cid = resp.json()["id"]
+
+        resp2 = client.delete(f"/api/v1/campaigns/{cid}")
+        assert resp2.status_code == 200
+        assert resp2.json()["ok"] is True
+
+        # Проверяем, что кампания удалена
+        resp3 = client.get(f"/api/v1/campaigns/{cid}")
+        assert resp3.status_code == 404
+
+    def test_delete_not_found(self, client):
+        """Удаление несуществующей кампании — 404."""
+        resp = client.delete("/api/v1/campaigns/99999")
+        assert resp.status_code == 404
+
+    def test_delete_running_campaign_returns_409(self, client, db_session):
+        """Удаление running кампании → 409."""
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "Delete Running Test",
+            "template_name": "cold_email_1",
+        })
+        cid = resp.json()["id"]
+
+        campaign = db_session.get(CrmEmailCampaignRow, cid)
+        campaign.status = "running"
+        db_session.commit()
+
+        resp2 = client.delete(f"/api/v1/campaigns/{cid}")
+        assert resp2.status_code == 409

@@ -41,8 +41,11 @@
   --color-card: var(--card);
   /* Семантические минеральные цвета */
   --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);  /* P4R-H9 */
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);  /* P4R-H9 */
   --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);  /* P4R-H9 */
   --radius-sm: calc(var(--radius) * 0.5);
   --radius-md: calc(var(--radius) * 0.75);
   --radius-lg: var(--radius);
@@ -97,8 +100,11 @@
 
   /* Семантические минеральные акценты */
   --success: #2B9E6F;
+  --success-foreground: #FFFFFF;  /* P4R-H9 */
   --warning: #C49008;
+  --warning-foreground: #FFFFFF;  /* P4R-H9 */
   --info: #2E7DB5;
+  --info-foreground: #FFFFFF;  /* P4R-H9 */
 
   /* Charts — минеральная палитра для графиков */
   --chart-1: #5B6ABF;  /* Лабрадорит */
@@ -166,8 +172,11 @@
 
   /* Семантические минеральные акценты — яркие на камне */
   --success: #34D399;
+  --success-foreground: #1A1B20;  /* P4R-H9: тёмный текст на ярком фоне */
   --warning: #FBBF24;
+  --warning-foreground: #1A1B20;  /* P4R-H9 */
   --info: #60A5FA;
+  --info-foreground: #1A1B20;  /* P4R-H9 */
 
   /* Charts — яркие на тёмном фоне */
   --chart-1: #7C8CF8;  /* Лабрадорит */

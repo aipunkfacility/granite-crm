@@ -67,21 +67,22 @@ class UpdateTaskRequest(BaseModel):
 # AUDIT #21: CampaignFilters — типизированная схема для campaign filters.
 # Ранее filters: dict принимал любые ключи без валидации.
 class CampaignFilters(BaseModel):
-    """Фильтры кампании: город, сегмент, минимальный скор."""
+    """Фильтры кампании: город, сегмент, минимальный скор.
+
+    Phase 4: Поддержка списка городов (для мульти-фильтра в wizard).
+    """
     city: Optional[str] = None
+    cities: Optional[list[str]] = Field(None, description="Список городов (мульти-фильтр)")
     segment: Optional[str] = Field(None, pattern="^(A|B|C|D|spam)$")
     min_score: Optional[int] = Field(None, ge=0, le=200)
-
-
-class CreateCampaignRequest(BaseModel):
-    name: str = Field("Campaign", min_length=1)
-    template_name: str = Field("cold_email_1", min_length=1)
-    filters: CampaignFilters = Field(default_factory=CampaignFilters)
 
 
 class UpdateCampaignRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1)
     template_name: Optional[str] = Field(None, min_length=1)
+    subject_a: Optional[str] = Field(None, description="Тема письма вариант A")
+    subject_b: Optional[str] = Field(None, description="Тема письма вариант B (для A/B теста)")
+    filters: Optional[dict] = Field(None, description="Фильтры кампании {city, segment, min_score}")
 
 
 class CreateTemplateRequest(BaseModel):
@@ -173,6 +174,33 @@ class ReEnrichApplyRequest(BaseModel):
     messengers: Optional[dict[str, str]] = None
 
 
+class SendReplyRequest(BaseModel):
+    """Отправить reply из шаблона на входящее письмо компании.
+
+    Phase 4: Post-reply кнопки на карточке компании.
+    Отправляет письмо по шаблону, логирует исходящее касание,
+    обновляет funnel_stage и метрики контакта.
+    """
+    template_name: str = Field(..., min_length=1, description="Имя email-шаблона для reply")
+    subject_override: Optional[str] = Field(None, description="Переопределить тему письма (по умолчанию — из шаблона)")
+
+
+class PreviewReplyRequest(BaseModel):
+    """Предпросмотр reply из шаблона (без отправки).
+
+    Phase 4: Превью шаблона перед отправкой на карточке компании.
+    """
+    template_name: str = Field(..., min_length=1, description="Имя email-шаблона для предпросмотра")
+
+
+class CreateCampaignRequest(BaseModel):
+    name: str = Field("Campaign", min_length=1)
+    template_name: str = Field("cold_email_1", min_length=1)
+    filters: CampaignFilters = Field(default_factory=CampaignFilters)
+    subject_a: Optional[str] = Field(None, description="Тема письма вариант A (по умолчанию — из шаблона)")
+    subject_b: Optional[str] = Field(None, description="Тема письма вариант B (для A/B теста)")
+
+
 # ============================================================
 # Response-модели (документирование OpenAPI-ответов)
 # ============================================================
@@ -248,6 +276,7 @@ class TouchResponse(BaseModel):
     subject: str = ""
     body: str = ""
     note: str = ""
+    template_name: Optional[str] = None
     created_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -297,9 +326,13 @@ class CampaignResponse(BaseModel):
     name: str
     template_name: str
     status: str
+    subject_a: Optional[str] = None
+    subject_b: Optional[str] = None
     total_sent: int = 0
     total_opened: int = 0
     total_replied: int = 0
+    total_errors: int = 0
+    total_recipients: Optional[int] = None  # P4R-M5: добавлено в схему ответа
     created_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
@@ -311,17 +344,23 @@ class CampaignDetailResponse(BaseModel):
     Phase 2.3: Добавлены поля total_replied, open_rate, started_at,
     completed_at — ранее они были только в CampaignStatsResponse,
     что заставляло фронтенд делать два запроса для карточки кампании.
+
+    Phase 4: Добавлены subject_a, subject_b, total_errors, validator_warnings.
     """
     id: int
     name: str
     template_name: str
     status: str
     filters: dict = {}
+    subject_a: Optional[str] = None
+    subject_b: Optional[str] = None
     total_sent: int = 0
     total_opened: int = 0
     total_replied: int = 0
+    total_errors: int = 0
     open_rate: float = 0.0
     preview_recipients: int = 0
+    validator_warnings: list[str] = []
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
 

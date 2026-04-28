@@ -38,9 +38,11 @@ __all__ = ["router"]
 router = APIRouter()
 
 
-def _get_reply_context(company: CompanyRow, enriched: EnrichedCompanyRow | None,
-                       contact: CrmContactRow | None) -> dict:
-    """Собрать контекст для рендеринга шаблона reply."""
+def _get_reply_context(company: CompanyRow, contact: CrmContactRow | None) -> dict:
+    """Собрать контекст для рендеринга шаблона reply.
+
+    P4R-M12: Убран неиспользуемый параметр enriched.
+    """
     from_name = os.environ.get("FROM_NAME", "")
     return {
         "from_name": from_name,
@@ -70,6 +72,44 @@ def _get_last_incoming_subject(company_id: int, db: Session) -> str | None:
     return None
 
 
+# P4R-M9: Общий хелпер валидации для preview и send reply.
+# Ранее логика дублировалась между двумя эндпоинтами.
+def _validate_reply_context(company_id: int, template_name: str, db: Session):
+    """Общая валидация для preview и send reply.
+
+    Проверяет: существование компании, наличие email, существование
+    шаблона, тип шаблона (email).
+
+    Returns: (company, template, emails, contact)
+    """
+    company = db.get(CompanyRow, company_id)
+    if not company:
+        raise HTTPException(404, "Company not found")
+
+    emails = company.emails or []
+    if not emails:
+        raise HTTPException(400, "У компании нет email-адреса для отправки reply")
+
+    template = db.query(CrmTemplateRow).filter_by(name=template_name).first()
+    if not template:
+        raise HTTPException(404, f"Template '{template_name}' not found")
+
+    if template.channel != "email":
+        raise HTTPException(400, f"Template '{template_name}' is not an email template")
+
+    contact = db.get(CrmContactRow, company_id)
+
+    return company, template, emails, contact
+
+
+def _mask_email(email: str) -> str:
+    """P4R-M8: Маскировать email для логов (152-ФЗ/GDPR)."""
+    if "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
+    return f"{local[:2]}***@{domain}"
+
+
 @router.post("/companies/{company_id}/reply/preview")
 def preview_reply(
     company_id: int,
@@ -79,30 +119,23 @@ def preview_reply(
     """Предпросмотр reply из шаблона (без отправки).
 
     Возвращает отрендеренный subject и body для превью на карточке компании.
+
+    P4R-M10: Проверяет stop_automation — если установлен, возвращает предупреждение.
     """
-    company = db.get(CompanyRow, company_id)
-    if not company:
-        raise HTTPException(404, "Company not found")
+    # P4R-M9: Общая валидация
+    company, template, emails, contact = _validate_reply_context(company_id, data.template_name, db)
 
-    # Проверяем email
-    emails = company.emails or []
-    if not emails:
-        raise HTTPException(400, "У компании нет email-адреса для отправки reply")
+    # P4R-M10: Проверяем stop_automation — preview показываем, но с предупреждением
+    stop_automation_warning = None
+    if contact and contact.stop_automation:
+        stop_automation_warning = (
+            "Автоматизация остановлена для этой компании (stop_automation=True). "
+            "Отправка reply будет заблокирована, пока флаг не снят."
+        )
 
-    # Проверяем шаблон
-    template = db.query(CrmTemplateRow).filter_by(name=data.template_name).first()
-    if not template:
-        raise HTTPException(404, f"Template '{data.template_name}' not found")
+    render_kwargs = _get_reply_context(company, contact)
 
-    if template.channel != "email":
-        raise HTTPException(400, f"Template '{data.template_name}' is not an email template")
-
-    enriched = db.get(EnrichedCompanyRow, company_id)
-    contact = db.get(CrmContactRow, company_id)
-
-    render_kwargs = _get_reply_context(company, enriched, contact)
-
-    # Тема: если есть входящее письмо — "Re: исходная тема", иначе — из шаблона
+    # Тема: если есть входящее письмо — "Re: исходящая тема", иначе — из шаблона
     last_subject = _get_last_incoming_subject(company_id, db)
     if last_subject:
         subject = last_subject
@@ -118,6 +151,7 @@ def preview_reply(
         "subject": subject,
         "body": body,
         "body_type": template.body_type,
+        "stop_automation_warning": stop_automation_warning,  # P4R-M10
     }
 
 
@@ -140,26 +174,9 @@ def send_reply(
     6. Обновляет метрики контакта
     7. Отменяет follow-up задачу (если есть)
     """
-    company = db.get(CompanyRow, company_id)
-    if not company:
-        raise HTTPException(404, "Company not found")
-
-    # Проверяем email
-    emails = company.emails or []
-    if not emails:
-        raise HTTPException(400, "У компании нет email-адреса для отправки reply")
+    # P4R-M9: Общая валидация
+    company, template, emails, contact = _validate_reply_context(company_id, data.template_name, db)
     email_to = emails[0].lower().strip()
-
-    # Проверяем шаблон
-    template = db.query(CrmTemplateRow).filter_by(name=data.template_name).first()
-    if not template:
-        raise HTTPException(404, f"Template '{data.template_name}' not found")
-
-    if template.channel != "email":
-        raise HTTPException(400, f"Template '{data.template_name}' is not an email template")
-
-    enriched = db.get(EnrichedCompanyRow, company_id)
-    contact = db.get(CrmContactRow, company_id)
 
     # Создаём контакт, если его нет
     if not contact:
@@ -175,7 +192,7 @@ def send_reply(
             "Снимите флаг, чтобы отправить reply."
         )
 
-    render_kwargs = _get_reply_context(company, enriched, contact)
+    render_kwargs = _get_reply_context(company, contact)
 
     # Тема: subject_override > Re: входящее > из шаблона
     if data.subject_override:
@@ -191,32 +208,37 @@ def send_reply(
     rendered = template.render(**render_kwargs)
 
     # Отправляем через EmailSender
+    # P4R-M11: Ловим исключения SMTP → HTTPException 502
     from granite.email.sender import EmailSender
     sender = EmailSender()
 
-    if template.body_type == "html":
-        from granite.utils import html_to_plain_text
-        body_text = html_to_plain_text(rendered)
-        tracking_id = sender.send(
-            company_id=company_id,
-            email_to=email_to,
-            subject=subject,
-            body_text=body_text,
-            body_html=rendered,
-            template_name=template.name,
-            template_id=template.id,
-            db_session=db,
-        )
-    else:
-        tracking_id = sender.send(
-            company_id=company_id,
-            email_to=email_to,
-            subject=subject,
-            body_text=rendered,
-            template_name=template.name,
-            template_id=template.id,
-            db_session=db,
-        )
+    try:
+        if template.body_type == "html":
+            from granite.utils import html_to_plain_text
+            body_text = html_to_plain_text(rendered)
+            tracking_id = sender.send(
+                company_id=company_id,
+                email_to=email_to,
+                subject=subject,
+                body_text=body_text,
+                body_html=rendered,
+                template_name=template.name,
+                template_id=template.id,
+                db_session=db,
+            )
+        else:
+            tracking_id = sender.send(
+                company_id=company_id,
+                email_to=email_to,
+                subject=subject,
+                body_text=rendered,
+                template_name=template.name,
+                template_id=template.id,
+                db_session=db,
+            )
+    except Exception as exc:
+        logger.error(f"SMTP error sending reply: company={company_id} template={data.template_name}: {exc}")
+        raise HTTPException(502, f"Ошибка отправки email (SMTP): {exc}")
 
     if not tracking_id:
         raise HTTPException(500, "Не удалось отправить reply. Проверьте SMTP настройки.")
@@ -242,9 +264,10 @@ def send_reply(
 
     db.flush()
 
+    # P4R-M8: Маскируем email в логе
     logger.info(
         f"Reply sent: company={company_id} template={data.template_name} "
-        f"to={email_to} tracking={tracking_id}"
+        f"to={_mask_email(email_to)} tracking={tracking_id}"
     )
 
     return OkWithIdResponse(ok=True, id=touch.id)

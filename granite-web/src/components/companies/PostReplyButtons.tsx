@@ -6,7 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';  // P4R-L18: Input вместо Textarea для subject
 import {
   Reply,
   DollarSign,
@@ -47,7 +47,8 @@ const PLAYBOOK_BUTTONS = [
 
 export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNames }: PostReplyButtonsProps) {
   const [previewData, setPreviewData] = useState<ReplyPreview | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
+  // P4R-M23: Per-button loading — какой шаблон сейчас загружается
+  const [loadingTemplate, setLoadingTemplate] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [subjectOverride, setSubjectOverride] = useState<string>('');
   const [subjectEdited, setSubjectEdited] = useState(false);
@@ -60,16 +61,20 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
   if (!hasEmail) return null;
 
   const handlePreview = async (templateName: string) => {
-    setPreviewLoading(true);
+    setLoadingTemplate(templateName);  // P4R-M23
     try {
       const result = await previewReply(companyId, templateName);
       setPreviewData(result);
       setSubjectOverride(result.subject);
       setSubjectEdited(false);
+      // P4R-M10: Показываем предупреждение stop_automation из preview
+      if ((result as any).stop_automation_warning) {
+        toast.warning((result as any).stop_automation_warning);
+      }
     } catch (e: any) {
       toast.error(e?.message || 'Ошибка предпросмотра');
     } finally {
-      setPreviewLoading(false);
+      setLoadingTemplate(null);  // P4R-M23
     }
   };
 
@@ -129,11 +134,11 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
               </div>
               <div>
                 <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Тема</label>
-                <Textarea
+                {/* P4R-L18: Input вместо Textarea для однострочного subject */}
+                <Input
                   value={subjectOverride}
                   onChange={e => { setSubjectOverride(e.target.value); setSubjectEdited(true); }}
-                  className="min-h-[32px] text-sm py-1"
-                  rows={1}
+                  className="text-sm"
                 />
               </div>
               <div>
@@ -170,9 +175,10 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
                     size="sm"
                     className={cn("h-8 text-xs", btn.color)}
                     onClick={() => handlePreview(btn.template)}
-                    disabled={previewLoading}
+                    // P4R-M23: Spinner только на нажатой кнопке, не на всех
+                    disabled={loadingTemplate !== null}
                   >
-                    {previewLoading ? (
+                    {loadingTemplate === btn.template ? (
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                     ) : (
                       <btn.icon className="mr-1.5 h-3 w-3" />
