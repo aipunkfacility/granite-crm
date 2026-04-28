@@ -60,6 +60,15 @@ def track_open(tracking_id: str, request: Request, db: Session = Depends(get_db)
             if contact.funnel_stage == "email_sent":
                 contact.funnel_stage = "email_opened"
 
+            # Задача 5: создать follow-up задачу при первом открытии
+            from granite.email.followup_logic import maybe_create_followup_task
+            maybe_create_followup_task(contact, log.campaign_id, db)
+
+        # Задача 5: инкремент total_opened для кампании
+        if log.campaign_id:
+            from granite.email.followup_logic import increment_campaign_opened
+            increment_campaign_opened(log.campaign_id, db)
+
     return Response(
         content=TRANSPARENT_PNG,
         media_type="image/png",
