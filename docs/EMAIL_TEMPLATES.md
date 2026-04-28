@@ -10,10 +10,10 @@
 
 ## 1. Холодные письма (Cold emails)
 
-### 1.1 cold_email_1 — Основной оффер
+### 1.1 cold_email_v1 — Основной оффер
 
 ```yaml
-name: cold_email_1
+name: cold_email_v1
 channel: email
 body_type: plain
 subject: "Помощь с подготовкой фото для гравировки, {city}"
@@ -42,10 +42,10 @@ WhatsApp: +84 946 943 543
 
 ---
 
-### 1.2 cold_email_2 — Сложные случаи
+### 1.2 cold_email_marquiz — Сложные случаи
 
 ```yaml
-name: cold_email_2
+name: cold_email_marquiz
 channel: email
 body_type: plain
 subject: "Сложные фотографии для гравировки — {city}"

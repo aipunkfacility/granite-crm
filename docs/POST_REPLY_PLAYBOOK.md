@@ -392,8 +392,12 @@ GROUP BY ab_variant
 **Ответ:**
 ```json
 {
-  "A": {"total": 25, "opened": 8, "replied": 2, "open_rate": 32.0, "reply_rate": 8.0},
-  "B": {"total": 25, "opened": 5, "replied": 3, "open_rate": 20.0, "reply_rate": 12.0}
+  "variants": {
+    "A": {"subject": "...", "sent": 45, "opened": 12, "replied": 3, "reply_rate": 6.7},
+    "B": {"subject": "...", "sent": 47, "opened": 18, "replied": 7, "reply_rate": 14.9}
+  },
+  "winner": null,
+  "note": "Победитель — по количеству ответов"
 }
 ```
 

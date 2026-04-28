@@ -33,14 +33,21 @@ config.yaml                 granite/database.py              alembic/
 | Колонка | Тип | Описание |
 |---------|-----|----------|
 | `id` | INTEGER PK | Автоинкремент |
-| `source` | VARCHAR, NOT NULL | Источник: `jsprav`, `web_search`, `2gis`, `yell` |
+| `source` | VARCHAR, NOT NULL | Источник: `jsprav`, `web_search`, `2gis`, `yell`, `jsprav_playwright`, `google_maps`, `avito` (индекс) |
 | `source_url` | VARCHAR | URL страницы-источника |
 | `name` | VARCHAR, NOT NULL | Название компании (как на сайте) |
 | `phones` | JSON | Список телефонов `["79001234567", ...]` |
+| `address_raw` | TEXT | Сырой адрес (default "") |
+| `website` | VARCHAR | URL сайта |
+| `emails` | JSON | Список email (default `[]`) |
+| `geo` | VARCHAR | Координаты "lat,lon" |
+| `messengers` | JSON | Мессенджеры (default `{}`) |
+| `scraped_at` | DATETIME | Время скрапинга (auto) |
+| `needs_review` | BOOLEAN | Флаг подозрительной записи (default False) |
 | `review_reason` | VARCHAR | Причина пометки (логика A-3/A-5) |
 | `city` | VARCHAR, NOT NULL | Город из config.yaml (индекс) |
-| `region` | VARCHAR, NOT NULL | Регион/область (индекс) |
-| `merged_into` | INTEGER FK | ID компании в `companies`, куда слита запись (SET NULL) |
+| `region` | VARCHAR, NOT NULL | Регион/область (default "", индекс) |
+| `merged_into` | INTEGER FK | ID компании в `companies`, куда слита запись (SET NULL, индекс) |
 
 Индексы: `ix_raw_companies_city`, `ix_raw_companies_source`.
 
@@ -59,7 +66,8 @@ config.yaml                 granite/database.py              alembic/
 | `emails` | JSON | Объединённые уникальные email |
 | `city` | VARCHAR, NOT NULL | Город (индекс) |
 | `messengers` | JSON | Мессенджеры из сырых данных |
-| `status` | VARCHAR | `raw` → `validated` → `enriched` → `contacted` (индекс) |
+| `sources` | JSON | Список источников данных `["jsprav", "web_search"]` (default `[]`) |
+| `status` | VARCHAR | `raw` → `validated` → `enriched` → `contacted` (default `"raw"`, индекс) |
 | `segment` | VARCHAR | `A` / `B` / `C` / `D` / `Не определено` |
 | `needs_review` | BOOLEAN | Флаг подозрительной записи или конфликта |
 | `review_reason` | VARCHAR | Причина (например, агрегатор или foreign_city) |
@@ -69,7 +77,7 @@ config.yaml                 granite/database.py              alembic/
 | `updated_at` | DATETIME | Время последнего обновления (UTC) |
 | `deleted_at` | DATETIME | Мягкое удаление (soft-delete) |
 
-Индексы: `ix_companies_city`, `ix_companies_status`.
+Индексы: `ix_companies_city`, `ix_companies_status`, `ix_companies_needs_review`, `ix_companies_city_deleted` (составной: city + deleted_at).
 
 ### 2.3 enriched_companies — обогащённые данные
 
@@ -94,7 +102,7 @@ config.yaml                 granite/database.py              alembic/
 | `region` | VARCHAR, NOT NULL | Регион/область (индекс) |
 | `updated_at` | DATETIME | Время обновления (UTC, auto on update) |
 
-Индексы: `ix_enriched_companies_city`, `ix_enriched_companies_crm_score`, `ix_enriched_companies_segment`.
+Индексы: `ix_enriched_companies_city`, `ix_enriched_companies_crm_score`, `ix_enriched_companies_segment`, `ix_enriched_segment_network` (составной: segment + is_network), `ix_enriched_cms` (cms), `ix_enriched_marquiz` (has_marquiz).
 
 ### 2.4 alembic_version — служебная таблица
 
@@ -127,10 +135,11 @@ config.yaml                 granite/database.py              alembic/
 | `first_contact_at` | DATETIME | Время первого касания |
 | `notes` | TEXT | Ручные заметки |
 | `stop_automation` | INTEGER | Флаг остановки автоматизации (индекс) |
+| `unsubscribe_token` | VARCHAR, NOT NULL, UNIQUE | Токен для отписки (auto-generate, индекс) |
 | `created_at` | DATETIME | Время создания |
 | `updated_at` | DATETIME | Время обновления (auto on update) |
 
-Индексы: `ix_crm_contacts_funnel_stage`, `ix_crm_contacts_last_contact_at`, `ix_crm_contacts_stop_automation`.
+Индексы: `ix_crm_contacts_funnel_stage`, `ix_crm_contacts_last_contact_at`, `ix_crm_contacts_stop_automation`, `ix_crm_contacts_funnel_stop` (составной: funnel_stage + stop_automation).
 
 ### 2.6 crm_touches — лог касаний
 
@@ -156,15 +165,17 @@ config.yaml                 granite/database.py              alembic/
 | Колонка | Тип | Описание |
 |---------|-----|----------|
 | `id` | INTEGER PK | Автоинкремент |
-| `name` | VARCHAR, NOT NULL, UNIQUE | Имя шаблона |
+| `name` | VARCHAR, NOT NULL, UNIQUE | Имя шаблона (max 64 символа) |
 | `channel` | VARCHAR, NOT NULL | Канал: `email`, `tg`, `wa` |
 | `subject` | VARCHAR | Тема (для email) |
 | `body` | TEXT, NOT NULL | Тело с плейсхолдерами |
-| `description` | VARCHAR | Описание |
+| `body_type` | VARCHAR(10), NOT NULL | Тип: `plain` или `html` (default `"plain"`) |
+| `description` | VARCHAR | Описание шаблона |
+| `retired` | BOOLEAN, NOT NULL | Архивный/immutable шаблон (default False) |
 | `created_at` | DATETIME | Время создания |
 | `updated_at` | DATETIME | Время обновления |
 
-Методы: `render(**kwargs)` — подставить значения в body, `render_subject(**kwargs)` — в subject.
+Методы: `render(**kwargs)` — подставить значения в body (для html экранирует через `html.escape()`, для plain — как есть), `render_subject(**kwargs)` — в subject.
 
 ### 2.8 crm_email_logs — лог отправки email
 
@@ -177,14 +188,16 @@ config.yaml                 granite/database.py              alembic/
 | `email_to` | VARCHAR, NOT NULL | Адрес получателя |
 | `email_subject` | VARCHAR | Тема письма |
 | `template_name` | VARCHAR | Имя использованного шаблона |
-| `campaign_id` | INTEGER | ID кампании (индекс) |
-| `status` | VARCHAR | Статус: `pending`, `sent`, `opened`, `replied`, `bounced`, `error` |
+| `campaign_id` | INTEGER FK | ID кампании → `crm_email_campaigns.id` (SET NULL, индекс) |
+| `status` | VARCHAR | Статус: `pending`, `sent`, `opened`, `replied`, `bounced`, `error` (индекс) |
 | `sent_at` | DATETIME | Время отправки |
 | `opened_at` | DATETIME | Время открытия (через tracking pixel) |
 | `replied_at` | DATETIME | Время ответа |
 | `bounced_at` | DATETIME | Время bounce |
 | `error_message` | TEXT | Текст ошибки |
 | `tracking_id` | VARCHAR, UNIQUE | UUID для tracking pixel (индекс) |
+| `ab_variant` | VARCHAR(1) | Вариант A/B теста: "A" или "B" (nullable) |
+| `template_id` | INTEGER FK | ID immutable-шаблона → `crm_templates.id` (nullable) |
 | `created_at` | DATETIME | Время создания |
 
 Индексы: `ix_crm_email_logs_company_id`, `ix_crm_email_logs_campaign_id`, `ix_crm_email_logs_tracking_id`.
@@ -202,7 +215,7 @@ config.yaml                 granite/database.py              alembic/
 | `due_date` | DATETIME | Срок выполнения |
 | `priority` | VARCHAR | `low`, `normal`, `high` |
 | `status` | VARCHAR | `pending`, `in_progress`, `done`, `cancelled` (индекс) |
-| `task_type` | VARCHAR | `follow_up`, `send_portfolio`, `call`, `other` |
+| `task_type` | VARCHAR | `follow_up`, `send_portfolio`, `send_test_offer`, `check_response`, `other` |
 | `created_at` | DATETIME | Время создания |
 | `completed_at` | DATETIME | Время завершения |
 
@@ -217,11 +230,15 @@ config.yaml                 granite/database.py              alembic/
 | `id` | INTEGER PK | Автоинкремент |
 | `name` | VARCHAR, NOT NULL | Название кампании |
 | `template_name` | VARCHAR, NOT NULL | Имя шаблона |
-| `status` | VARCHAR | `draft`, `running`, `completed`, `paused` (индекс) |
+| `status` | VARCHAR | `draft`, `running`, `completed`, `paused`, `paused_daily_limit`, `error` (индекс) |
 | `filters` | JSON | JSON-фильтр для выборки получателей |
 | `total_sent` | INTEGER | Кол-во отправленных |
 | `total_opened` | INTEGER | Кол-во открытых |
 | `total_replied` | INTEGER | Кол-во ответов |
+| `subject_a` | VARCHAR | Тема варианта A для A/B теста (nullable) |
+| `subject_b` | VARCHAR | Тема варианта B для A/B теста (nullable) |
+| `total_errors` | INTEGER | Кол-во ошибок отправки (default 0) |
+| `total_recipients` | INTEGER | Общее число получателей (default 0) |
 | `started_at` | DATETIME | Время запуска |
 | `completed_at` | DATETIME | Время завершения |
 | `created_at` | DATETIME | Время создания |

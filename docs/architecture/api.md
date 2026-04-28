@@ -1,4 +1,4 @@
-<!-- Обновлено: 2026-04-28 -->
+<!-- Обновлено: 2026-04-25 -->
 # Справочник API RetouchGrav CRM
 
 > Полный справочник REST API эндпоинтов Granite CRM. Базовый URL: `http://localhost:8000/api/v1`. Документация Swagger: `http://localhost:8000/docs`.
@@ -55,20 +55,11 @@
 
 ### `GET /health/smtp`
 
-Проверка подключения к SMTP-серверу. Использовать перед запуском email-кампании.
+Проверка доступности SMTP-сервера.
 
-**Ответ `200`:**
+**Ответ:**
 ```json
-{"status": "ok", "smtp": "connected"}
-```
-
-**Ответ при ошибке:**
-```json
-{"status": "error", "smtp": "SMTP credentials not configured"}
-```
-или
-```json
-{"status": "error", "smtp": "Connection refused"}
+{"status": "ok", "smtp": true}
 ```
 
 ---
@@ -98,10 +89,11 @@
 | `has_marquiz` | bool | Есть Marquiz |
 | `needs_review` | bool | Требует проверки |
 | `stop_automation` | bool | Автоматизация приостановлена |
-| `is_deleted` | bool | Показать удалённые |
+| `include_deleted` | int | Показать удалённые (0/1) |
 | `min_score` | int | Минимальный CRM-score |
 | `max_score` | int | Максимальный CRM-score |
-| `min_tg_trust` | int | Минимальный TG Trust (0-3) |
+| `tg_trust_min` | int | Минимальный TG Trust (0-3) |
+| `tg_trust_max` | int | Максимальный TG Trust (0-3) |
 | `cms` | string | Фильтр по CMS |
 | `source` | string | Фильтр по источнику данных |
 | `order_by` | string | Поле сортировки (crm_score, name, city, updated_at, last_contact_at) |
@@ -172,6 +164,81 @@
 
 **Ответ:** `{ok: true}`
 
+### `POST /companies/{id}/mark-spam`
+
+Пометить компанию как спам.
+
+**Тело:**
+```json
+{
+  "reason": "Нежелательный контакт"
+}
+```
+
+**Ответ:** `{ok: true}`
+
+### `POST /companies/{id}/unmark-spam`
+
+Восстановить компанию из спама.
+
+**Ответ:** `{ok: true}`
+
+### `POST /companies/{id}/mark-duplicate`
+
+Пометить компанию как дубликат.
+
+**Тело:**
+```json
+{
+  "target_id": 42
+}
+```
+
+**Ответ:** `{ok: true}`
+
+### `POST /companies/{id}/resolve-review`
+
+Разрешить статус needs_review.
+
+**Тело:**
+```json
+{
+  "action": "approve",
+  "reason": "Проверено",
+  "target_id": null
+}
+```
+
+**action:** `approve` | `spam` | `duplicate`. `reason` и `target_id` опциональны.
+
+**Ответ:** `{ok: true}`
+
+### `POST /companies/batch/approve`
+
+Массово снять флаг needs_review (требует admin).
+
+**Тело:**
+```json
+{
+  "company_ids": [1, 2, 3]
+}
+```
+
+**Ответ:** `{ok: true, updated: 3}`
+
+### `POST /companies/batch/spam`
+
+Массово пометить как спам (требует admin).
+
+**Тело:**
+```json
+{
+  "company_ids": [4, 5, 6]
+}
+```
+
+**Ответ:** `{ok: true, updated: 3}`
+
 ---
 
 ## 3. Касания
@@ -202,6 +269,12 @@
 
 **Ответ:** `list[TouchResponse]`
 
+### `GET /companies/{id}/touches/{touch_id}`
+
+Получить конкретное касание.
+
+**Ответ:** `TouchResponse`
+
 ### `DELETE /touches/{id}`
 
 Удалить касание.
@@ -231,6 +304,12 @@
 **priority:** `low` | `normal` | `high`
 
 **Ответ:** `{ok: true, id: 456}`
+
+### `GET /companies/{id}/tasks`
+
+Список задач для конкретной компании.
+
+**Ответ:** `list[TaskResponse]`
 
 ### `GET /tasks`
 
@@ -272,9 +351,20 @@
 
 Список шаблонов сообщений.
 
-**Параметры:** `channel` (опционально)
+**Параметры:**
 
-**Ответ:** `list[TemplateResponse]`
+| Параметр | Тип | Описание |
+|----------|-----|----------|
+| `channel` | string | Фильтр по каналу (опционально) |
+| `include_retired` | int | Включить архивные шаблоны (0/1, default: 0) |
+
+**Ответ:** `PaginatedResponse[TemplateResponse]`
+
+### `GET /templates/{name}`
+
+Получить шаблон по имени.
+
+**Ответ:** `TemplateResponse`
 
 ### `POST /templates`
 
@@ -293,7 +383,7 @@
 ```
 
 **Ограничения:**
-- `name` — латиница, цифры, подчёркивание, кириллица (заглавная и строчная), max 64 символа
+- `name` — только `[a-z0-9_]`
 - `body_type=html` допускается только при `channel=email`
 - `body` — максимум 500 000 символов
 
@@ -326,6 +416,8 @@
 {
   "name": "Холодные лиды МСК",
   "template_name": "cold_email_1",
+  "subject_a": "Тема письма A",
+  "subject_b": "Тема письма B",
   "filters": {
     "city": "Москва",
     "segment": "A",
@@ -375,19 +467,6 @@ event: complete
 data: {"sent": 50, "opened": 0, "errors": 2}
 ```
 
-### `GET /campaigns/{id}/progress`
-
-SSE-поток прогресса отправки кампании (аналог `/run`, но без запуска — только подписка на события).
-
-**Ответ:** SSE stream
-```
-event: progress
-data: {"sent": 15, "total": 50, "errors": 1, "current": "Компания Y"}
-
-event: complete
-data: {"sent": 50, "total": 50, "errors": 2}
-```
-
 ### `GET /campaigns/{id}/stats`
 
 Статистика кампании.
@@ -396,21 +475,36 @@ data: {"sent": 50, "total": 50, "errors": 2}
 
 ### `GET /campaigns/{id}/ab-stats`
 
-Статистика A/B тестирования кампании. Количество отправок по вариантам A и B.
+Статистика A/B тестирования кампании.
 
 **Ответ:**
 ```json
 {
-  "variant_a_sent": 25,
-  "variant_b_sent": 25,
-  "variant_a_errors": 1,
-  "variant_b_errors": 0
+  "variants": {
+    "A": {"subject": "Тема A", "sent": 50, "opened": 10, "replied": 3, "reply_rate": 6.0},
+    "B": {"subject": "Тема B", "sent": 50, "opened": 15, "replied": 5, "reply_rate": 10.0}
+  },
+  "winner": "B",
+  "note": "Variant B has higher reply rate"
 }
+```
+
+### `GET /campaigns/{id}/progress`
+
+SSE-стрим прогресса кампании.
+
+**Ответ:** SSE stream
+```
+event: progress
+data: {"sent": 10, "total": 50, "current": "Компания X"}
+
+event: complete
+data: {"sent": 50, "opened": 0, "errors": 2}
 ```
 
 ### `POST /campaigns/stale`
 
-Сбросить «зависшие» кампании (running > 2 часов).
+Сбросить «зависшие» кампании (running дольше `STALE_CAMPAIGN_MINUTES` из env, по умолчанию 10 минут).
 
 **Ответ:** `StaleCampaignsResponse`
 
@@ -437,19 +531,6 @@ data: {"sent": 50, "total": 50, "errors": 2}
 }
 ```
 
-### `POST /companies/{id}/funnel/transition`
-
-Перевести компанию на новую стадию воронки.
-
-**Тело:**
-```json
-{
-  "stage": "replied"
-}
-```
-
-**Допустимые стадии:** `new`, `email_sent`, `email_opened`, `tg_sent`, `wa_sent`, `replied`, `interested`, `not_interested`, `unreachable`
-
 ---
 
 ## 8. Follow-up
@@ -463,12 +544,6 @@ data: {"sent": 50, "total": 50, "errors": 2}
 **Ответ:** `list[FollowupItemResponse]`
 
 Каждый элемент содержит: компанию, рекомендованный канал, шаблон, количество дней с последнего контакта.
-
-### `POST /followup/check`
-
-Проверить и создать follow-up задачи для компаний, которым пора написать повторно.
-
-**Ответ:** `{ok: true, created: 5}`
 
 ---
 
@@ -555,6 +630,8 @@ data: {"sent": 50, "total": 50, "errors": 2}
 
 Tracking pixel — 1x1 прозрачный PNG. Фиксирует открытие email-письма, обновляет `opened_at` в `crm_email_logs`.
 
+> **Примечание:** В таблице `crm_email_logs` поле `campaign_id` — внешний ключ с `ON DELETE SET NULL` (не просто INTEGER).
+
 ---
 
 ## 13. Экспорт
@@ -581,85 +658,33 @@ Tracking pixel — 1x1 прозрачный PNG. Фиксирует открыт
 
 ---
 
-## 15. Admin
+## 15. Справочники
 
-Роутер `granite/api/admin.py`. Требуется переменная окружения `GRANITE_ADMIN_PASSWORD` — без неё все эндпоинты возвращают `403`.
+### `GET /cms-types`
+
+Список уникальных значений CMS.
+
+**Ответ:** `list[str]`
+
+### `GET /source-types`
+
+Список уникальных значений источников данных.
+
+**Ответ:** `list[str]`
+
+---
+
+## 16. Администрирование
 
 ### `POST /admin/login`
 
-Аутентификация администратора. Возвращает HMAC-токен с TTL 30 минут.
+Аутентификация администратора.
 
 **Тело:**
 ```json
 {
-  "password": "my_secret_password"
+  "password": "admin_password"
 }
 ```
 
-**Ответ `200`:**
-```json
-{
-  "token": "1745800000:a3f2b1c...",
-  "expires_in": 1800
-}
-```
-
-**Ошибки:**
-
-| Код | Условие |
-|-----|---------|
-| `403` | `GRANITE_ADMIN_PASSWORD` не задана |
-| `401` | Неверный пароль |
-
-### `POST /companies/batch/approve`
-
-Массовое подтверждение компаний — снять флаг `needs_review`.
-
-**Заголовок:** `X-Admin-Token: <token>` (получен из `/admin/login`)
-
-**Тело:**
-```json
-{
-  "company_ids": [1, 2, 3]
-}
-```
-
-**Ответ:**
-```json
-{"ok": true, "processed": 3}
-```
-
-**Ошибки:**
-
-| Код | Условие |
-|-----|---------|
-| `401` | Токен отсутствует или недействителен |
-| `403` | Admin-режим не настроен |
-
-### `POST /companies/batch/spam`
-
-Массовая пометка компаний как спам. Устанавливает `segment=spam`, `deleted_at`, `stop_automation=1`.
-
-**Заголовок:** `X-Admin-Token: <token>`
-
-**Тело:**
-```json
-{
-  "company_ids": [5, 6],
-  "reason": "aggregator"
-}
-```
-
-**reason:** `aggregator` | `closed` | `wrong_category` | `duplicate_contact` | `other`
-
-**Ответ:**
-```json
-{"ok": true, "processed": 2}
-```
-
-**Ошибки:**
-
-| Код | Условие |
-|-----|---------|
-| `401` | Токен отсутствует или недействителен |
-| `403` | Admin-режим не настроен |
+**Ответ:** `{ok: true, token: "..."}`

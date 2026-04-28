@@ -260,13 +260,13 @@ uv run -m scripts.seed_crm_contacts
 
 Создаёт crm_contacts для компаний без CRM-записей (funnel_stage='new').
 
-### Заполнение шаблонов сообщений
+### Заполнение шаблонов сообщений (seed)
 
 ```bash
-uv run -m scripts.seed_crm_templates
+uv run scripts/seed_crm_templates.py
 ```
 
-UPSERT 6 встроенных шаблонов (email/tg/wa — intro + follow-up). Плейсхолдеры: `{from_name}`, `{city}`, `{company_name}`, `{website}`.
+INSERT-ONLY: загружает шаблоны из `data/email_templates.json` в `crm_templates`. Пропускает уже существующие (по имени). Шаблоны: `cold_email_v1`, `cold_email_marquiz`, `cold_email_bitrix`, `follow_up_email_v1`. Актуальный список шаблонов — см. `data/email_templates.json`.
 
 ### Обновление статуса городов
 
@@ -356,3 +356,13 @@ uv run pytest --cov=granite                # С покрытием
 | `CORS_ORIGINS` | CORS origins (через запятую) |
 | `GRANITE_CONFIG` | Путь к config.yaml |
 | `DEBUG` | Показывать детали ошибок в API |
+| `EMAIL_DELAY_MIN` | Пауза между письмами, мин. (default: 45 сек) |
+| `EMAIL_DELAY_MAX` | Пауза между письмами, макс. (default: 120 сек) |
+| `EMAIL_DAILY_LIMIT` | Дневной лимит писем (default: 50) |
+| `MAX_SENDS_PER_RUN` | Лимит получателей за запуск (default: 10) |
+| `SMTP_HOST` | SMTP сервер для отправки |
+| `SMTP_PORT` | SMTP порт |
+| `SMTP_USER` | SMTP логин |
+| `SMTP_PASS` | SMTP пароль |
+| `IMAP_HOST` | IMAP сервер для bounce/reply |
+| `BASE_URL` | Публичный URL для tracking/unsubscribe |
