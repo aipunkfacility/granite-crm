@@ -7,12 +7,36 @@
 Тема письма: Re: {original_subject} — извлекается из последнего
 исходящего CrmTouchRow для компании.
 """
+import re
 from datetime import datetime, timezone
 from loguru import logger
 
 from granite.email.sender import EmailSender
 
 __all__ = ["process_followups"]
+
+# Максимальное число попыток отправки, после которого задача → failed
+_MAX_RETRIES = 3
+
+# Парсим retry_count из description: "[retry:2]"
+_RETRY_RE = re.compile(r"\[retry:(\d+)\]")
+
+
+def _get_retry_count(task) -> int:
+    """Извлечь счётчик попыток из task.description."""
+    if not task.description:
+        return 0
+    m = _RETRY_RE.search(task.description)
+    return int(m.group(1)) if m else 0
+
+
+def _set_retry_count(task, count: int) -> None:
+    """Записать счётчик попыток в task.description."""
+    old = task.description or ""
+    # Удалить старый маркер
+    new = _RETRY_RE.sub("", old).strip()
+    new = f"[retry:{count}] {new}" if new else f"[retry:{count}]"
+    task.description = new
 
 
 def process_followups(db_session) -> int:
@@ -23,6 +47,12 @@ def process_followups(db_session) -> int:
     2. Рендерить follow-up шаблон.
     3. Отправить письмо через EmailSender.
     4. Пометить задачу как done.
+
+    FIX P3-H1: commit-per-task — коммит после каждой задачи,
+    чтобы не потерять уже обработанные при сбое.
+
+    FIX P3-H2: лимит повторных попыток — после 3 неудачных
+    отправок задача переходит в status="failed".
 
     Returns:
         Количество отправленных follow-up писем.
@@ -70,6 +100,7 @@ def process_followups(db_session) -> int:
                 logger.warning(f"task_id={task.id}: company_id={task.company_id} not found")
                 task.status = "done"
                 task.completed_at = now
+                db_session.commit()
                 continue
 
             # Найти email компании
@@ -78,6 +109,7 @@ def process_followups(db_session) -> int:
                 logger.warning(f"task_id={task.id}: no email for company_id={task.company_id}")
                 task.status = "done"
                 task.completed_at = now
+                db_session.commit()
                 continue
 
             email_to = emails[0].lower().strip()
@@ -92,6 +124,7 @@ def process_followups(db_session) -> int:
                 logger.info(f"task_id={task.id}: stop_automation=1, cancelling")
                 task.status = "cancelled"
                 task.completed_at = now
+                db_session.commit()
                 continue
 
             # Найти последний исходящий touch для извлечения темы
@@ -157,13 +190,29 @@ def process_followups(db_session) -> int:
                     f"(subject={followup_subject!r})"
                 )
             else:
-                # Ошибка отправки — пометить задачу с ошибкой, но не done
-                task.status = "pending"  # оставить для повторной попытки
-                logger.warning(f"task_id={task.id}: follow-up send failed to {email_to}")
+                # FIX P3-H2: ошибка отправки — инкремент retry_count
+                retry_count = _get_retry_count(task) + 1
+                if retry_count >= _MAX_RETRIES:
+                    task.status = "failed"
+                    task.completed_at = now
+                    _set_retry_count(task, retry_count)
+                    logger.warning(
+                        f"task_id={task.id}: follow-up failed after {retry_count} "
+                        f"attempts to {email_to}, marking as failed"
+                    )
+                else:
+                    _set_retry_count(task, retry_count)
+                    logger.warning(
+                        f"task_id={task.id}: follow-up send failed to {email_to} "
+                        f"(attempt {retry_count}/{_MAX_RETRIES})"
+                    )
 
         except Exception as e:
             logger.error(f"task_id={task.id}: error processing follow-up: {e}")
+            db_session.commit()
             continue
 
-    db_session.commit()
+        # FIX P3-H1: commit-per-task
+        db_session.commit()
+
     return sent_count

@@ -91,6 +91,8 @@ def process_replies(db_session) -> int:
 
             if contact and _is_spam_complaint(body, subject):
                 contact.stop_automation = 1
+                # FIX P3-M3: немедленная отмена follow-up при спам-жалобе
+                cancel_followup_tasks(contact.company_id, "not_interested", db_session)
                 logger.info(
                     f"company_id={contact.company_id}: stop_automation=1 "
                     f"(spam complaint from {reply_email})"

@@ -49,9 +49,11 @@ def maybe_create_followup_task(contact, campaign_id: int, db_session) -> None:
         return
 
     due_date = datetime.now(timezone.utc) + timedelta(days=FOLLOWUP_DELAY_DAYS)
+    # FIX P3-M4: не показывать "None" в title для писем без кампании
+    title = f"Follow-up email (campaign #{campaign_id})" if campaign_id else "Follow-up email"
     task = CrmTaskRow(
         company_id=contact.company_id,
-        title=f"Follow-up email (campaign #{campaign_id})",
+        title=title,
         task_type="follow_up",
         status="pending",
         due_date=due_date,

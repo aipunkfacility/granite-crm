@@ -94,9 +94,19 @@ def process_bounces(db_session) -> int:
             dsn_code = extract_dsn(full_text)
 
             if not bounced_email:
-                # Fallback: попробовать извлечь из Return-Path или From
-                from_header = msg.get("From", "") or ""
-                bounced_email = extract_email(from_header)
+                # FIX P3-H3: cascade fallback через X-Failed-Recipients → Return-Path → From
+                # X-Failed-Recipients — стандартный заголовок для bounce (Gmail, Exchange)
+                x_failed = msg.get("X-Failed-Recipients", "") or ""
+                if x_failed:
+                    # Может содержать несколько адресов через запятую
+                    bounced_email = x_failed.split(",")[0].strip()
+                if not bounced_email:
+                    return_path = msg.get("Return-Path", "") or ""
+                    if return_path:
+                        bounced_email = extract_email(return_path)
+                if not bounced_email:
+                    from_header = msg.get("From", "") or ""
+                    bounced_email = extract_email(from_header)
 
             if not bounced_email:
                 logger.debug(f"process_bounces: cannot extract bounced email from message {mid}")

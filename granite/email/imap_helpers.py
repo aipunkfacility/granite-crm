@@ -106,7 +106,7 @@ def is_bounce(msg: Message) -> bool:
     - From содержит mailer-daemon / postmaster
     - Subject содержит "Delivery Status Notification" / "Undelivered" / "bounce"
     """
-    content_type = msg.get_content_type() or ""
+    # FIX P3-M1: убрана мёртвая переменная content_type
     lower_ct = (msg.get("Content-Type", "") or "").lower()
 
     # Стандартный DSN
@@ -232,10 +232,9 @@ def fetch_imap_messages(
 
         results = []
         for mid in message_ids:
-            fetch_flag = "(RFC822)" if mark_seen else "(BODY.PEEK[])"
-
-            # mark_seen=False: используем BODY.PEEK чтобы не менять флаг
+            # FIX P3-M2: убрана мёртвая переменная fetch_flag
             if not mark_seen:
+                # BODY.PEEK — не меняет флаг \Seen
                 status, msg_data = conn.fetch(mid, "(BODY.PEEK[])")
             else:
                 status, msg_data = conn.fetch(mid, "(RFC822)")
