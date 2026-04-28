@@ -1,4 +1,4 @@
-<!-- Обновлено: 2026-04-25 -->
+<!-- Обновлено: 2026-04-28 -->
 # Справочник API RetouchGrav CRM
 
 > Полный справочник REST API эндпоинтов Granite CRM. Базовый URL: `http://localhost:8000/api/v1`. Документация Swagger: `http://localhost:8000/docs`.
@@ -51,6 +51,24 @@
 **Ответ:**
 ```json
 {"status": "ok", "db": true}
+```
+
+### `GET /health/smtp`
+
+Проверка подключения к SMTP-серверу. Использовать перед запуском email-кампании.
+
+**Ответ `200`:**
+```json
+{"status": "ok", "smtp": "connected"}
+```
+
+**Ответ при ошибке:**
+```json
+{"status": "error", "smtp": "SMTP credentials not configured"}
+```
+или
+```json
+{"status": "error", "smtp": "Connection refused"}
 ```
 
 ---
@@ -275,7 +293,7 @@
 ```
 
 **Ограничения:**
-- `name` — только `[a-z0-9_]`
+- `name` — латиница, цифры, подчёркивание, кириллица (заглавная и строчная), max 64 символа
 - `body_type=html` допускается только при `channel=email`
 - `body` — максимум 500 000 символов
 
@@ -357,11 +375,38 @@ event: complete
 data: {"sent": 50, "opened": 0, "errors": 2}
 ```
 
+### `GET /campaigns/{id}/progress`
+
+SSE-поток прогресса отправки кампании (аналог `/run`, но без запуска — только подписка на события).
+
+**Ответ:** SSE stream
+```
+event: progress
+data: {"sent": 15, "total": 50, "errors": 1, "current": "Компания Y"}
+
+event: complete
+data: {"sent": 50, "total": 50, "errors": 2}
+```
+
 ### `GET /campaigns/{id}/stats`
 
 Статистика кампании.
 
 **Ответ:** `CampaignStatsResponse`
+
+### `GET /campaigns/{id}/ab-stats`
+
+Статистика A/B тестирования кампании. Количество отправок по вариантам A и B.
+
+**Ответ:**
+```json
+{
+  "variant_a_sent": 25,
+  "variant_b_sent": 25,
+  "variant_a_errors": 1,
+  "variant_b_errors": 0
+}
+```
 
 ### `POST /campaigns/stale`
 
@@ -533,3 +578,88 @@ Tracking pixel — 1x1 прозрачный PNG. Фиксирует открыт
 Список уникальных регионов.
 
 **Ответ:** `PaginatedResponse[str]`
+
+---
+
+## 15. Admin
+
+Роутер `granite/api/admin.py`. Требуется переменная окружения `GRANITE_ADMIN_PASSWORD` — без неё все эндпоинты возвращают `403`.
+
+### `POST /admin/login`
+
+Аутентификация администратора. Возвращает HMAC-токен с TTL 30 минут.
+
+**Тело:**
+```json
+{
+  "password": "my_secret_password"
+}
+```
+
+**Ответ `200`:**
+```json
+{
+  "token": "1745800000:a3f2b1c...",
+  "expires_in": 1800
+}
+```
+
+**Ошибки:**
+
+| Код | Условие |
+|-----|---------|
+| `403` | `GRANITE_ADMIN_PASSWORD` не задана |
+| `401` | Неверный пароль |
+
+### `POST /companies/batch/approve`
+
+Массовое подтверждение компаний — снять флаг `needs_review`.
+
+**Заголовок:** `X-Admin-Token: <token>` (получен из `/admin/login`)
+
+**Тело:**
+```json
+{
+  "company_ids": [1, 2, 3]
+}
+```
+
+**Ответ:**
+```json
+{"ok": true, "processed": 3}
+```
+
+**Ошибки:**
+
+| Код | Условие |
+|-----|---------|
+| `401` | Токен отсутствует или недействителен |
+| `403` | Admin-режим не настроен |
+
+### `POST /companies/batch/spam`
+
+Массовая пометка компаний как спам. Устанавливает `segment=spam`, `deleted_at`, `stop_automation=1`.
+
+**Заголовок:** `X-Admin-Token: <token>`
+
+**Тело:**
+```json
+{
+  "company_ids": [5, 6],
+  "reason": "aggregator"
+}
+```
+
+**reason:** `aggregator` | `closed` | `wrong_category` | `duplicate_contact` | `other`
+
+**Ответ:**
+```json
+{"ok": true, "processed": 2}
+```
+
+**Ошибки:**
+
+| Код | Условие |
+|-----|---------|
+| `401` | Токен отсутствует или недействителен |
+| `403` | Admin-режим не настроен |
