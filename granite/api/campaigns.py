@@ -15,6 +15,7 @@ from granite.api.schemas import (
     CreateCampaignRequest, UpdateCampaignRequest, OkResponse,
     OkWithIdResponse, CampaignResponse, CampaignDetailResponse,
     CampaignStatsResponse, PaginatedResponse, StaleCampaignsResponse,
+    CampaignFilters,
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
@@ -42,6 +43,73 @@ def _get_campaign_lock(campaign_id: int) -> threading.Lock:
         return _campaign_locks_storage[campaign_id]
 
 
+@router.post("/campaigns/preview-recipients")
+def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
+    """Phase 4: Предпросмотр кол-ва получателей по фильтрам (без создания кампании).
+
+    Позволяет wizard показать «Будет отправлено: N компаниям» до создания.
+    Возвращает количество и первые 5 компаний-получателей для проверки.
+    """
+    # Создаём виртуальную кампанию для повторного использования _get_campaign_recipients
+    dummy = CrmEmailCampaignRow(
+        name="__preview__",
+        template_name="__preview__",
+        filters=data.model_dump(exclude_none=True),
+    )
+    # Нам не нужен полный _get_campaign_recipients (требует template_name),
+    # поэтому считаем вручную с теми же фильтрами
+    filters = data.model_dump(exclude_none=True)
+
+    q = (
+        db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
+        .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
+        .outerjoin(CrmContactRow, CompanyRow.id == CrmContactRow.company_id)
+        .filter(
+            CompanyRow.emails.isnot(None),
+            CompanyRow.emails.cast(String) != "[]",
+            CompanyRow.emails.cast(String) != "",
+            CompanyRow.deleted_at.is_(None),
+        )
+    )
+
+    if filters.get("city"):
+        q = q.filter(CompanyRow.city == filters["city"])
+    elif filters.get("cities"):
+        cities_list = filters["cities"]
+        if len(cities_list) == 1:
+            q = q.filter(CompanyRow.city == cities_list[0])
+        elif len(cities_list) > 1:
+            q = q.filter(CompanyRow.city.in_(cities_list))
+    if filters.get("segment"):
+        q = q.filter(EnrichedCompanyRow.segment == filters["segment"])
+    if filters.get("min_score"):
+        q = q.filter(EnrichedCompanyRow.crm_score >= filters["min_score"])
+
+    # Фильтруем stop_automation
+    q = q.filter(
+        (CrmContactRow.stop_automation == 0)
+        | (CrmContactRow.stop_automation.is_(None))
+    )
+
+    total = q.count()
+
+    # Первые 5 для превью
+    sample_rows = q.limit(5).all()
+    sample = [
+        {
+            "id": c.id,
+            "name": c.name_best,
+            "city": c.city,
+            "emails": c.emails or [],
+            "segment": e.segment if e else None,
+            "crm_score": e.crm_score if e else 0,
+        }
+        for c, e, crm in sample_rows
+    ]
+
+    return {"total": total, "sample": sample}
+
+
 @router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
 def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
     """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}
@@ -67,6 +135,8 @@ def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
         name=data.name,
         template_name=data.template_name,
         filters=data.filters.model_dump(exclude_none=True),
+        subject_a=data.subject_a,
+        subject_b=data.subject_b,
     )
     db.add(campaign)
     db.flush()
@@ -86,8 +156,11 @@ def list_campaigns(
     items = [
         {
             "id": c.id, "name": c.name, "template_name": c.template_name,
-            "status": c.status, "total_sent": c.total_sent,
+            "status": c.status,
+            "subject_a": c.subject_a, "subject_b": c.subject_b,
+            "total_sent": c.total_sent,
             "total_opened": c.total_opened, "total_replied": c.total_replied,
+            "total_errors": c.total_errors or 0,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         }
         for c in rows
@@ -129,6 +202,13 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
 
     if filters.get("city"):
         q = q.filter(CompanyRow.city == filters["city"])
+    elif filters.get("cities"):
+        # Phase 4: мульти-фильтр по списку городов
+        cities_list = filters["cities"]
+        if len(cities_list) == 1:
+            q = q.filter(CompanyRow.city == cities_list[0])
+        elif len(cities_list) > 1:
+            q = q.filter(CompanyRow.city.in_(cities_list))
     if filters.get("segment"):
         q = q.filter(EnrichedCompanyRow.segment == filters["segment"])
     if filters.get("min_score"):
@@ -198,16 +278,31 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
         preview_recipients = len(recipients)
 
     open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
+
+    # Phase 4: Validator warnings — предупреждения для draft кампаний
+    validator_warnings: list[str] = []
+    if campaign.status == "draft":
+        if not campaign.subject_a and not campaign.subject_b:
+            tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
+            if tmpl and not tmpl.subject:
+                validator_warnings.append("Шаблон не содержит тему письма — задайте subject_a вручную")
+        if preview_recipients == 0:
+            validator_warnings.append("Нет получателей по заданным фильтрам")
+
     return {
         "id": campaign.id, "name": campaign.name,
         "template_name": campaign.template_name,
         "status": campaign.status,
         "filters": campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}"),
+        "subject_a": campaign.subject_a,
+        "subject_b": campaign.subject_b,
         "total_sent": campaign.total_sent,
         "total_opened": campaign.total_opened,
         "total_replied": campaign.total_replied,
+        "total_errors": campaign.total_errors or 0,
         "open_rate": open_rate,
         "preview_recipients": preview_recipients,
+        "validator_warnings": validator_warnings,
         "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
         "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
     }
@@ -240,6 +335,13 @@ def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session =
                 404,
                 f"Template '{updates['template_name']}' not found",
             )
+
+    # Phase 4: Поддержка обновления subject_a, subject_b, filters
+    if "filters" in updates and isinstance(updates["filters"], dict):
+        from granite.api.schemas import CampaignFilters
+        cf = CampaignFilters(**updates["filters"])
+        campaign.filters = cf.model_dump(exclude_none=True)
+        updates.pop("filters")
 
     for key, value in updates.items():
         setattr(campaign, key, value)
