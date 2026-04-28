@@ -356,10 +356,14 @@ def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session =
             )
 
     # Phase 4: Поддержка обновления subject_a, subject_b, filters
-    if "filters" in updates and isinstance(updates["filters"], dict):
+    # FIX A5: filters теперь CampaignFilters (не dict) — типобезопасно
+    if "filters" in updates:
         from granite.api.schemas import CampaignFilters
-        cf = CampaignFilters(**updates["filters"])
-        campaign.filters = cf.model_dump(exclude_none=True)
+        cf = updates["filters"]
+        if isinstance(cf, CampaignFilters):
+            campaign.filters = cf.model_dump(exclude_none=True)
+        elif isinstance(cf, dict):
+            campaign.filters = CampaignFilters(**cf).model_dump(exclude_none=True)
         updates.pop("filters")
 
     # Валидируем допустимые поля (защита от произвольного setattr)
@@ -741,8 +745,21 @@ def check_stale_campaigns(db: Session = Depends(get_db)):
     running = db.query(CrmEmailCampaignRow).filter_by(status="running").all()
     reset = []
     for c in running:
-        last_activity = c.updated_at or c.started_at or c.created_at
-        if last_activity and last_activity.replace(tzinfo=timezone.utc) < threshold:
+        # FIX A8: Берём МАКСИМАЛЬНЫЙ (самый свежий) timestamp из всех доступных.
+        # updated_at теперь всегда заполнен (default=), но для running кампаний
+        # важен самый свежий индикатор активности (updated_at обновляется при
+        # каждом письме, started_at — при запуске, created_at — при создании).
+        candidates = [
+            c.updated_at,
+            c.started_at,
+            c.created_at,
+        ]
+        last_activity = max(
+            (ts.replace(tzinfo=timezone.utc) if ts and ts.tzinfo is None else ts
+             for ts in candidates if ts is not None),
+            default=None,
+        )
+        if last_activity and last_activity < threshold:
             c.status = "paused"
             reset.append({"id": c.id, "name": c.name})
 

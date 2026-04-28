@@ -29,7 +29,8 @@ def apply_outgoing_touch(contact, channel: str) -> None:
     elif channel == "wa":
         contact.wa_sent_count = (contact.wa_sent_count or 0) + 1
         contact.last_wa_at = now
-        if contact.funnel_stage not in ("replied", "interested", "not_interested"):
+        # FIX A7: WA не перезаписывает tg_sent — только новые/email стадии
+        if contact.funnel_stage not in ("replied", "interested", "not_interested", "tg_sent"):
             contact.funnel_stage = "wa_sent"
 
 

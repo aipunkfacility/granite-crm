@@ -68,8 +68,9 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
       setSubjectOverride(result.subject);
       setSubjectEdited(false);
       // P4R-M10: Показываем предупреждение stop_automation из preview
-      if ((result as any).stop_automation_warning) {
-        toast.warning((result as any).stop_automation_warning);
+      // FIX A6: Используем тип ReplyPreview.stop_automation_warning вместо any-cast
+      if (result.stop_automation_warning) {
+        toast.warning(result.stop_automation_warning);
       }
     } catch (e: any) {
       toast.error(e?.message || 'Ошибка предпросмотра');
@@ -175,8 +176,8 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
                     size="sm"
                     className={cn("h-8 text-xs", btn.color)}
                     onClick={() => handlePreview(btn.template)}
-                    // P4R-M23: Spinner только на нажатой кнопке, не на всех
-                    disabled={loadingTemplate !== null}
+                    // FIX A4: Только нажатая кнопка disabled+spinner, остальные активны
+                    disabled={loadingTemplate === btn.template}
                   >
                     {loadingTemplate === btn.template ? (
                       <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />

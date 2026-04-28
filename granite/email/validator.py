@@ -119,7 +119,13 @@ def _check_recipient(company, contact, email_to: str, blocked_domains: Optional[
 
     # Проверка интервала между письмами (EMAIL_SESSION_GAP_HRS)
     if contact and hasattr(contact, "last_email_sent_at") and contact.last_email_sent_at:
-        gap = datetime.now(timezone.utc) - contact.last_email_sent_at.replace(tzinfo=timezone.utc)
+        # FIX A2: безопасная конвертация tz — не крашимся на already-aware timestamps (PostgreSQL TIMESTAMPTZ)
+        last_sent = contact.last_email_sent_at
+        if last_sent.tzinfo is None:
+            last_sent = last_sent.replace(tzinfo=timezone.utc)
+        else:
+            last_sent = last_sent.astimezone(timezone.utc)
+        gap = datetime.now(timezone.utc) - last_sent
         if gap.total_seconds() < EMAIL_SESSION_GAP_HRS * 3600:
             hrs_left = EMAIL_SESSION_GAP_HRS - gap.total_seconds() / 3600
             return f"письмо недавно ({hrs_left:.1f}ч до следующего)"

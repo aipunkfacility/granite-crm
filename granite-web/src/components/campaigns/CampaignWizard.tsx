@@ -132,8 +132,9 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
     setPreviewLoading(true);
     try {
       const filters: Record<string, any> = {};
-      if (filterCity) filters.city = filterCity;
-      if (filterSegment) filters.segment = filterSegment;
+      // FIX A1: "__all__" означает «без фильтра» — не отправляем на API
+      if (filterCity && filterCity !== '__all__') filters.city = filterCity;
+      if (filterSegment && filterSegment !== '__all__') filters.segment = filterSegment;
       if (filterMinScore) filters.min_score = parseInt(filterMinScore);
       const result = await previewRecipients(filters);
       setPreviewTotal(result.total);
@@ -174,8 +175,9 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
     setError(null);
     try {
       const filters: Record<string, any> = {};
-      if (filterCity) filters.city = filterCity;
-      if (filterSegment) filters.segment = filterSegment;
+      // FIX A1: "__all__" означает «без фильтра» — не отправляем на API
+      if (filterCity && filterCity !== '__all__') filters.city = filterCity;
+      if (filterSegment && filterSegment !== '__all__') filters.segment = filterSegment;
       if (filterMinScore) filters.min_score = parseInt(filterMinScore);
 
       await createCampaign({
@@ -472,7 +474,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                 <div className="p-3 rounded-lg bg-muted border border-border">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Фильтры</p>
                   <p className="font-medium">
-                    {filterCity || 'Все города'} / Сегмент {filterSegment || 'Все'} / Мин. скор {filterMinScore || '0'}
+                    {filterCity && filterCity !== '__all__' ? filterCity : 'Все города'} / Сегмент {filterSegment && filterSegment !== '__all__' ? filterSegment : 'Все'} / Мин. скор {filterMinScore || '0'}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted border border-border">

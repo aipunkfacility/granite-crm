@@ -142,7 +142,7 @@ export default function CampaignsPage() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {campaigns.map((campaign) => {
             const status = STATUS_CONFIG[campaign.status] || STATUS_CONFIG.draft;
-            const totalTargets = campaign.total_recipients || campaign.total_sent || 0;
+            const totalTargets = campaign.total_recipients ?? campaign.total_sent ?? 0;
             const progress = totalTargets > 0 
               ? Math.round((campaign.total_sent / totalTargets) * 100) 
               : 0;

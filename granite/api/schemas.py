@@ -82,7 +82,7 @@ class UpdateCampaignRequest(BaseModel):
     template_name: Optional[str] = Field(None, min_length=1)
     subject_a: Optional[str] = Field(None, description="Тема письма вариант A")
     subject_b: Optional[str] = Field(None, description="Тема письма вариант B (для A/B теста)")
-    filters: Optional[dict] = Field(None, description="Фильтры кампании {city, segment, min_score}")
+    filters: Optional[CampaignFilters] = Field(None, description="Фильтры кампании {city, segment, min_score}")
 
 
 class CreateTemplateRequest(BaseModel):

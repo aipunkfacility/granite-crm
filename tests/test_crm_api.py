@@ -287,10 +287,11 @@ class TestCampaignWatchdog:
         return c
 
     def test_stale_running_reset(self, client, db_session, monkeypatch):
-        """Кампания с устаревшим created_at сбрасывается в paused."""
+        """Кампания с устаревшим created_at и updated_at сбрасывается в paused."""
         monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
         old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
-        self._make_campaign(db_session, status="running", created_at=old_time)
+        # FIX A8: updated_at теперь имеет default — нужно явно установить old_time
+        self._make_campaign(db_session, status="running", created_at=old_time, updated_at=old_time)
         db_session.commit()
 
         r = client.post("/api/v1/campaigns/stale")
@@ -343,11 +344,13 @@ class TestCampaignWatchdog:
         assert r.json()["count"] == 0
 
     def test_started_at_fallback(self, client, db_session, monkeypatch):
-        """Если updated_at=None, но started_at старый — кампания сбрасывается."""
+        """Если started_at старый, а updated_at не обновлялся — кампания сбрасывается."""
         monkeypatch.setenv("STALE_CAMPAIGN_MINUTES", "5")
         old_started = datetime.now(timezone.utc) - timedelta(minutes=10)
+        # FIX A8: updated_at и created_at теперь имеют default — явно делаем их старыми
         self._make_campaign(
             db_session, status="running", started_at=old_started,
+            updated_at=old_started, created_at=old_started,
         )
         db_session.commit()
 

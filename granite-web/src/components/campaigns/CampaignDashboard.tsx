@@ -314,7 +314,7 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              {Object.entries(abStats.variants).map(([variant, data]: [string, any]) => (
+              {Object.entries(abStats.variants).map(([variant, variantData]) => (
                 <div key={variant} className={cn(
                   "p-4 rounded-xl border-2",
                   variant === 'A' ? 'border-blue-300 bg-blue-50 dark:bg-blue-950/20' : 'border-purple-300 bg-purple-50 dark:bg-purple-950/20'
@@ -327,23 +327,23 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
                       Вариант {variant}
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{data.subject}</p>
+                  <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{variantData.subject}</p>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div>
-                      <p className="text-lg font-bold">{data.sent}</p>
+                      <p className="text-lg font-bold">{variantData.sent}</p>
                       <p className="text-[9px] uppercase text-muted-foreground">Отправлено</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-success">{data.opened}</p>
+                      <p className="text-lg font-bold text-success">{variantData.opened}</p>
                       <p className="text-[9px] uppercase text-muted-foreground">Открыто</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold text-primary">{data.replied}</p>
+                      <p className="text-lg font-bold text-primary">{variantData.replied}</p>
                       <p className="text-[9px] uppercase text-muted-foreground">Ответов</p>
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t text-center">
-                    <p className="text-sm font-bold text-primary">{data.reply_rate}% Reply Rate</p>
+                    <p className="text-sm font-bold text-primary">{variantData.reply_rate}% Reply Rate</p>
                   </div>
                 </div>
               ))}
