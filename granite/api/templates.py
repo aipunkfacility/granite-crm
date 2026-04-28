@@ -72,6 +72,7 @@ def list_templates(
             "body": t.body,
             "body_type": t.body_type,
             "description": t.description,
+            "retired": bool(t.retired),
             "created_at": t.created_at.isoformat() if t.created_at else None,
             "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         }
@@ -93,6 +94,7 @@ def get_template(template_name: str, db: Session = Depends(get_db)):
         "body": t.body,
         "body_type": t.body_type,
         "description": t.description,
+        "retired": bool(t.retired),
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
     }

@@ -323,8 +323,7 @@ def run_campaign(campaign_id: int, request: Request):
             sa_text(
                 "UPDATE crm_email_campaigns SET status='running', updated_at=:now "
                 "WHERE id=:id AND status NOT IN ('running', 'completed')"
-            ),
-            {"id": campaign_id, "now": datetime.now(timezone.utc)},
+            ).bindparams(id=campaign_id, now=datetime.now(timezone.utc)),
         )
         pre_session.commit()
         if result.rowcount == 0:

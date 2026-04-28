@@ -284,6 +284,7 @@ class TemplateResponse(BaseModel):
     body: str
     body_type: str = "plain"
     description: str = ""
+    retired: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
