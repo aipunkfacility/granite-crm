@@ -38,6 +38,7 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
 
   const [abStats, setAbStats] = useState<any>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const prevStatusRef = useRef<string | null>(null);
 
   // Загрузка деталей кампании
   const { data: campaign, isLoading, refetch } = useQuery({
@@ -56,8 +57,11 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
     }
   }, [campaignId, campaign?.subject_b]);
 
-  // SSE live-прогресс
+  // SSE live-прогресс — подключаемся только при status=running
   useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = campaign?.status || null;
+
     if (!campaign || campaign.status !== 'running') {
       // Закрываем SSE если кампания не запущена
       if (eventSourceRef.current) {
@@ -67,9 +71,12 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
       return;
     }
 
+    // Переподключаемся только при смене статуса на running
+    if (prevStatus === 'running') return;
+
     // Подключаемся к SSE прогресса
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-    const es = new EventSource(`${baseUrl}campaigns/${campaignId}/progress`);
+    const es = new EventSource(`${baseUrl}/campaigns/${campaignId}/progress`);
     eventSourceRef.current = es;
 
     es.onmessage = (event) => {
@@ -96,7 +103,7 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
       es.close();
       eventSourceRef.current = null;
     };
-  }, [campaignId, campaign?.status, refetch]);
+  }, [campaignId, campaign?.status]); // Убран refetch из deps
 
   if (isLoading || !campaign) {
     return (

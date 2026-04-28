@@ -49,7 +49,8 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
   const [previewData, setPreviewData] = useState<ReplyPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [subjectOverride, setSubjectOverride] = useState<string | null>(null);
+  const [subjectOverride, setSubjectOverride] = useState<string>('');
+  const [subjectEdited, setSubjectEdited] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
 
@@ -64,6 +65,7 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
       const result = await previewReply(companyId, templateName);
       setPreviewData(result);
       setSubjectOverride(result.subject);
+      setSubjectEdited(false);
     } catch (e: any) {
       toast.error(e?.message || 'Ошибка предпросмотра');
     } finally {
@@ -77,13 +79,15 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
     try {
       await sendReply(companyId, {
         template_name: previewData.template_name,
-        subject_override: subjectOverride !== previewData.subject ? subjectOverride || undefined : undefined,
+        subject_override: subjectEdited ? (subjectOverride || undefined) : undefined,
       });
       toast.success('Reply отправлен!');
       setPreviewData(null);
-      setSubjectOverride(null);
+      setSubjectOverride('');
+      setSubjectEdited(false);
       queryClient.invalidateQueries({ queryKey: ['company', companyId] });
       queryClient.invalidateQueries({ queryKey: ['companies'] });
+      queryClient.invalidateQueries({ queryKey: ['touches', companyId] });
     } catch (e: any) {
       toast.error(e?.message || 'Ошибка отправки');
     } finally {
@@ -93,7 +97,8 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
 
   const handleCancel = () => {
     setPreviewData(null);
-    setSubjectOverride(null);
+    setSubjectOverride('');
+    setSubjectEdited(false);
   };
 
   return (
@@ -125,8 +130,8 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
               <div>
                 <label className="text-[10px] font-bold text-muted-foreground uppercase mb-1 block">Тема</label>
                 <Textarea
-                  value={subjectOverride || ''}
-                  onChange={e => setSubjectOverride(e.target.value)}
+                  value={subjectOverride}
+                  onChange={e => { setSubjectOverride(e.target.value); setSubjectEdited(true); }}
                   className="min-h-[32px] text-sm py-1"
                   rows={1}
                 />

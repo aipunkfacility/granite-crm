@@ -50,14 +50,6 @@ def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
     Позволяет wizard показать «Будет отправлено: N компаниям» до создания.
     Возвращает количество и первые 5 компаний-получателей для проверки.
     """
-    # Создаём виртуальную кампанию для повторного использования _get_campaign_recipients
-    dummy = CrmEmailCampaignRow(
-        name="__preview__",
-        template_name="__preview__",
-        filters=data.model_dump(exclude_none=True),
-    )
-    # Нам не нужен полный _get_campaign_recipients (требует template_name),
-    # поэтому считаем вручную с теми же фильтрами
     filters = data.model_dump(exclude_none=True)
 
     q = (
@@ -161,6 +153,7 @@ def list_campaigns(
             "total_sent": c.total_sent,
             "total_opened": c.total_opened, "total_replied": c.total_replied,
             "total_errors": c.total_errors or 0,
+            "total_recipients": c.total_recipients,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         }
         for c in rows
@@ -282,12 +275,23 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
     # Phase 4: Validator warnings — предупреждения для draft кампаний
     validator_warnings: list[str] = []
     if campaign.status == "draft":
+        # Проверяем тему письма
         if not campaign.subject_a and not campaign.subject_b:
             tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
             if tmpl and not tmpl.subject:
                 validator_warnings.append("Шаблон не содержит тему письма — задайте subject_a вручную")
+        # Проверяем получателей
         if preview_recipients == 0:
             validator_warnings.append("Нет получателей по заданным фильтрам")
+        # Проверяем retired шаблон
+        tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
+        if tmpl and tmpl.retired:
+            validator_warnings.append("Шаблон помечен как архивный (retired) — выберите актуальный")
+        # Проверяем A/B: только один вариант заполнен
+        if campaign.subject_a and not campaign.subject_b:
+            pass  # Это нормально — только вариант A
+        elif campaign.subject_b and not campaign.subject_a:
+            validator_warnings.append("A/B тест: задан только вариант B — укажите также вариант A")
 
     return {
         "id": campaign.id, "name": campaign.name,
@@ -342,6 +346,12 @@ def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session =
         cf = CampaignFilters(**updates["filters"])
         campaign.filters = cf.model_dump(exclude_none=True)
         updates.pop("filters")
+
+    # Валидируем допустимые поля (защита от произвольного setattr)
+    _ALLOWED_UPDATE_FIELDS = {"name", "template_name", "subject_a", "subject_b"}
+    for key in list(updates.keys()):
+        if key not in _ALLOWED_UPDATE_FIELDS:
+            updates.pop(key)
 
     for key, value in updates.items():
         setattr(campaign, key, value)

@@ -123,7 +123,7 @@ class TestSendReply:
         assert resp.status_code == 404
 
     def test_send_creates_touch(self, client, db_session):
-        """Отправка reply — создаётся исходящее касание в crm_touches."""
+        """Отправка reply — создаётся исходящее касание с отрендеренным телом."""
         company_id = create_company(db_session, funnel_stage="replied",
                                     emails=["reply-touch@example.com"])
         _seed_reply_template(db_session)
@@ -141,3 +141,7 @@ class TestSendReply:
             company_id=company_id, direction="outgoing"
         ).all()
         assert len(touches) >= 1
+        # P4-H3 fix: body содержит отрендеренный текст, а не мета-строку
+        touch = touches[-1]
+        assert "100 000" in touch.body or "Цены" in touch.body
+        assert "reply_template=reply_price" in (touch.note or "")

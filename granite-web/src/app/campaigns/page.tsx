@@ -122,11 +122,12 @@ export default function CampaignsPage() {
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {campaigns.map((campaign) => {
             const status = STATUS_CONFIG[campaign.status] || STATUS_CONFIG.draft;
-            const progress = campaign.total_targets > 0 
-              ? Math.round((campaign.sent_count / campaign.total_targets) * 100) 
+            const totalTargets = campaign.total_recipients || campaign.total_sent || 0;
+            const progress = totalTargets > 0 
+              ? Math.round((campaign.total_sent / totalTargets) * 100) 
               : 0;
-            const openRate = campaign.sent_count > 0 
-              ? Math.round((campaign.open_count / campaign.sent_count) * 100) 
+            const openRate = campaign.total_sent > 0 
+              ? Math.round((campaign.total_opened / campaign.total_sent) * 100) 
               : 0;
             const hasAB = !!(campaign.subject_a && campaign.subject_b);
 
@@ -160,15 +161,15 @@ export default function CampaignsPage() {
                     </div>
                     <Progress value={progress} className="h-2" />
                     <div className="flex justify-between text-[11px] text-muted-foreground">
-                      <span>Отправлено: {campaign.sent_count}</span>
-                      <span>Всего: {campaign.total_targets}</span>
+                      <span>Отправлено: {campaign.total_sent}</span>
+                      <span>Всего: {totalTargets}</span>
                     </div>
                   </div>
 
                   {/* Статистика */}
                   <div className="grid grid-cols-4 gap-3 border-t pt-6">
                     <div className="text-center">
-                      <p className="text-xl font-bold text-foreground">{campaign.sent_count}</p>
+                      <p className="text-xl font-bold text-foreground">{campaign.total_sent}</p>
                       <p className="text-[10px] text-muted-foreground uppercase font-semibold">Охват</p>
                     </div>
                     <div className="text-center border-x">
@@ -176,7 +177,7 @@ export default function CampaignsPage() {
                       <p className="text-[10px] text-muted-foreground uppercase font-semibold">Open Rate</p>
                     </div>
                     <div className="text-center">
-                      <p className="text-xl font-bold text-primary">{campaign.replied_count}</p>
+                      <p className="text-xl font-bold text-primary">{campaign.total_replied}</p>
                       <p className="text-[10px] text-muted-foreground uppercase font-semibold">Ответов</p>
                     </div>
                     <div className="text-center border-l">

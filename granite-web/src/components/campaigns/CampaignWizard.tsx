@@ -262,7 +262,9 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                       <span className="font-medium">{selectedTemplate.subject || '(не задана)'}</span>
                     </div>
                     <div className="text-muted-foreground line-clamp-3">
-                      {selectedTemplate.body.substring(0, 200)}...
+                      {selectedTemplate.body.length > 200
+                        ? selectedTemplate.body.substring(0, 200) + '...'
+                        : selectedTemplate.body}
                     </div>
                   </CardContent>
                 </Card>

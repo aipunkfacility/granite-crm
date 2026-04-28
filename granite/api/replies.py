@@ -49,6 +49,7 @@ def _get_reply_context(company: CompanyRow, enriched: EnrichedCompanyRow | None,
         "website": company.website or "",
         "contact_name": "",
         "phone": (company.phones or [""])[0] if company.phones else "",
+        "unsubscribe_url": "",  # Заполняется в send_reply при наличии contact
     }
 
 
@@ -220,14 +221,14 @@ def send_reply(
     if not tracking_id:
         raise HTTPException(500, "Не удалось отправить reply. Проверьте SMTP настройки.")
 
-    # Логируем исходящее касание
+    # Логируем исходящее касание — сохраняем отрендеренное тело письма
     touch = CrmTouchRow(
         company_id=company_id,
         channel="email",
         direction="outgoing",
         subject=subject,
-        body=f"[reply via template={data.template_name}] [tracking_id={tracking_id}]",
-        note=f"reply_template={data.template_name}",
+        body=rendered,
+        note=f"reply_template={data.template_name} tracking_id={tracking_id}",
     )
     db.add(touch)
 

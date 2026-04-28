@@ -11,14 +11,12 @@ export interface Campaign {
   status: 'draft' | 'running' | 'paused' | 'paused_daily_limit' | 'completed';
   subject_a: string | null;
   subject_b: string | null;
-  total_targets: number;
-  sent_count: number;
-  open_count: number;
-  replied_count: number;
+  total_sent: number;
+  total_opened: number;
+  total_replied: number;
   total_errors: number;
+  total_recipients: number | null;
   created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
 }
 
 export interface CampaignDetail {
@@ -126,8 +124,9 @@ export const fetchCampaignProgress = async (campaignId: number): Promise<{
   completed_at: string | null;
 }> => {
   // Используем SSE endpoint для получения текущего прогресса
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
   const response = await fetch(
-    `${apiClient.defaults.baseURL}campaigns/${campaignId}/progress`
+    `${baseUrl}/campaigns/${campaignId}/progress`
   );
   if (!response.ok) throw new Error('Failed to fetch progress');
   const reader = response.body?.getReader();
