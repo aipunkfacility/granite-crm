@@ -104,20 +104,20 @@ class TestJsonExtractFilters:
         assert r.json()["total"] == 1
 
 
-class TestTemplatesCrud:
-    """B1: CRUD шаблонов."""
+class TestTemplatesRead:
+    """B1: GET /templates — чтение из TemplateRegistry (JSON — source of truth)."""
 
     def test_list_templates(self, client):
-        """Сидимые шаблоны из conftest возвращаются."""
+        """Шаблоны из TemplateRegistry возвращаются."""
         r = client.get("/api/v1/templates")
         assert r.status_code == 200
         data = r.json()
         names = [t["name"] for t in data["items"]]
-        assert "cold_email_1" in names
+        assert "cold_email_v1" in names
         assert "tg_intro" in names
 
     def test_get_template(self, client):
-        r = client.get("/api/v1/templates/cold_email_1")
+        r = client.get("/api/v1/templates/cold_email_v1")
         assert r.status_code == 200
         assert r.json()["channel"] == "email"
         assert "{from_name}" in r.json()["body"]
@@ -126,84 +126,33 @@ class TestTemplatesCrud:
         r = client.get("/api/v1/templates/nonexistent")
         assert r.status_code == 404
 
-    def test_create_template(self, client):
+    def test_reload_templates(self, client):
+        """POST /templates/reload — перезагрузка JSON."""
+        r = client.post("/api/v1/templates/reload")
+        assert r.status_code == 200
+        assert r.json()["ok"] is True
+
+    def test_create_template_not_available(self, client):
+        """POST /templates — больше не существует (CUD удалены)."""
         r = client.post("/api/v1/templates", json={
             "name": "follow_up_email",
             "channel": "email",
             "subject": "Following up",
             "body": "Hi {from_name}, checking in about {company_name}.",
         })
-        assert r.status_code == 201
-        assert r.json()["ok"] is True
+        assert r.status_code in (404, 405)
 
-        # Проверяем что появился в списке
-        r = client.get("/api/v1/templates/follow_up_email")
-        assert r.status_code == 200
-        assert r.json()["body"] == "Hi {from_name}, checking in about {company_name}."
-
-    def test_create_template_duplicate(self, client):
-        """Нельзя создать шаблон с существующим name."""
-        r = client.post("/api/v1/templates", json={
-            "name": "cold_email_1",
-            "channel": "email",
-            "body": "dup",
-        })
-        assert r.status_code == 409
-
-    def test_create_template_invalid_name(self, client):
-        """name должен соответствовать pattern ^[a-z0-9_]+$."""
-        r = client.post("/api/v1/templates", json={
-            "name": "My Template!",
-            "channel": "email",
-            "body": "test",
-        })
-        assert r.status_code == 422
-
-    def test_create_template_empty_body(self, client):
-        r = client.post("/api/v1/templates", json={
-            "name": "empty_body",
-            "channel": "tg",
-            "body": "",
-        })
-        assert r.status_code == 422
-
-    def test_update_template(self, client):
+    def test_update_template_not_available(self, client):
+        """PUT /templates/{name} — больше не существует."""
         r = client.put("/api/v1/templates/tg_intro", json={
-            "body": "Updated body for {company_name}.",
+            "body": "Updated body",
         })
-        assert r.status_code == 200
-        assert r.json()["ok"] is True
+        assert r.status_code in (404, 405)
 
-        r = client.get("/api/v1/templates/tg_intro")
-        assert r.json()["body"] == "Updated body for {company_name}."
-
-    def test_update_template_not_found(self, client):
-        r = client.put("/api/v1/templates/nonexistent", json={"body": "x"})
-        assert r.status_code == 404
-
-    def test_delete_template(self, client):
+    def test_delete_template_not_available(self, client):
+        """DELETE /templates/{name} — больше не существует."""
         r = client.delete("/api/v1/templates/tg_intro")
-        assert r.status_code == 200
-
-        r = client.get("/api/v1/templates/tg_intro")
-        assert r.status_code == 404
-
-    def test_delete_template_not_found(self, client):
-        r = client.delete("/api/v1/templates/nonexistent")
-        assert r.status_code == 404
-
-    def test_delete_template_active_campaign(self, client, db_session):
-        """Нельзя удалить шаблон, используемый в активной кампании."""
-        from granite.database import CrmEmailCampaignRow
-        campaign = CrmEmailCampaignRow(
-            name="Active", template_name="cold_email_1", status="running",
-        )
-        db_session.add(campaign)
-        db_session.commit()
-
-        r = client.delete("/api/v1/templates/cold_email_1")
-        assert r.status_code == 409
-        assert "active campaign" in r.json()["error"]
+        assert r.status_code in (404, 405)
 
 
 class TestStatsEndpoint:
@@ -359,86 +308,24 @@ class TestCampaignWatchdog:
         assert r.json()["count"] == 1
 
 
-class TestSeedUpsert:
-    """D2: seed_crm_templates.py использует UPSERT (обновление существующих)."""
+class TestTemplatesContent:
+    """Проверка содержимого шаблонов из TemplateRegistry."""
 
-    def test_upsert_existing_template(self, db_session):
-        """Существующий шаблон обновляется, а не пропускается."""
-        from granite.database import CrmTemplateRow
-        from scripts.seed_crm_templates import _apply_templates
+    def test_email_templates_have_unsubscribe(self, client):
+        """Email-шаблоны содержат плейсхолдер {unsubscribe_url}."""
+        r = client.get("/api/v1/templates?channel=email")
+        assert r.status_code == 200
+        for t in r.json()["items"]:
+            assert "{unsubscribe_url}" in t["body"] or "unsubscribe" in t["body"].lower(), \
+                f"{t['name']} missing unsubscribe placeholder"
 
-        # Создаём шаблон вручную
-        t = CrmTemplateRow(
-            name="cold_email_1", channel="email",
-            subject="Old subject", body="Old body",
-            description="Old desc",
-        )
-        db_session.add(t)
-        db_session.commit()
-
-        inserted, updated = _apply_templates(db_session)
-        assert inserted == 5  # остальные 5 шаблонов созданы
-        assert updated == 1  # cold_email_1 обновлён
-
-        # Проверяем что cold_email_1 обновился
-        row = db_session.query(CrmTemplateRow).filter_by(name="cold_email_1").first()
-        assert row.body != "Old body"
-        assert "ретуш" in row.body
-        assert row.subject != "Old subject"
-
-    def test_upsert_creates_all_new(self, db_session):
-        """На пустой БД — все 6 шаблонов создаются."""
-        from granite.database import CrmTemplateRow
-        from scripts.seed_crm_templates import _apply_templates
-
-        inserted, updated = _apply_templates(db_session)
-        assert inserted == 6
-        assert updated == 0
-
-        names = {r[0] for r in db_session.query(CrmTemplateRow.name).all()}
-        assert names == {
-            "cold_email_1", "follow_up_email",
-            "tg_intro", "tg_follow_up",
-            "wa_intro", "wa_follow_up",
-        }
-
-    def test_upsert_idempotent(self, db_session):
-        """Повторный запуск — 0 inserted, 6 updated (без дублей)."""
-        from granite.database import CrmTemplateRow
-        from scripts.seed_crm_templates import _apply_templates
-
-        inserted1, updated1 = _apply_templates(db_session)
-        assert inserted1 == 6
-        assert updated1 == 0
-
-        inserted2, updated2 = _apply_templates(db_session)
-        assert inserted2 == 0
-        assert updated2 == 6
-
-        total = db_session.query(CrmTemplateRow).count()
-        assert total == 6
-
-    def test_email_templates_contain_url(self, db_session):
-        """MISS-7: Email-шаблоны содержат ссылку на сайт (retouchgrav)."""
-        from granite.database import CrmTemplateRow
-        from scripts.seed_crm_templates import _apply_templates
-
-        _apply_templates(db_session)
-        email_templates = db_session.query(CrmTemplateRow).filter_by(channel="email").all()
-        for t in email_templates:
-            assert "retouchgrav" in t.body or "monument-web" in t.body, f"{t.name} missing website URL"
-
-    def test_messenger_templates_no_url(self, db_session):
+    def test_messenger_templates_no_url(self, client):
         """MISS-7: TG/WA-шаблоны НЕ содержат URL (лучше delivery rate)."""
-        from granite.database import CrmTemplateRow
-        from scripts.seed_crm_templates import _apply_templates
-
-        _apply_templates(db_session)
-        msg_templates = db_session.query(CrmTemplateRow).filter(
-            CrmTemplateRow.channel.in_(["tg", "wa"])
-        ).all()
+        r = client.get("/api/v1/templates")
+        assert r.status_code == 200
+        msg_templates = [t for t in r.json()["items"] if t["channel"] in ("tg", "wa")]
         for t in msg_templates:
-            assert "http" not in t.body, f"{t.name} should not contain URL"
+            assert "http" not in t["body"], f"{t['name']} should not contain URL"
 
 
 class TestTasksWithCompany:

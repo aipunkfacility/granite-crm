@@ -1,10 +1,10 @@
 """Messenger API: отправка через TG/WA."""
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
 from granite.api.schemas import SendMessageRequest, MessengerResultResponse
-from granite.database import CompanyRow, EnrichedCompanyRow, CrmTemplateRow
+from granite.database import CompanyRow, EnrichedCompanyRow
 from granite.messenger.dispatcher import MessengerDispatcher
 
 __all__ = ["router"]
@@ -15,6 +15,7 @@ router = APIRouter()
 def send_message(
     company_id: int,
     data: SendMessageRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Отправить сообщение через мессенджер.
@@ -56,7 +57,7 @@ def send_message(
         raise HTTPException(400, "Provide 'text' or 'template_name'")
 
     if data.template_name and not data.text:
-        template = db.query(CrmTemplateRow).filter_by(name=data.template_name).first()
+        template = request.app.state.template_registry.get(data.template_name)
         if not template:
             raise HTTPException(404, f"Template not found: {data.template_name}")
 

@@ -18,7 +18,7 @@ from granite.api.schemas import (
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
-    CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow,
+    CrmEmailLogRow, CrmEmailCampaignRow,
 )
 from loguru import logger
 
@@ -132,13 +132,13 @@ def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
 
 
 @router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
-def create_campaign(data: CreateCampaignRequest, db: Session = Depends(get_db)):
+def create_campaign(data: CreateCampaignRequest, request: Request, db: Session = Depends(get_db)):
     """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}
 
     FIX HIGH-7: Валидация template_name — проверяем существование шаблона
     до создания кампании, чтобы ошибка обнаружилась сразу, а не при запуске.
     """
-    template = db.query(CrmTemplateRow).filter_by(name=data.template_name).first()
+    template = request.app.state.template_registry.get(data.template_name)
     if not template:
         raise HTTPException(404, f"Template '{data.template_name}' not found")
 
@@ -263,7 +263,7 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
 
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)
-def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
+def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_db)):
     """Детали кампании + предпросмотр получателей + статистика.
 
     FIX-A6: Для completed/paused кампаний — не вызываем тяжёлый
@@ -286,8 +286,8 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
 
     open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
 
-    # P4R-M3: Один запрос шаблона вместо двух
-    tmpl = db.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
+    # P4R-M3: Шаблон из TemplateRegistry (JSON — единственный source of truth)
+    tmpl = request.app.state.template_registry.get(campaign.template_name)
 
     # Phase 4: Validator warnings — предупреждения для draft кампаний
     validator_warnings: list[str] = []
@@ -299,9 +299,6 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
         # Проверяем получателей
         if preview_recipients_count == 0:
             validator_warnings.append("Нет получателей по заданным фильтрам")
-        # Проверяем retired шаблон
-        if tmpl and tmpl.retired:
-            validator_warnings.append("Шаблон помечен как архивный (retired) — выберите актуальный")
         # Проверяем A/B: только один вариант заполнен
         if campaign.subject_a and not campaign.subject_b:
             pass  # Это нормально — только вариант A
@@ -328,7 +325,7 @@ def get_campaign(campaign_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/campaigns/{campaign_id}", response_model=OkResponse)
-def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session = Depends(get_db)):
+def update_campaign(campaign_id: int, data: UpdateCampaignRequest, request: Request, db: Session = Depends(get_db)):
     """Обновить кампанию (name, template_name).
 
     Можно обновить только черновики (draft) и приостановленные (paused).
@@ -348,7 +345,7 @@ def update_campaign(campaign_id: int, data: UpdateCampaignRequest, db: Session =
     updates = data.model_dump(exclude_unset=True)
 
     if "template_name" in updates:
-        template = db.query(CrmTemplateRow).filter_by(name=updates["template_name"]).first()
+        template = request.app.state.template_registry.get(updates["template_name"])
         if not template:
             raise HTTPException(
                 404,
@@ -469,7 +466,7 @@ def run_campaign(campaign_id: int, request: Request):
 
     def generate():
         import time as _time
-        from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow
+        from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTouchRow
         from granite.email.sender import EmailSender
 
         # Задача 2.3: задержка и лимиты из config.yaml (секция email)
@@ -501,9 +498,11 @@ def run_campaign(campaign_id: int, request: Request):
                 yield f"data: {json.dumps({'error': f'Cannot restart campaign in status {campaign.status}'})}\n\n"
                 return
 
-            template = session.query(CrmTemplateRow).filter_by(name=campaign.template_name).first()
+            template = request.app.state.template_registry.get(campaign.template_name)
             if not template:
-                yield f"data: {json.dumps({'error': 'Template not found'})}\n\n"
+                campaign.status = "paused"
+                session.commit()
+                yield f"data: {json.dumps({'error': 'Template not found — campaign paused'})}\n\n"
                 return
 
             recipients = _get_campaign_recipients(campaign, session)
@@ -588,7 +587,7 @@ def run_campaign(campaign_id: int, request: Request):
                         body_text=body_text,
                         body_html=rendered,
                         template_name=template.name,
-                        template_id=template.id,
+                        rendered_body=body_text,  # plain text для истории
                         db_session=session,
                         campaign_id=campaign.id,
                         ab_variant=ab_variant,
@@ -600,7 +599,7 @@ def run_campaign(campaign_id: int, request: Request):
                         subject=subject,
                         body_text=rendered,
                         template_name=template.name,
-                        template_id=template.id,
+                        rendered_body=rendered,  # plain text = сам рендер
                         db_session=session,
                         campaign_id=campaign.id,
                         ab_variant=ab_variant,

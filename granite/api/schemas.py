@@ -85,42 +85,6 @@ class UpdateCampaignRequest(BaseModel):
     filters: Optional[CampaignFilters] = Field(None, description="Фильтры кампании {city, segment, min_score}")
 
 
-class CreateTemplateRequest(BaseModel):
-    name: str = Field(..., min_length=1, max_length=64, pattern=r"^[a-z0-9_\u0410-\u042f\u0430-\u044f]+$")  # Задача 15: кириллица разрешена, max_length=64
-    channel: str = Field(..., pattern="^(email|tg|wa)$")
-    subject: str = ""
-    body: str = Field(..., min_length=1, max_length=500_000)
-    body_type: str = Field("plain", pattern="^(plain|html)$")
-    description: str = ""
-
-    @model_validator(mode="after")
-    def _validate_html_email_only(self):
-        """HTML-шаблоны допускаются только для email-канала."""
-        if self.body_type == "html" and self.channel != "email":
-            raise ValueError("HTML templates are only supported for email channel")
-        return self
-
-
-class UpdateTemplateRequest(BaseModel):
-    channel: Optional[str] = Field(None, pattern="^(email|tg|wa)$")
-    subject: Optional[str] = None
-    body: Optional[str] = Field(None, min_length=1, max_length=500_000)
-    body_type: Optional[str] = Field(None, pattern="^(plain|html)$")
-    description: Optional[str] = None
-
-    @model_validator(mode="after")
-    def _validate_html_email_only(self):
-        """При смене body_type или channel — проверить совместимость.
-
-        Полная валидация делается в эндпоинте, где известен текущий
-        channel/body_type шаблона. Здесь проверяем случай, когда оба
-        поля переданы одновременно.
-        """
-        if self.body_type == "html" and self.channel in ("tg", "wa"):
-            raise ValueError("HTML templates are only supported for email channel")
-        return self
-
-
 class SendMessageRequest(BaseModel):
     channel: str = Field(..., pattern="^(tg|wa)$")
     template_name: Optional[str] = None
@@ -200,7 +164,7 @@ class PreviewReplyRequest(BaseModel):
 
 class CreateCampaignRequest(BaseModel):
     name: str = Field("Campaign", min_length=1)
-    template_name: str = Field("cold_email_1", min_length=1)
+    template_name: str = Field("cold_email_v1", min_length=1)
     filters: CampaignFilters = Field(default_factory=CampaignFilters)
     subject_a: Optional[str] = Field(None, description="Тема письма вариант A (по умолчанию — из шаблона)")
     subject_b: Optional[str] = Field(None, description="Тема письма вариант B (для A/B теста)")
@@ -311,16 +275,13 @@ class TaskResponse(BaseModel):
 
 
 class TemplateResponse(BaseModel):
-    """Шаблон сообщения."""
+    """Шаблон сообщения из TemplateRegistry (JSON — source of truth)."""
     name: str
     channel: str
     subject: str = ""
     body: str
     body_type: str = "plain"
     description: str = ""
-    retired: bool = False
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

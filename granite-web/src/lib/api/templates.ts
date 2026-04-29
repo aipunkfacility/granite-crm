@@ -15,8 +15,6 @@ export interface Template {
   body: string;
   body_type: BodyType;
   description: string;
-  created_at: string | null;
-  updated_at: string | null;
 }
 
 /** Параметры для GET /templates */
@@ -26,29 +24,9 @@ export interface FetchTemplatesParams {
   per_page?: number;
 }
 
-/** Данные для POST /templates (создание) */
-export interface CreateTemplatePayload {
-  name: string;
-  channel: Channel;
-  subject?: string;
-  body: string;
-  body_type?: BodyType;
-  description?: string;
-}
-
-/** Данные для PUT /templates/{name} (обновление) */
-export interface UpdateTemplatePayload {
-  channel?: Channel;
-  subject?: string;
-  body?: string;
-  body_type?: BodyType;
-  description?: string;
-}
-
 /** Ответ OkResponse от бэкенда */
 export interface OkResponse {
   ok: boolean;
-  warnings?: string[];
   message?: string;
 }
 
@@ -72,31 +50,10 @@ export const fetchTemplate = async (name: string): Promise<Template> => {
 };
 
 /**
- * POST /templates — создать шаблон.
- * Возвращает OkResponse (может содержать warnings о неизвестных плейсхолдерах).
+ * POST /templates/reload — перезагрузить шаблоны из JSON без рестарта.
+ * Использовать после ручного редактирования data/email_templates.json.
  */
-export const createTemplate = async (payload: CreateTemplatePayload): Promise<OkResponse> => {
-  const { data } = await apiClient.post<OkResponse>('templates', payload);
-  return data;
-};
-
-/**
- * PUT /templates/{name} — обновить шаблон.
- * Возвращает OkResponse (может содержать warnings).
- */
-export const updateTemplate = async (
-  name: string,
-  payload: UpdateTemplatePayload,
-): Promise<OkResponse> => {
-  const { data } = await apiClient.put<OkResponse>(`templates/${name}`, payload);
-  return data;
-};
-
-/**
- * DELETE /templates/{name} — удалить шаблон.
- * Нельзя удалить, если используется в активной кампании (409).
- */
-export const deleteTemplate = async (name: string): Promise<OkResponse> => {
-  const { data } = await apiClient.delete<OkResponse>(`templates/${name}`);
+export const reloadTemplates = async (): Promise<OkResponse> => {
+  const { data } = await apiClient.post<OkResponse>('templates/reload');
   return data;
 };

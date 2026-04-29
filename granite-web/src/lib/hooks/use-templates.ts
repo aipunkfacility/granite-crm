@@ -2,12 +2,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchTemplates,
   fetchTemplate,
-  createTemplate,
-  updateTemplate,
-  deleteTemplate,
+  reloadTemplates,
   FetchTemplatesParams,
-  CreateTemplatePayload,
-  UpdateTemplatePayload,
 } from '@/lib/api/templates';
 import { toast } from 'sonner';
 
@@ -34,61 +30,19 @@ export function useTemplate(name: string | null) {
 }
 
 /**
- * Создать шаблон. После успеха — инвалидировать кэш списка.
- * Бэкенд может вернуть warnings о неизвестных плейсхолдерах.
+ * Перезагрузить шаблоны из JSON без рестарта сервера.
+ * Использовать после ручного редактирования data/email_templates.json.
  */
-export function useCreateTemplate() {
+export function useReloadTemplates() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: CreateTemplatePayload) => createTemplate(payload),
+    mutationFn: () => reloadTemplates(),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['templates'] });
-      if (result.warnings?.length) {
-        toast.warning(`Неизвестные плейсхолдеры: ${result.warnings.join(', ')}`);
-      }
-      toast.success('Шаблон создан');
+      toast.success(result.message || 'Шаблоны перезагружены');
     },
     onError: (err: Error) => {
-      toast.error(`Ошибка создания: ${err.message}`);
-    },
-  });
-}
-
-/**
- * Обновить шаблон. После успеха — инвалидировать кэш списка и конкретного шаблона.
- */
-export function useUpdateTemplate() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ name, payload }: { name: string; payload: UpdateTemplatePayload }) =>
-      updateTemplate(name, payload),
-    onSuccess: (result, { name }) => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
-      queryClient.invalidateQueries({ queryKey: ['templates', name] });
-      if (result.warnings?.length) {
-        toast.warning(`Неизвестные плейсхолдеры: ${result.warnings.join(', ')}`);
-      }
-      toast.success('Шаблон обновлён');
-    },
-    onError: (err: Error) => {
-      toast.error(`Ошибка обновления: ${err.message}`);
-    },
-  });
-}
-
-/**
- * Удалить шаблон. Нельзя удалить, если используется в активной кампании (409).
- */
-export function useDeleteTemplate() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (name: string) => deleteTemplate(name),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates'] });
-      toast.success('Шаблон удалён');
-    },
-    onError: (err: Error) => {
-      toast.error(`Ошибка удаления: ${err.message}`);
+      toast.error(`Ошибка перезагрузки: ${err.message}`);
     },
   });
 }

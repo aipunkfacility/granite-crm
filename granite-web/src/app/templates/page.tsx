@@ -1,17 +1,16 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Template, Channel } from '@/lib/api/templates';
-import { useTemplates, useDeleteTemplate } from '@/lib/hooks/use-templates';
+import { Channel } from '@/lib/api/templates';
+import { useTemplates, useReloadTemplates } from '@/lib/hooks/use-templates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TemplateCard } from '@/components/templates/TemplateCard';
-import { TemplateFormDialog } from '@/components/templates/TemplateFormDialog';
 import { TemplatePreviewDialog } from '@/components/templates/TemplatePreviewDialog';
 import {
   FileText,
-  Plus,
+  RefreshCw,
   Search,
   Mail,
   MessageCircle,
@@ -32,12 +31,10 @@ export default function TemplatesPage() {
   const { data, isLoading } = useTemplates(
     channelFilter !== 'all' ? { channel: channelFilter as Channel } : {},
   );
-  const deleteMutation = useDeleteTemplate();
+  const reloadMutation = useReloadTemplates();
 
   // Dialog state
-  const [formOpen, setFormOpen] = useState(false);
-  const [editTemplate, setEditTemplate] = useState<Template | null>(null);
-  const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
+  const [previewTemplate, setPreviewTemplate] = useState<any>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const templates = data?.items || [];
@@ -55,23 +52,7 @@ export default function TemplatesPage() {
     );
   }, [templates, search]);
 
-  const handleEdit = (template: Template) => {
-    setEditTemplate(template);
-    setFormOpen(true);
-  };
-
-  const handleCreate = () => {
-    setEditTemplate(null);
-    setFormOpen(true);
-  };
-
-  const handleDelete = (template: Template) => {
-    if (confirm(`Удалить шаблон «${template.name}»?`)) {
-      deleteMutation.mutate(template.name);
-    }
-  };
-
-  const handlePreview = (template: Template) => {
+  const handlePreview = (template: any) => {
     setPreviewTemplate(template);
     setPreviewOpen(true);
   };
@@ -82,11 +63,18 @@ export default function TemplatesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">Шаблоны</h1>
-          <p className="text-muted-foreground">Управление шаблонами сообщений для email, Telegram и WhatsApp.</p>
+          <p className="text-muted-foreground">
+            Шаблоны сообщений для email, Telegram и WhatsApp.{' '}
+            <span className="text-xs">(JSON — единственный source of truth)</span>
+          </p>
         </div>
-        <Button onClick={handleCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Создать шаблон
+        <Button
+          onClick={() => reloadMutation.mutate()}
+          disabled={reloadMutation.isPending}
+          variant="outline"
+        >
+          <RefreshCw className={cn('mr-2 h-4 w-4', reloadMutation.isPending && 'animate-spin')} />
+          Перезагрузить из JSON
         </Button>
       </div>
 
@@ -152,15 +140,9 @@ export default function TemplatesPage() {
           </h3>
           <p className="text-muted-foreground mt-1">
             {templates.length === 0
-              ? 'Создайте первый шаблон сообщения для начала работы.'
+              ? 'Добавьте шаблоны в data/email_templates.json и нажмите «Перезагрузить».'
               : 'Попробуйте изменить фильтры или поисковый запрос.'}
           </p>
-          {templates.length === 0 && (
-            <Button className="mt-4" onClick={handleCreate}>
-              <Plus className="mr-2 h-4 w-4" />
-              Создать шаблон
-            </Button>
-          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -168,8 +150,6 @@ export default function TemplatesPage() {
             <TemplateCard
               key={template.name}
               template={template}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
               onPreview={handlePreview}
             />
           ))}
@@ -177,15 +157,6 @@ export default function TemplatesPage() {
       )}
 
       {/* Dialogs */}
-      <TemplateFormDialog
-        isOpen={formOpen}
-        onClose={() => {
-          setFormOpen(false);
-          setEditTemplate(null);
-        }}
-        template={editTemplate}
-      />
-
       <TemplatePreviewDialog
         isOpen={previewOpen}
         onClose={() => {

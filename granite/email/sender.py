@@ -4,7 +4,7 @@
     from granite.email.sender import EmailSender
     sender = EmailSender()
     tracking_id = sender.send(company_id=42, email_to="info@company.ru",
-                              template_name="cold_email_1")
+                              template_name="cold_email_v1")
 """
 import html
 import os
@@ -68,7 +68,7 @@ class EmailSender:
         body_text: str,
         body_html: str | None = None,
         template_name: str = "",
-        template_id: int | None = None,
+        rendered_body: str = "",
         db_session=None,
         campaign_id: int | None = None,
         ab_variant: str | None = None,
@@ -86,6 +86,7 @@ class EmailSender:
             body_html: опциональная HTML версия. Если None — генерируется
                        из body_text через <pre> (обратная совместимость).
             template_name: имя шаблона (для логирования).
+            rendered_body: plain text рендер письма (для истории, ~1-2 КБ).
             db_session: открытая сессия БД. Если передана — лог пишется в неё.
                         Если None — лог НЕ пишется.
             campaign_id: ID кампании (если письмо из кампании).
@@ -128,21 +129,21 @@ class EmailSender:
             logger.info(f"Email sent -> {email_to} (tracking={tracking_id})")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
-                                template_name, tracking_id, template_id=template_id,
+                                template_name, tracking_id, rendered_body=rendered_body,
                                 campaign_id=campaign_id, ab_variant=ab_variant)
             return tracking_id
         except smtplib.SMTPPermanentError as e:
             logger.error(f"Email PERMANENT FAILURE -> {email_to}: {e}")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
-                                template_name, tracking_id, error=str(e), template_id=template_id,
+                                template_name, tracking_id, error=str(e), rendered_body=rendered_body,
                                 campaign_id=campaign_id, ab_variant=ab_variant)
             return None
         except Exception as e:
             logger.error(f"Email FAILED after retries -> {email_to}: {e}")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
-                                template_name, tracking_id, error=str(e), template_id=template_id,
+                                template_name, tracking_id, error=str(e), rendered_body=rendered_body,
                                 campaign_id=campaign_id, ab_variant=ab_variant)
             return None
 
@@ -195,7 +196,7 @@ class EmailSender:
         template_name: str,
         tracking_id: str,
         error: str = "",
-        template_id: int | None = None,
+        rendered_body: str = "",
         campaign_id: int | None = None,
         ab_variant: str | None = None,
     ) -> None:
@@ -211,6 +212,6 @@ class EmailSender:
             status="sent" if not error else "failed",
             sent_at=datetime.now(timezone.utc) if not error else None,
             error_message=error,
-            template_id=template_id,
+            rendered_body=rendered_body or None,  # Храним только plain text (~1-2 КБ)
             ab_variant=ab_variant,
         ))

@@ -287,7 +287,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                 </Select>
                 {emailTemplates.length === 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Нет email-шаблонов. Создайте шаблон на странице «Шаблоны».
+                    Нет email-шаблонов. Добавьте шаблон в data/email_templates.json и нажмите «Перезагрузить из JSON» на странице «Шаблоны».
                   </p>
                 )}
               </div>

@@ -58,6 +58,13 @@ async def lifespan(app: FastAPI):
     EmailSender.init_email_config(config)
     _init_rate_limits(config)
 
+    # TemplateRegistry: JSON как единственный source of truth
+    from granite.templates import TemplateRegistry
+    template_json_path = os.path.join(os.path.dirname(config_path), "data", "email_templates.json")
+    if not os.path.exists(template_json_path):
+        template_json_path = "data/email_templates.json"  # fallback
+    app.state.template_registry = TemplateRegistry(template_json_path)
+
     logger.info(f"CRM API started. DB: {db._db_path}")
 
     # Задача 2.1: Recovery — все running кампании → paused при старте сервера.

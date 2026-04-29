@@ -1,25 +1,14 @@
-"""Тесты для granite/api/replies.py — POST /companies/{id}/reply и preview."""
+"""Тесты для granite/api/replies.py — POST /companies/{id}/reply и preview.
+
+Шаблон reply_price берётся из TemplateRegistry (JSON — source of truth),
+не из БД. conftest.py добавляет его в тестовый JSON.
+"""
 from unittest.mock import patch
 
 from granite.database import (
-    CrmContactRow, CrmTemplateRow, CrmTouchRow,
+    CrmContactRow, CrmTouchRow,
 )
 from tests.helpers import create_company
-
-
-def _seed_reply_template(db_session):
-    """Создать шаблон reply_price для тестов."""
-    tmpl = db_session.query(CrmTemplateRow).filter_by(name="reply_price").first()
-    if not tmpl:
-        tmpl = CrmTemplateRow(
-            name="reply_price",
-            channel="email",
-            subject="Re: {company_name} — цены",
-            body="Цены на услуги: от 100 000 руб.",
-        )
-        db_session.add(tmpl)
-        db_session.commit()
-    return tmpl
 
 
 def _seed_incoming_touch(db_session, company_id):
@@ -46,7 +35,6 @@ class TestPreviewReply:
     def test_preview_success(self, client, db_session):
         """Предпросмотр reply — возвращает отрендеренный шаблон."""
         company_id = create_company(db_session, funnel_stage="replied")
-        _seed_reply_template(db_session)
         _seed_incoming_touch(db_session, company_id)
         db_session.commit()
 
@@ -56,8 +44,9 @@ class TestPreviewReply:
         assert resp.status_code == 200, f"Got {resp.status_code}: {resp.text}"
         data = resp.json()
         assert data["company_id"] == company_id
-        assert "Re:" in data["subject"] or "цены" in data["subject"].lower()
-        assert "100 000" in data["body"]
+        assert "Re:" in data["subject"] or "retouch" in data["subject"].lower() or "original" in data["subject"].lower()
+        # Шаблон reply_price из JSON содержит "Цена ретуши"
+        assert "Цена" in data["body"] or "ретуш" in data["body"]
 
     def test_preview_template_not_found(self, client, db_session):
         """Предпросмотр reply с несуществующим шаблоном — 404."""
@@ -80,7 +69,6 @@ class TestPreviewReply:
     def test_preview_no_email(self, client, db_session):
         """Предпросмотр reply для компании без email — 400."""
         company_id = create_company(db_session, emails=[])
-        _seed_reply_template(db_session)
         db_session.commit()
 
         resp = client.post(f"/api/v1/companies/{company_id}/reply/preview", json={
@@ -92,7 +80,6 @@ class TestPreviewReply:
     def test_preview_stop_automation_warning(self, client, db_session):
         """Предпросмотр reply для компании с stop_automation — предупреждение."""
         company_id = create_company(db_session, emails=["stop-preview@test.com"])
-        _seed_reply_template(db_session)
         # Устанавливаем stop_automation
         contact = db_session.query(CrmContactRow).filter_by(company_id=company_id).first()
         if contact:
@@ -118,7 +105,6 @@ class TestSendReply:
         """Отправка reply — mock SMTP, проверяем успешный ответ."""
         company_id = create_company(db_session, funnel_stage="replied",
                                     emails=["reply-test@example.com"])
-        _seed_reply_template(db_session)
         _seed_incoming_touch(db_session, company_id)
         db_session.commit()
 
@@ -135,7 +121,6 @@ class TestSendReply:
         """Отправка reply с переопределённой темой."""
         company_id = create_company(db_session, funnel_stage="replied",
                                     emails=["reply-override@example.com"])
-        _seed_reply_template(db_session)
         _seed_incoming_touch(db_session, company_id)
         db_session.commit()
 
@@ -160,7 +145,6 @@ class TestSendReply:
         """Отправка reply — создаётся исходящее касание с отрендеренным телом."""
         company_id = create_company(db_session, funnel_stage="replied",
                                     emails=["reply-touch@example.com"])
-        _seed_reply_template(db_session)
         _seed_incoming_touch(db_session, company_id)
         db_session.commit()
 
@@ -175,16 +159,15 @@ class TestSendReply:
             company_id=company_id, direction="outgoing"
         ).all()
         assert len(touches) >= 1
-        # P4-H3 fix: body содержит отрендеренный текст, а не мета-строку
+        # Body содержит отрендеренный текст (из шаблона reply_price)
         touch = touches[-1]
-        assert "100 000" in touch.body or "Цены" in touch.body
+        assert "ретуш" in touch.body or "Цена" in touch.body
         assert "reply_template=reply_price" in (touch.note or "")
 
     # P4R-M13: Тест stop_automation — отправка должна вернуть 409
     def test_send_stop_automation(self, client, db_session):
         """Отправка reply при stop_automation=True — 409."""
         company_id = create_company(db_session, emails=["stop-test@example.com"])
-        _seed_reply_template(db_session)
         # Устанавливаем stop_automation
         contact = db_session.query(CrmContactRow).filter_by(company_id=company_id).first()
         if contact:
@@ -203,7 +186,6 @@ class TestSendReply:
     def test_send_no_email(self, client, db_session):
         """Отправка reply для компании без email — 400."""
         company_id = create_company(db_session, emails=[])
-        _seed_reply_template(db_session)
         db_session.commit()
 
         resp = client.post(f"/api/v1/companies/{company_id}/reply", json={

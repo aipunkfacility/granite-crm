@@ -2,6 +2,7 @@
 
 Вынесено из test_crm_api.py для переиспользования во всех тестовых файлах.
 """
+import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
@@ -9,7 +10,52 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from granite.api.deps import get_db
-from granite.database import Base, CrmTemplateRow
+from granite.database import Base
+
+
+# Тестовые шаблоны для TemplateRegistry (минимальный набор)
+_TEST_TEMPLATES = [
+    {
+        "name": "follow_up_email_v1",
+        "channel": "email",
+        "subject": "Re: {original_subject}",
+        "body": "Follow-up for {city}. Unsub: {unsubscribe_url}",
+        "body_type": "plain",
+        "description": "System required template",
+    },
+    {
+        "name": "cold_email_v1",
+        "channel": "email",
+        "subject": "Offer for {city}",
+        "body": "Hello {from_name} in {city}. Unsub: {unsubscribe_url}",
+        "body_type": "plain",
+        "description": "Cold email v1",
+    },
+    {
+        "name": "cold_email_1",
+        "channel": "email",
+        "subject": "Test",
+        "body": "Hello {from_name}. Unsub: {unsubscribe_url}",
+        "body_type": "plain",
+        "description": "Legacy test template (from old seed)",
+    },
+    {
+        "name": "tg_intro",
+        "channel": "tg",
+        "subject": "",
+        "body": "Hi {from_name}",
+        "body_type": "plain",
+        "description": "TG intro",
+    },
+    {
+        "name": "reply_price",
+        "channel": "email",
+        "subject": "Re: {original_subject}",
+        "body": "Цена ретуши: от 700 руб. Примеры: retouchgrav.netlify.app. Unsub: {unsubscribe_url}",
+        "body_type": "plain",
+        "description": "Reply template — price",
+    },
+]
 
 
 @pytest.fixture
@@ -47,28 +93,22 @@ def db_session(engine):
 
 
 @pytest.fixture
-def client(engine, monkeypatch):
-    """TestClient с in-memory БД, сидом шаблонов и dependency override."""
+def client(engine, monkeypatch, tmp_path):
+    """TestClient с in-memory БД, TemplateRegistry и dependency override."""
     import os
     # Установить рабочий каталог проекта, чтобы lifespan нашёл config.yaml
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     monkeypatch.chdir(project_root)
 
     from granite.api.app import app
+    from granite.templates import TemplateRegistry
 
     TestSession = sessionmaker(bind=engine)
 
-    # Seed шаблоны
-    with TestSession() as s:
-        s.add(CrmTemplateRow(
-            name="cold_email_1", channel="email",
-            subject="Test", body="Hello {from_name}",
-        ))
-        s.add(CrmTemplateRow(
-            name="tg_intro", channel="tg",
-            subject="", body="Hi {from_name}",
-        ))
-        s.commit()
+    # Записываем тестовые шаблоны во временный JSON
+    test_json = tmp_path / "test_templates.json"
+    with open(test_json, "w", encoding="utf-8") as f:
+        json.dump(_TEST_TEMPLATES, f, ensure_ascii=False)
 
     def get_test_db():
         session = TestSession()
@@ -81,17 +121,20 @@ def client(engine, monkeypatch):
         finally:
             session.close()
 
-    # FIX BUG-5: Сохраняем оригинальное значение app.state.Session
-    # и восстанавливаем после теста. app — синглтон модуля, без этого
-    # значение «утекает» между тестами (особенно с pytest-xdist).
+    # FIX BUG-5: Сохраняем оригинальные значения app.state
     original_session = getattr(app.state, 'Session', None)
+    original_registry = getattr(app.state, 'template_registry', None)
 
     app.dependency_overrides[get_db] = get_test_db
     app.state.Session = TestSession
+    app.state.template_registry = TemplateRegistry(str(test_json))
 
     try:
         with TestClient(app) as c:
+            # Переписываем template_registry ПОСЛЕ lifespan (который создаёт свой)
+            app.state.template_registry = TemplateRegistry(str(test_json))
             yield c
     finally:
         app.dependency_overrides.clear()
         app.state.Session = original_session
+        app.state.template_registry = original_registry

@@ -15,11 +15,11 @@ router = APIRouter()
 
 # Дефолт — используется если config.yaml не содержит email.followup_cadence
 _STAGE_NEXT_ACTION_DEFAULT = {
-    "new": {"days": 0, "channel": "email", "template": "cold_email_1", "action": "Отправить холодное письмо"},
+    "new": {"days": 0, "channel": "email", "template": "cold_email_v1", "action": "Отправить холодное письмо"},
     "email_sent": {"days": 4, "channel": "tg", "template": "tg_intro", "action": "Написать в Telegram"},
     "email_opened": {"days": 2, "channel": "tg", "template": "tg_intro", "action": "Написать в TG (открыл письмо!)"},
     "tg_sent": {"days": 4, "channel": "wa", "template": "wa_intro", "action": "Написать в WhatsApp"},
-    "wa_sent": {"days": 7, "channel": "email", "template": "follow_up_email", "action": "Финальное письмо"},
+    "wa_sent": {"days": 7, "channel": "email", "template": "follow_up_email_v1", "action": "Финальное письмо"},
 }
 
 

@@ -1,10 +1,11 @@
 # Email-шаблоны: Granite CRM
 
 > Каталог всех email-шаблонов для рассылок и post-reply ответов.
-> Тексты правит Александр. Загрузка в CRM: `uv run cli.py db seed-templates`
+> Тексты правит Александр напрямую в `data/email_templates.json`.
+> Шаблоны загружаются при старте сервера (TemplateRegistry).
+> Для перезагрузки без рестарта: `POST /api/v1/templates/reload` или `uv run cli.py templates-reload`
 >
-> Каждый шаблон хранится в БД как `CrmTemplateRow` с уникальным `name`.
-> Плейсхолдеры: `{city}`, `{company_name}`, `{from_name}`, `{unsubscribe_url}`
+> Плейсхолдеры: `{city}`, `{company_name}`, `{from_name}`, `{unsubscribe_url}`, `{original_subject}`
 
 ---
 
@@ -380,27 +381,25 @@ WhatsApp: +84 946 943 543
 
 ---
 
-## 5. Порядок загрузки в CRM
+## 5. Порядок работы с шаблонами
 
 ```bash
-# 1. Проверить текущие шаблоны в БД
-uv run cli.py db list-templates
+# 1. Отредактировать шаблоны
+vim data/email_templates.json
 
-# 2. Загрузить все шаблоны из этого документа
-uv run cli.py db seed-templates
+# 2. Перезагрузить без рестарта сервера
+uv run cli.py templates-reload
+# или через API: POST /api/v1/templates/reload
 
-# 3. Проверить что загрузилось
-uv run cli.py db list-templates
-
-# 4. Обновить один шаблон (после правки текста)
-uv run cli.py db seed-templates --only reply_interested
+# 3. Проверить текущие шаблоны
+curl http://localhost:8000/api/v1/templates
 ```
 
 ---
 
 ## 6. Чеклист перед отправкой
 
-- [ ] Все шаблоны загружены в БД (`list-templates` показывает полный список)
+- [ ] Шаблоны загружены (GET /api/v1/templates показывает полный список)
 - [ ] Плейсхолдеры корректны (нет `{company_name}` без данных)
 - [ ] A/B темы заданы для кампании
 - [ ] Тестовое письмо отправлено на свой email

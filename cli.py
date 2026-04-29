@@ -477,6 +477,26 @@ def precheck(
 
 
 @app.command()
+def templates_reload():
+    """Перезагрузить шаблоны из data/email_templates.json без рестарта сервера.
+
+    Шаблоны хранятся в JSON (единственный source of truth).
+    После редактирования JSON запустите эту команду или POST /api/v1/templates/reload.
+    """
+    try:
+        from granite.templates import TemplateRegistry
+        registry = TemplateRegistry()
+        count = registry.reload()
+        print_status(f"Перезагружено {count} шаблонов из {registry.json_path}", "success")
+    except FileNotFoundError:
+        print_status("Файл data/email_templates.json не найден", "error")
+        raise typer.Exit(1)
+    except RuntimeError as e:
+        print_status(f"Ошибка загрузки шаблонов: {e}", "error")
+        raise typer.Exit(1)
+
+
+@app.command()
 def api(
     port: int = typer.Option(8000, "--port", "-p", help="Порт API сервера"),
     reload: bool = typer.Option(False, "--reload", help="Hot reload для разработки"),

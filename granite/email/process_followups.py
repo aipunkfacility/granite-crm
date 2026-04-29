@@ -59,8 +59,9 @@ def process_followups(db_session) -> int:
     """
     from granite.database import (
         CrmTaskRow, CrmContactRow, CrmTouchRow,
-        CrmTemplateRow, CompanyRow, CrmEmailLogRow,
+        CompanyRow, CrmEmailLogRow,
     )
+    from granite.templates import TemplateRegistry
 
     now = datetime.now(timezone.utc)
 
@@ -80,12 +81,15 @@ def process_followups(db_session) -> int:
         logger.debug("process_followups: no due follow-up tasks")
         return 0
 
-    # Загрузить follow-up шаблон
-    template = (
-        db_session.query(CrmTemplateRow)
-        .filter_by(name="follow_up_email_v1")
-        .first()
-    )
+    # Загрузить follow-up шаблон из TemplateRegistry
+    # NOTE: process_followups вызывается через CLI/CRON, без request.
+    # Используем TemplateRegistry напрямую с путём по умолчанию.
+    try:
+        registry = TemplateRegistry()
+    except FileNotFoundError:
+        logger.warning("process_followups: email_templates.json not found, skipping")
+        return 0
+    template = registry.get("follow_up_email_v1")
     if not template:
         logger.warning("process_followups: template 'follow_up_email_v1' not found, skipping")
         return 0
@@ -163,7 +167,7 @@ def process_followups(db_session) -> int:
                 subject=followup_subject,
                 body_text=rendered_body,
                 template_name=template.name,
-                template_id=template.id,
+                rendered_body=rendered_body,  # plain text для истории
                 db_session=db_session,
             )
 

@@ -1,5 +1,4 @@
 # database.py
-import html as _html_module
 import secrets as _secrets
 from contextlib import contextmanager
 from sqlalchemy import (
@@ -290,7 +289,11 @@ class CrmTouchRow(Base):
 
 
 class CrmTemplateRow(Base):
-    """Шаблоны сообщений с плейсхолдерами {from_name}, {city}, {company_name}."""
+    """Шаблоны сообщений — DEPRECATED: не используется для рендеринга.
+
+    Таблица сохранена для backward compatibility (старые template_id FK в crm_email_logs).
+    Шаблоны теперь загружаются из data/email_templates.json через TemplateRegistry.
+    """
     __tablename__ = "crm_templates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -308,40 +311,6 @@ class CrmTemplateRow(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
-
-    def render(self, **kwargs) -> str:
-        """Подставить значения в плейсхолдеры шаблона.
-
-        Безопасность: используется str.replace() (литеральная подстановка подстроки),
-        НЕ str.format() или eval(). Инъекция невозможна.
-
-        Для HTML-шаблонов (body_type='html') значения экранируются через html.escape()
-        для предотвращения XSS.
-        """
-        result = self.body
-        for key, value in kwargs.items():
-            # Для HTML-шаблонов экранируем значения плейсхолдеров
-            safe_value = _html_module.escape(str(value)) if self.body_type == "html" else str(value)
-            result = result.replace(f"{{{key}}}", safe_value)
-        # Логировать не заполненные плейсхолдеры
-        import re as _re
-        _leftovers = _re.findall(r'\{(\w+)\}', result)
-        if _leftovers:
-            logger.warning(f"Template '{self.name}': unfilled placeholders: {_leftovers}")
-        return result
-
-    def render_subject(self, **kwargs) -> str:
-        """Подставить значения в тему письма.
-
-        Subject — всегда plain text (RFC 2047), экранирование не требуется
-        даже для HTML-шаблонов.
-        """
-        if not self.subject:
-            return ""
-        result = self.subject
-        for key, value in kwargs.items():
-            result = result.replace(f"{{{key}}}", str(value))
-        return result
 
     def __repr__(self):
         return f"<CrmTemplateRow(name={self.name!r}, channel={self.channel!r}, body_type={self.body_type!r})>"
@@ -378,6 +347,7 @@ class CrmEmailLogRow(Base):
     # Задача 3: A/B вариант и ссылка на immutable-шаблон
     ab_variant = Column(String(1), nullable=True)  # "A" or "B"
     template_id = Column(Integer, ForeignKey("crm_templates.id"), nullable=True)  # Задача 12
+    rendered_body = Column(Text, nullable=True)  # Plain text отправленного письма (для истории)
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

@@ -6,7 +6,8 @@ from granite.messenger.base import SendResult
 from granite.messenger.tg_sender import TgSender
 from granite.messenger.wa_sender import WaSender
 from granite.api.stage_transitions import apply_outgoing_touch
-from granite.database import CrmTemplateRow, CrmTouchRow, CrmContactRow
+from granite.templates import EmailTemplate
+from granite.database import CrmTouchRow, CrmContactRow
 
 
 class MessengerDispatcher:
@@ -21,7 +22,7 @@ class MessengerDispatcher:
         self,
         channel: str,
         contact_id: str,
-        template: CrmTemplateRow | None = None,
+        template: EmailTemplate | None = None,
         text: str = "",
         company_name: str = "",
         city: str = "",
@@ -33,7 +34,7 @@ class MessengerDispatcher:
         Args:
             channel: "tg" или "wa"
             contact_id: username TG или номер телефона WA
-            template: ORM-объект шаблона (если text не передан — рендерит из шаблона)
+            template: EmailTemplate (из TemplateRegistry, если text не передан — рендерит из шаблона)
             text: готовый текст сообщения (приоритетнее template)
             company_name: название компании (для плейсхолдеров)
             city: город (для плейсхолдеров)

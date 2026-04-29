@@ -4,7 +4,7 @@ import { Template } from '@/lib/api/templates';
 import { Card, CardContent, CardHeader, CardTitle, CardAction } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Edit, Trash2, Eye, FileText, Code, Mail, MessageCircle } from 'lucide-react';
+import { Eye, FileText, Code, Mail, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const CHANNEL_CONFIG: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -40,12 +40,10 @@ function extractPlaceholders(text: string): string[] {
 
 interface TemplateCardProps {
   template: Template;
-  onEdit: (template: Template) => void;
-  onDelete: (template: Template) => void;
   onPreview?: (template: Template) => void;
 }
 
-export function TemplateCard({ template, onEdit, onDelete, onPreview }: TemplateCardProps) {
+export function TemplateCard({ template, onPreview }: TemplateCardProps) {
   const channelConf = CHANNEL_CONFIG[template.channel] || CHANNEL_CONFIG.email;
   const bodyConf = BODY_TYPE_CONFIG[template.body_type] || BODY_TYPE_CONFIG.plain;
   const ChannelIcon = channelConf.icon;
@@ -130,33 +128,11 @@ export function TemplateCard({ template, onEdit, onDelete, onPreview }: Template
           </div>
         )}
 
-        {/* Footer: date + actions */}
+        {/* Footer: edit hint */}
         <div className="flex items-center justify-between pt-3 border-t">
           <p className="text-[11px] text-muted-foreground">
-            {template.created_at
-              ? `Создан: ${new Date(template.created_at).toLocaleDateString('ru-RU')}`
-              : 'Дата создания неизвестна'}
+            Редактирование: data/email_templates.json
           </p>
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => onEdit(template)}
-              title="Редактировать"
-            >
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="text-muted-foreground hover:text-destructive"
-              onClick={() => onDelete(template)}
-              title="Удалить"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
       </CardContent>
     </Card>

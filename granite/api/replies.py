@@ -19,7 +19,7 @@ Phase 4: Post-reply кнопки. Позволяет оператору быст
 import os
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
@@ -28,7 +28,7 @@ from granite.api.schemas import (
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
-    CrmTouchRow, CrmEmailLogRow, CrmTemplateRow,
+    CrmTouchRow, CrmEmailLogRow,
 )
 from granite.api.stage_transitions import apply_outgoing_touch
 from loguru import logger
@@ -74,11 +74,11 @@ def _get_last_incoming_subject(company_id: int, db: Session) -> str | None:
 
 # P4R-M9: Общий хелпер валидации для preview и send reply.
 # Ранее логика дублировалась между двумя эндпоинтами.
-def _validate_reply_context(company_id: int, template_name: str, db: Session):
+def _validate_reply_context(company_id: int, template_name: str, request: Request, db: Session):
     """Общая валидация для preview и send reply.
 
     Проверяет: существование компании, наличие email, существование
-    шаблона, тип шаблона (email).
+    шаблона (из TemplateRegistry), тип шаблона (email).
 
     Returns: (company, template, emails, contact)
     """
@@ -90,7 +90,7 @@ def _validate_reply_context(company_id: int, template_name: str, db: Session):
     if not emails:
         raise HTTPException(400, "У компании нет email-адреса для отправки reply")
 
-    template = db.query(CrmTemplateRow).filter_by(name=template_name).first()
+    template = request.app.state.template_registry.get(template_name)
     if not template:
         raise HTTPException(404, f"Template '{template_name}' not found")
 
@@ -114,6 +114,7 @@ def _mask_email(email: str) -> str:
 def preview_reply(
     company_id: int,
     data: PreviewReplyRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Предпросмотр reply из шаблона (без отправки).
@@ -123,7 +124,7 @@ def preview_reply(
     P4R-M10: Проверяет stop_automation — если установлен, возвращает предупреждение.
     """
     # P4R-M9: Общая валидация
-    company, template, emails, contact = _validate_reply_context(company_id, data.template_name, db)
+    company, template, emails, contact = _validate_reply_context(company_id, data.template_name, request, db)
 
     # P4R-M10: Проверяем stop_automation — preview показываем, но с предупреждением
     stop_automation_warning = None
@@ -159,6 +160,7 @@ def preview_reply(
 def send_reply(
     company_id: int,
     data: SendReplyRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Отправить reply из шаблона на входящее письмо компании.
@@ -175,7 +177,7 @@ def send_reply(
     7. Отменяет follow-up задачу (если есть)
     """
     # P4R-M9: Общая валидация
-    company, template, emails, contact = _validate_reply_context(company_id, data.template_name, db)
+    company, template, emails, contact = _validate_reply_context(company_id, data.template_name, request, db)
     email_to = emails[0].lower().strip()
 
     # Создаём контакт, если его нет
@@ -223,7 +225,7 @@ def send_reply(
                 body_text=body_text,
                 body_html=rendered,
                 template_name=template.name,
-                template_id=template.id,
+                rendered_body=body_text,  # plain text для истории
                 db_session=db,
             )
         else:
@@ -233,7 +235,7 @@ def send_reply(
                 subject=subject,
                 body_text=rendered,
                 template_name=template.name,
-                template_id=template.id,
+                rendered_body=rendered,  # plain text для истории
                 db_session=db,
             )
     except Exception as exc:
