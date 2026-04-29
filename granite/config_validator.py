@@ -51,6 +51,42 @@ def validate_config(config: dict) -> bool:
             if not isinstance(max_threads, int) or max_threads < 1:
                 errors.append(f"scraping.max_threads = {max_threads!r} — ожидается целое число > 0")
 
+    # email — валидация критических полей
+    email_cfg = config.get("email", {})
+    if isinstance(email_cfg, dict):
+        _email_int_fields = {
+            "send_delay_min": (0, 600),
+            "send_delay_max": (0, 600),
+            "daily_limit": (1, 10000),
+            "max_sends_per_run": (1, 10000),
+            "session_gap_hrs": (0, 72),
+            "bounce_threshold": (1, 100),
+            "bounce_window_hrs": (1, 168),
+            "followup_delay_days": (0, 90),
+            "smtp_retry_attempts": (1, 10),
+            "smtp_retry_backoff_min": (1, 60),
+            "smtp_retry_backoff_max": (1, 300),
+        }
+        for field, (min_val, max_val) in _email_int_fields.items():
+            val = email_cfg.get(field)
+            if val is not None:
+                if not isinstance(val, (int, float)):
+                    errors.append(f"email.{field} = {val!r} — ожидается число")
+                elif not (min_val <= val <= max_val):
+                    errors.append(f"email.{field} = {val} — вне диапазона [{min_val}, {max_val}]")
+
+        # send_delay_min <= send_delay_max
+        d_min = email_cfg.get("send_delay_min")
+        d_max = email_cfg.get("send_delay_max")
+        if d_min is not None and d_max is not None and d_min > d_max:
+            errors.append(f"email.send_delay_min ({d_min}) > send_delay_max ({d_max})")
+
+        # smtp_retry_backoff_min <= smtp_retry_backoff_max
+        b_min = email_cfg.get("smtp_retry_backoff_min")
+        b_max = email_cfg.get("smtp_retry_backoff_max")
+        if b_min is not None and b_max is not None and b_min > b_max:
+            errors.append(f"email.smtp_retry_backoff_min ({b_min}) > smtp_retry_backoff_max ({b_max})")
+
     for err in errors:
         print_status(f"  Config validation: {err}", "error")
 

@@ -58,6 +58,15 @@ def load_config(config_path: str | None = None):
     if not _validate_config(config):
         print_status("Ошибка: конфигурация не прошла валидацию (см. выше)", "error")
         raise typer.Exit(1)
+
+    # Инициализация email-лимитов из config.yaml
+    from granite.email.validator import init_email_config as _init_validator_config
+    from granite.email.followup_logic import init_followup_config as _init_followup_config
+    from granite.email.sender import EmailSender
+    _init_validator_config(config)
+    _init_followup_config(config)
+    EmailSender.init_email_config(config)
+
     return config
 
 

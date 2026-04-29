@@ -49,6 +49,15 @@ async def lifespan(app: FastAPI):
     app.state.config = config
     app.state.db = db
 
+    # Инициализация email-лимитов из config.yaml
+    from granite.email.validator import init_email_config as _init_validator_config
+    from granite.email.followup_logic import init_followup_config as _init_followup_config
+    from granite.email.sender import EmailSender
+    _init_validator_config(config)
+    _init_followup_config(config)
+    EmailSender.init_email_config(config)
+    _init_rate_limits(config)
+
     logger.info(f"CRM API started. DB: {db._db_path}")
 
     # Задача 2.1: Recovery — все running кампании → paused при старте сервера.
@@ -217,13 +226,35 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 # AUDIT #10: Rate limiting middleware (in-memory).
-# Лимиты по умолчанию: send=10/мин, run campaign=3/мин, export=20/мин.
-# Настраивается через RATE_LIMITS env (JSON).
-_RATE_LIMITS = {
-    "post:/companies/.*?/send": (10, 60),
+# Дефолты — используются если config.yaml не содержит секции email.rate_limits.
+# Приоритет: config.yaml → env RATE_LIMITS (JSON) → hardcoded дефолты.
+_RATE_LIMITS_DEFAULTS = {
+    "post:/companies/.*?/send": (2, 60),    # безопасно для Gmail (привязан к send_delay_min)
     "post:/campaigns/.*?/run": (3, 60),
     "get:/export/.*": (20, 60),
 }
+
+# Заполняется при загрузке config в lifespan
+_RATE_LIMITS: dict = {}
+
+
+def _init_rate_limits(config: dict) -> None:
+    """Инициализировать rate limits из config.yaml + env."""
+    global _RATE_LIMITS
+    # 1. Стартуем с дефолтов
+    _RATE_LIMITS = dict(_RATE_LIMITS_DEFAULTS)
+
+    # 2. Переопределяем из config.yaml (email.rate_limits)
+    cfg_limits = config.get("email", {}).get("rate_limits", {})
+    if isinstance(cfg_limits, dict):
+        for pattern, val in cfg_limits.items():
+            if isinstance(val, list) and len(val) == 2:
+                _RATE_LIMITS[pattern] = (int(val[0]), int(val[1]))
+
+    # 3. Env переопределяет всё (максимальный приоритет)
+    env_limits = _parse_rate_limits_from_env()
+    if env_limits:
+        _RATE_LIMITS.update(env_limits)
 
 
 def _parse_rate_limits_from_env() -> dict:
@@ -246,11 +277,6 @@ def _parse_rate_limits_from_env() -> dict:
     except Exception:
         pass
     return {}
-
-
-_ENV_LIMITS = _parse_rate_limits_from_env()
-if _ENV_LIMITS:
-    _RATE_LIMITS.update(_ENV_LIMITS)
 
 
 @app.middleware("http")

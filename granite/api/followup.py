@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
@@ -13,8 +13,8 @@ __all__ = ["router"]
 
 router = APIRouter()
 
-# Сколько дней ждать после касания перед следующим
-STAGE_NEXT_ACTION = {
+# Дефолт — используется если config.yaml не содержит email.followup_cadence
+_STAGE_NEXT_ACTION_DEFAULT = {
     "new": {"days": 0, "channel": "email", "template": "cold_email_1", "action": "Отправить холодное письмо"},
     "email_sent": {"days": 4, "channel": "tg", "template": "tg_intro", "action": "Написать в Telegram"},
     "email_opened": {"days": 2, "channel": "tg", "template": "tg_intro", "action": "Написать в TG (открыл письмо!)"},
@@ -23,8 +23,39 @@ STAGE_NEXT_ACTION = {
 }
 
 
+def _get_stage_next_action(request) -> dict:
+    """Получить follow-up cadence из config.yaml с fallback на дефолт.
+
+    Config формат (config.yaml → email.followup_cadence):
+        new:          { days: 0, channel: "email" }
+        email_sent:   { days: 4, channel: "tg" }
+        ...
+
+    Дефолт содержит доп. поля (template, action), которых нет в config —
+    они берутся из _STAGE_NEXT_ACTION_DEFAULT.
+    """
+    try:
+        email_cfg = request.app.state.config.get("email", {})
+    except AttributeError:
+        return _STAGE_NEXT_ACTION_DEFAULT
+    cadence_cfg = email_cfg.get("followup_cadence", {})
+    if not cadence_cfg:
+        return _STAGE_NEXT_ACTION_DEFAULT
+
+    # Мержим config → дефолт: config задаёт days/channel, дефолт дополняет template/action
+    result = {}
+    for stage, default_rule in _STAGE_NEXT_ACTION_DEFAULT.items():
+        cfg_rule = cadence_cfg.get(stage, {})
+        if isinstance(cfg_rule, dict):
+            result[stage] = {**default_rule, **cfg_rule}
+        else:
+            result[stage] = default_rule
+    return result
+
+
 @router.get("/followup", response_model=PaginatedResponse[FollowupItemResponse])
 def get_followup_queue(
+    request: Request,
     db: Session = Depends(get_db),
     city: Annotated[Optional[List[str]], Query()] = None,
     segment: Optional[str] = Query(None, pattern="^[ABCD]$"),
@@ -33,6 +64,7 @@ def get_followup_queue(
     page: int = Query(1, ge=1),
 ):
     """Очередь follow-up: контакты, которым нужно написать прямо сейчас."""
+    STAGE_NEXT_ACTION = _get_stage_next_action(request)
     now = datetime.now(timezone.utc)
 
     # Backward compat: limit переопределяет per_page

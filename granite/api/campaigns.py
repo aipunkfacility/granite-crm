@@ -412,8 +412,8 @@ def run_campaign(campaign_id: int, request: Request):
     FIX 2.4: Используем Session из app.state (общий engine с WAL),
     вместо создания второго Database() с отдельным engine.
 
-    Rate limiting: 3 сек между отправками.
-    Batch commits: каждые 10 отправок.
+    Rate limiting: задержка из config.yaml (email.send_delay_min/max).
+    Batch commits: после каждого письма.
     Interruption: try/finally ставит status="paused" при обрыве SSE.
     """
     # FIX HIGH-3: Проверяем статус кампании в БД (survives uvicorn restart).
@@ -472,12 +472,14 @@ def run_campaign(campaign_id: int, request: Request):
         from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow
         from granite.email.sender import EmailSender
 
-        # Задача 2.3: задержка и лимиты из env (для продакшена 45-120с, для тестов 3с)
-        SEND_DELAY_MIN = int(os.environ.get("EMAIL_DELAY_MIN", "3"))
-        SEND_DELAY_MAX = int(os.environ.get("EMAIL_DELAY_MAX", "3"))
+        # Задача 2.3: задержка и лимиты из config.yaml (секция email)
+        _cfg = request.app.state.config
+        _email_cfg = _cfg.get("email", {})
+        SEND_DELAY_MIN = int(_email_cfg.get("send_delay_min", 3))
+        SEND_DELAY_MAX = int(_email_cfg.get("send_delay_max", 3))
         import random as _random
-        EMAIL_DAILY_LIMIT = int(os.environ.get("EMAIL_DAILY_LIMIT", "50"))
-        MAX_SENDS_PER_RUN = int(os.environ.get("MAX_SENDS_PER_RUN", "100"))
+        EMAIL_DAILY_LIMIT = int(_email_cfg.get("daily_limit", 50))
+        MAX_SENDS_PER_RUN = int(_email_cfg.get("max_sends_per_run", 100))
 
         # FIX-P1: A/B логика вынесена в granite.email.ab — единый модуль для переиспользования
         from granite.email.ab import determine_ab_variant

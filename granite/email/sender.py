@@ -35,6 +35,11 @@ def _is_temporary_smtp_error(e: BaseException) -> bool:
 class EmailSender:
     """Отправка писем через SMTP с tracking pixel и автоматическим retry."""
 
+    # Дефолты для SMTP retry — переопределяются через init_email_config()
+    _smtp_retry_attempts: int = 3
+    _smtp_retry_backoff_min: int = 2
+    _smtp_retry_backoff_max: int = 30
+
     def __init__(self):
         self.smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
         self.smtp_port = int(os.environ.get("SMTP_PORT", "465"))
@@ -43,6 +48,17 @@ class EmailSender:
         self.base_url = os.environ.get("BASE_URL", "http://localhost:8000").rstrip("/")
         self.from_name = os.environ.get("FROM_NAME", "")
         self.from_addr = f"{self.from_name} <{self.smtp_user}>" if self.from_name else self.smtp_user
+
+    @classmethod
+    def init_email_config(cls, config: dict) -> None:
+        """Инициализировать email-конфиг из config.yaml.
+
+        Вызывается при старте приложения. Без вызова — используются дефолты.
+        """
+        email_cfg = config.get("email", {})
+        cls._smtp_retry_attempts = int(email_cfg.get("smtp_retry_attempts", 3))
+        cls._smtp_retry_backoff_min = int(email_cfg.get("smtp_retry_backoff_min", 2))
+        cls._smtp_retry_backoff_max = int(email_cfg.get("smtp_retry_backoff_max", 30))
 
     def send(
         self,
@@ -130,30 +146,45 @@ class EmailSender:
                                 campaign_id=campaign_id, ab_variant=ab_variant)
             return None
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(min=2, max=30),
-        retry=retry_if_exception(_is_temporary_smtp_error),
-        reraise=True,
-    )
     def _smtp_send(self, email_to: str, msg: MIMEMultipart) -> None:
         """SMTP-отправка с retry на временные ошибки.
 
         Поддерживает два режима:
         - Порт 465: SMTP_SSL (implicit TLS) — Gmail по умолчанию
         - Порт 587: SMTP + STARTTLS (explicit TLS)
+
+        Retry параметры берутся из config.yaml (email.smtp_retry_*).
         """
-        if self.smtp_port == 465:
-            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
-                server.login(self.smtp_user, self.smtp_pass)
-                server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
+        retryer = retry(
+            stop=stop_after_attempt(self._smtp_retry_attempts),
+            wait=wait_exponential(
+                min=self._smtp_retry_backoff_min,
+                max=self._smtp_retry_backoff_max,
+            ),
+            retry=retry_if_exception(_is_temporary_smtp_error),
+            reraise=True,
+        )
+        retryer(self._smtp_send_impl)(email_to, msg)
+
+    @staticmethod
+    def _smtp_send_impl(email_to: str, msg: MIMEMultipart) -> None:
+        """Реальная SMTP-отправка (без retry-обёртки)."""
+        smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
+        smtp_port = int(os.environ.get("SMTP_PORT", "465"))
+        smtp_user = os.environ.get("SMTP_USER", "")
+        smtp_pass = os.environ.get("SMTP_PASS", "")
+
+        if smtp_port == 465:
+            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, [email_to], msg.as_bytes())
         else:
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+            with smtplib.SMTP(smtp_host, smtp_port) as server:
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-                server.login(self.smtp_user, self.smtp_pass)
-                server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
+                server.login(smtp_user, smtp_pass)
+                server.sendmail(smtp_user, [email_to], msg.as_bytes())
 
     def _log_to_db(
         self,

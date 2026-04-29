@@ -13,10 +13,20 @@ from loguru import logger
 __all__ = [
     "maybe_create_followup_task",
     "increment_campaign_opened",
+    "init_followup_config",
 ]
 
-# Через сколько дней отправить follow-up
-FOLLOWUP_DELAY_DAYS = 7
+# Дефолт — используется если config.yaml не содержит email.followup_delay_days
+_FOLLOWUP_DELAY_DAYS_DEFAULT = 7
+
+# Глобальная ссылка на email-конфиг
+_email_config: dict = {}
+
+
+def init_followup_config(config: dict) -> None:
+    """Инициализировать followup-конфиг из config.yaml."""
+    global _email_config
+    _email_config = config.get("email", {})
 
 
 def maybe_create_followup_task(contact, campaign_id: int, db_session) -> None:
@@ -48,7 +58,8 @@ def maybe_create_followup_task(contact, campaign_id: int, db_session) -> None:
         )
         return
 
-    due_date = datetime.now(timezone.utc) + timedelta(days=FOLLOWUP_DELAY_DAYS)
+    delay_days = _email_config.get("followup_delay_days", _FOLLOWUP_DELAY_DAYS_DEFAULT)
+    due_date = datetime.now(timezone.utc) + timedelta(days=delay_days)
     # FIX P3-M4: не показывать "None" в title для писем без кампании
     title = f"Follow-up email (campaign #{campaign_id})" if campaign_id else "Follow-up email"
     task = CrmTaskRow(

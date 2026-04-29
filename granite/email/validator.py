@@ -22,14 +22,30 @@ AGGREGATOR_DOMAINS = frozenset({
 
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w.-]+\.\w{2,}$")
 
-# Минимальный интервал между письмами одной компании (часы)
-EMAIL_SESSION_GAP_HRS = 4
+# Дефолты — используются если config.yaml не содержит секцию email
+_EMAIL_SESSION_GAP_HRS_DEFAULT = 2
+_GMAIL_BOUNCE_THRESHOLD_DEFAULT = 5
+_GMAIL_BOUNCE_WINDOW_HRS_DEFAULT = 24
 
-# FIX-4: Порог bounced для признака блокировки Gmail
-GMAIL_BOUNCE_THRESHOLD = 5  # bounced писем
-GMAIL_BOUNCE_WINDOW_HRS = 24  # за последние N часов
+# Глобальная ссылка на config — устанавливается через init_email_config()
+_email_config: dict = {}
 
-__all__ = ["validate_recipients", "check_gmail_block_signs", "AGGREGATOR_DOMAINS"]
+
+def init_email_config(config: dict) -> None:
+    """Инициализировать email-конфиг из config.yaml.
+
+    Вызывается при старте приложения (app lifespan) и в cli.py.
+    Без вызова — используются дефолты из модуля.
+    """
+    global _email_config
+    _email_config = config.get("email", {})
+
+
+def _get_email_config() -> dict:
+    """Получить текущую email-конфигурацию."""
+    return _email_config
+
+__all__ = ["validate_recipients", "check_gmail_block_signs", "init_email_config", "AGGREGATOR_DOMAINS"]
 
 
 def validate_recipients(
@@ -126,8 +142,9 @@ def _check_recipient(company, contact, email_to: str, blocked_domains: Optional[
         else:
             last_sent = last_sent.astimezone(timezone.utc)
         gap = datetime.now(timezone.utc) - last_sent
-        if gap.total_seconds() < EMAIL_SESSION_GAP_HRS * 3600:
-            hrs_left = EMAIL_SESSION_GAP_HRS - gap.total_seconds() / 3600
+        session_gap = _email_config.get("session_gap_hrs", _EMAIL_SESSION_GAP_HRS_DEFAULT)
+        if gap.total_seconds() < session_gap * 3600:
+            hrs_left = session_gap - gap.total_seconds() / 3600
             return f"письмо недавно ({hrs_left:.1f}ч до следующего)"
 
     return None
@@ -145,7 +162,9 @@ def check_gmail_block_signs(db_session) -> set[str]:
     from granite.database import CrmEmailLogRow
     from sqlalchemy import func
 
-    threshold_time = datetime.now(timezone.utc) - timedelta(hours=GMAIL_BOUNCE_WINDOW_HRS)
+    bounce_threshold = _email_config.get("bounce_threshold", _GMAIL_BOUNCE_THRESHOLD_DEFAULT)
+    bounce_window_hrs = _email_config.get("bounce_window_hrs", _GMAIL_BOUNCE_WINDOW_HRS_DEFAULT)
+    threshold_time = datetime.now(timezone.utc) - timedelta(hours=bounce_window_hrs)
 
     # Подсчитываем bounced по доменам за окно
     # FIX-A1: Используем .label() вместо строки в group_by — совместимо с PostgreSQL
@@ -160,7 +179,7 @@ def check_gmail_block_signs(db_session) -> set[str]:
             CrmEmailLogRow.bounced_at >= threshold_time,
         )
         .group_by(domain_expr)
-        .having(func.count(CrmEmailLogRow.id) >= GMAIL_BOUNCE_THRESHOLD)
+        .having(func.count(CrmEmailLogRow.id) >= bounce_threshold)
         .all()
     )
 
