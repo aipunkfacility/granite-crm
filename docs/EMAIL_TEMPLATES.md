@@ -1,7 +1,7 @@
 # Email-шаблоны: Granite CRM
 
 > Каталог всех email-шаблонов для рассылок и post-reply ответов.
-> **Источник истины:** `docs/MASTER_TEMPLATES.md` — если расхождение, править MASTER.
+> **Источник истины:** этот файл. Тексты правит Александр прямо здесь.
 > Рабочие шаблоны загружаются из `data/email_templates.json` (TemplateRegistry).
 > Для перезагрузки без рестарта: `POST /api/v1/templates/reload` или `uv run cli.py templates-reload`
 >
@@ -127,7 +127,7 @@ Telegram: @ganjavagen
 
 ### 1.4 cold_email_v2 — Сезонная нагрузка *(планируемый)*
 
-> Шаблон существует в MASTER_TEMPLATES.md, но ещё не добавлен в `email_templates.json`.
+> Шаблон ещё не добавлен в `email_templates.json`.
 
 ```yaml
 name: cold_email_v2
@@ -182,9 +182,9 @@ https://retouchgrav.netlify.app
 
 ---
 
-## 3. Post-reply шаблоны *(из MASTER_TEMPLATES.md)*
+## 3. Post-reply шаблоны *(планируемые)*
 
-> Эти шаблоны описаны в MASTER_TEMPLATES.md, но пока не добавлены в `email_templates.json`.
+> Эти шаблоны пока не добавлены в `email_templates.json`.
 > Будут добавлены при реализации post-reply автоматизации.
 
 ### 3.1 reply_interested — Заинтересован
@@ -328,10 +328,10 @@ description: "Ответ на «пришлите примеры» — ссылк
 ## 6. Порядок работы с шаблонами
 
 ```bash
-# 1. Отредактировать шаблоны в MASTER_TEMPLATES.md (источник истины)
-vim docs/MASTER_TEMPLATES.md
+# 1. Отредактировать шаблоны прямо в этом файле (docs/EMAIL_TEMPLATES.md)
+vim docs/EMAIL_TEMPLATES.md
 
-# 2. Обновить email_templates.json по MASTER
+# 2. Обновить email_templates.json
 vim data/email_templates.json
 
 # 3. Перезагрузить без рестарта сервера
