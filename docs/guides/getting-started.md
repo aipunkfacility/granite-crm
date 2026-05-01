@@ -56,8 +56,13 @@ cp .env.example .env
 |-----------|-------------|----------|
 | `FROM_NAME` | Нет | Имя для плейсхолдера `{from_name}` |
 | `GRANITE_ADMIN_PASSWORD` | Рекомендуется | Пароль режима администратора в CRM |
-| `DGIS_API_KEY` | Нет | Ключ 2GIS (для reverse lookup) |
-| `GRANITE_API_KEY` | Нет | Ключ авторизации API |
+| `GRANITE_API_KEY` | Рекомендуется | Ключ авторизации API (заголовок `X-API-Key`). Если не задан — API открыт (dev-режим) |
+| `BASE_URL` | Для рассылок | Публичный URL сервера (для tracking pixel и unsubscribe). Пример: `https://track.greenhill-tours.store` |
+| `CORS_ORIGINS` | Нет | Разрешённые CORS origins через запятую |
+| `SMTP_HOST` | Для рассылок | SMTP сервер для отправки email |
+| `SMTP_PORT` | Для рассылок | SMTP порт |
+| `SMTP_USER` | Для рассылок | SMTP логин |
+| `SMTP_PASS` | Для рассылок | SMTP пароль |
 
 Без .env система запускается — ключи нужны только для расширенных функций.
 
@@ -103,6 +108,29 @@ npm run dev
 ```
 
 Откройте `http://localhost:3000` — должна загрузиться CRM с данными.
+
+---
+
+## Cloudflare Tunnel (для публичного доступа)
+
+Если нужен доступ к API извне (например, для tracking pixel в email или unsubscribe):
+
+```bash
+# Установить cloudflared
+# macOS: brew install cloudflared
+# Linux: см. https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+
+# Запустить туннель
+cloudflared tunnel --url http://localhost:8000
+```
+
+Cloudflare назначит публичный URL (вида `xxx-yyy.trycloudflare.com`). Установите его как `BASE_URL` в `.env`:
+
+```
+BASE_URL=https://ваш-туннель.trycloudflare.com
+```
+
+Для постоянного URL настройте Named Tunnel через Cloudflare dashboard.
 
 ---
 

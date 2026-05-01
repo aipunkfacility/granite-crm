@@ -11,7 +11,7 @@
 |----------|----------|
 | Базовый URL | `http://localhost:8000/api/v1` |
 | Формат | JSON |
-| Аутентификация | Нет (один пользователь, локально). Опционально: `GRANITE_API_KEY` в .env |
+| Аутентификация | Опционально: заголовок `X-API-Key` (если `GRANITE_API_KEY` задан в .env). Без ключа — dev-режим (все эндпоинты открыты) |
 | CORS | `localhost:3000`, `localhost:5173` |
 | Пагинация | `page` (default: 1), `per_page` (default: 50) |
 | Кодировка | UTF-8 |
@@ -347,61 +347,33 @@
 
 ## 5. Шаблоны
 
+> **Source of truth:** `data/email_templates.json`. Шаблоны редактируются напрямую в JSON-файле, не через API. POST/PUT/DELETE удалены.
+
 ### `GET /templates`
 
-Список шаблонов сообщений.
+Список шаблонов из TemplateRegistry.
 
 **Параметры:**
 
 | Параметр | Тип | Описание |
 |----------|-----|----------|
-| `channel` | string | Фильтр по каналу (опционально) |
-| `include_retired` | int | Включить архивные шаблоны (0/1, default: 0) |
+| `channel` | string | Фильтр по каналу: `email`, `tg`, `wa` (опционально) |
+| `page` | int | Номер страницы (default: 1) |
+| `per_page` | int | Записей на странице (default: 100, max: 500) |
 
 **Ответ:** `PaginatedResponse[TemplateResponse]`
 
-### `GET /templates/{name}`
+### `GET /templates/{template_name}`
 
-Получить шаблон по имени.
+Получить шаблон по имени из TemplateRegistry.
 
 **Ответ:** `TemplateResponse`
 
-### `POST /templates`
+### `POST /templates/reload`
 
-Создать шаблон.
+Перезагрузить шаблоны из JSON без рестарта сервера. Полезно после ручного редактирования `data/email_templates.json`.
 
-**Тело:** `CreateTemplateRequest`
-```json
-{
-  "name": "cold_email_1",
-  "channel": "email",
-  "subject": "Помощь с подготовкой фото для гравировки",
-  "body": "Здравствуйте, {company_name}!...",
-  "body_type": "plain",
-  "description": "Холодное письмо #1"
-}
-```
-
-**Ограничения:**
-- `name` — только `[a-z0-9_]`
-- `body_type=html` допускается только при `channel=email`
-- `body` — максимум 500 000 символов
-
-**Ответ:** `{ok: true, warnings: [...]}`
-
-### `PUT /templates/{name}`
-
-Обновить шаблон.
-
-**Тело:** `UpdateTemplateRequest` (все поля опциональны)
-
-**Ответ:** `{ok: true, warnings: [...]}`
-
-### `DELETE /templates/{name}`
-
-Удалить шаблон.
-
-**Ответ:** `{ok: true}`
+**Ответ:** `{ok: true, message: "Reloaded N templates from data/email_templates.json"}`
 
 ---
 
@@ -630,7 +602,7 @@ data: {"sent": 50, "opened": 0, "errors": 2}
 
 Tracking pixel — 1x1 прозрачный PNG. Фиксирует открытие email-письма, обновляет `opened_at` в `crm_email_logs`.
 
-> **Примечание:** В таблице `crm_email_logs` поле `campaign_id` — внешний ключ с `ON DELETE SET NULL` (не просто INTEGER).
+> **Примечание:** В таблице `crm_email_logs` поле `campaign_id` — внешний ключ с `ON DELETE SET NULL` (не просто INTEGER). Поле `rendered_body` хранит plain text отправленного письма для истории.
 
 ---
 
@@ -674,7 +646,32 @@ Tracking pixel — 1x1 прозрачный PNG. Фиксирует открыт
 
 ---
 
-## 16. Администрирование
+## 16. Аутентификация
+
+Если в `.env` задана переменная `GRANITE_API_KEY`, все запросы к `/api/v1/*` требуют заголовок `X-API-Key` с совпадающим значением. Проверка использует `hmac.compare_digest()` (constant-time comparison).
+
+**Публичные маршруты (без ключа):**
+
+| Маршрут | Почему |
+|---------|--------|
+| `/health`, `/docs`, `/openapi.json`, `/redoc` | Служебные, не содержат данных |
+| `/api/v1/track/*` | Tracking pixel — вызывается почтовым клиентом |
+| `/api/v1/unsubscribe/*` | Отписка — вызывается из ссылки в письме |
+| `OPTIONS` (CORS preflight) | Браузер отправляет автоматически |
+
+**Если `GRANITE_API_KEY` не задан** — аутентификация отключена (dev-режим). В логе при старте: `GRANITE_API_KEY not set — API authentication DISABLED (dev mode)`.
+
+**401 ответ:**
+```json
+{
+  "error": "Invalid or missing API key. Set X-API-Key header.",
+  "code": "UNAUTHORIZED"
+}
+```
+
+---
+
+## 17. Администрирование
 
 ### `POST /admin/login`
 

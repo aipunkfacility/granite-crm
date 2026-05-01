@@ -9,10 +9,10 @@
 
 ## 1. Типы шаблонов
 
-| body_type | Описание | Как хранится в БД | Как рендерится |
-|-----------|----------|-------------------|----------------|
-| `plain` | Plain text | `CrmTemplateRow.body` — текст с плейсхолдерами | Оборачивается в `<pre>` с `html.escape()`, передаётся как `MIMEText("plain")` + `MIMEText("html")` |
-| `html` | Готовый HTML | `CrmTemplateRow.body` — полный HTML-документ | Передаётся как `MIMEText("html")` напрямую, plain-альтернатива генерируется автоматически через `_html_to_plain_text()` |
+| body_type | Описание | Как хранится | Как рендерится |
+|-----------|----------|-------------|----------------|
+| `plain` | Plain text | `EmailTemplate.body` в `data/email_templates.json` — текст с плейсхолдерами | Оборачивается в `<pre>` с `html.escape()`, передаётся как `MIMEText("plain")` + `MIMEText("html")` |
+| `html` | Готовый HTML | `EmailTemplate.body` в `data/email_templates.json` — полный HTML-документ | Передаётся как `MIMEText("html")` напрямую, plain-альтернатива генерируется автоматически через `_html_to_plain_text()` |
 
 Один шаблон = один формат. Если нужен и plain, и HTML — создаются два отдельных шаблона.
 
@@ -115,7 +115,10 @@
 ### Путь письма от шаблона до получателя
 
 ```
-CrmTemplateRow (body_type, body, channel)
+data/email_templates.json
+       │
+       ▼
+  TemplateRegistry.get(name) → EmailTemplate (body_type, body, channel)
        │
        ▼
   template.render(**kwargs)
@@ -138,7 +141,7 @@ CrmTemplateRow (body_type, body, channel)
   SMTP → получатель
        │
        ▼
-  CrmEmailLogRow (tracking_id, status, sent_at)
+  CrmEmailLogRow (tracking_id, status, sent_at, rendered_body)
   CrmTouchRow (channel="email", direction="outgoing")
   CrmContactRow (email_sent_count++, last_email_sent_at, funnel_stage)
 ```
@@ -159,31 +162,36 @@ tracking pixel, не исправляется на уровне CRM.
 
 ### Rate limiting
 
-- 45–120 секунд между отправками (EMAIL_DELAY_MIN/MAX, дефолт в коде 45/120)
-- Дневной лимит — 50 писем (EMAIL_DAILY_LIMIT, глобальный по всем кампаниям за 24 часа). При достижении кампания ставится на паузу (paused_daily_limit).
-- Лимит получателей за запуск — 10 (MAX_SENDS_PER_RUN). Обрезает список до старта отправки.
+- 45–120 секунд между отправками (настраивается в `config.yaml`: `email.delay_min`, `email.delay_max` или через env `EMAIL_DELAY_MIN`/`EMAIL_DELAY_MAX`)
+- Дневной лимит — 50 писем (настраивается: `email.daily_limit` в config.yaml или `EMAIL_DAILY_LIMIT` в env). При достижении кампания ставится на паузу (paused_daily_limit).
+- Лимит получателей за запуск — 10 (настраивается: `email.max_sends_per_run` или `MAX_SENDS_PER_RUN` в env). Обрезает список до старта отправки.
 - Batch commit каждые 10 писем
 
 ---
 
-## 5. Загрузка HTML-шаблонов в CRM
+## 5. Редактирование шаблонов
 
-### Механизм
+### Source of truth: `data/email_templates.json`
 
-HTML-шаблоны загружаются **только через файл** — `<input type="file" accept=".html,.htm">`.
-Редактирование HTML в textarea **не предусмотрено** — 150+ строк кода с inline-стилями
-неудобно редактировать в текстовом поле.
+Все шаблоны (plain и HTML) хранятся в едином JSON-файле `data/email_templates.json`. Это единственный источник шаблонов — таблица `crm_templates` в БД больше не используется для новых записей (оставлена для backward compatibility).
 
-Поток:
-1. Пользователь выбирает `.html` файл на компьютере
-2. Браузер читает файл через `FileReader.readAsText(file)`
-3. Содержимое отправляется в API как `body` (string)
-4. API сохраняет в `CrmTemplateRow.body`
+### Как редактировать шаблоны
 
-### Обновление шаблона
+1. Отредактируйте `data/email_templates.json` напрямую (любым текстовым редактором)
+2. Перезагрузите шаблоны без рестарта сервера:
+   ```bash
+   # Через CLI
+   uv run cli.py templates-reload
+   # Или через API
+   curl -X POST http://localhost:8000/api/v1/templates/reload
+   ```
+3. Или перезапустите сервер — шаблоны загрузятся автоматически при старте
 
-Для обновления HTML-шаблона — повторная загрузка файла через тот же UI
-(PUT /api/v1/templates/{name} с новым `body`).
+### Проверка текущих шаблонов
+
+```bash
+curl http://localhost:8000/api/v1/templates
+```
 
 ### Лимит размера
 
@@ -242,6 +250,7 @@ with open("photo.jpg", "rb") as f:
 | 4 | Plain-text альтернатива генерируется автоматически (strip tags) | By design | Может терять форматирование для сложных писем |
 | 5 | HTML-шаблоны без плейсхолдеров = одинаковые письма всем | Текущее состояние | Нет персонализации, планируется добавить позже |
 | 6 | follow-up маппинг (стадия → шаблон) захардкожен в коде | Известное ограничение | Нельзя настроить через UI, только изменение кода |
+| 7 | `crm_templates` таблица deprecated, но не удалена | Backward compatibility | Данные старых записей доступны, новые не пишутся |
 
 ---
 

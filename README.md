@@ -50,11 +50,13 @@ cd granite-web && npm install && npm run dev  # Фронтенд
 │   ├── dedup/             # Дедупликация (Union-Find)
 │   ├── email/             # Email-отправка + tracking pixel
 │   ├── messenger/         # TG/WA отправка (mock)
-│   └── exporters/         # CSV/Markdown экспорт
+│   ├── exporters/         # CSV/Markdown экспорт
+│   └── templates.py       # EmailTemplate + TemplateRegistry
 ├── granite-web/           # Next.js фронтенд
 ├── alembic/               # Миграции БД
 ├── data/
 │   ├── granite.db         # SQLite (WAL)
+│   ├── email_templates.json  # Шаблоны писем (source of truth)
 │   ├── regions.yaml       # 40 областей, 566 городов
 │   └── export/            # CSV/MD экспорт
 └── docs/                  # Документация

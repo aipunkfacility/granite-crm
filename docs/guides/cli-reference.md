@@ -208,8 +208,8 @@ uv run cli.py api [--port ПОРТ] [--reload]
 | `GET` | `/campaigns/{id}/stats` | Статистика кампании |
 | **Рассылка** | | |
 | `POST` | `/companies/{id}/send` | Отправить сообщение (TG/WA) |
-| `GET` | `/templates` | Шаблоны сообщений |
-| `POST` | `/templates` | Создать шаблон |
+| `GET` | `/templates` | Шаблоны сообщений (из TemplateRegistry) |
+| `POST` | `/templates/reload` | Перезагрузка JSON без рестарта |
 | **Аналитика** | | |
 | `GET` | `/funnel` | Воронка по стадиям |
 | `GET` | `/followup` | Очередь follow-up |
@@ -260,13 +260,13 @@ uv run -m scripts.seed_crm_contacts
 
 Создаёт crm_contacts для компаний без CRM-записей (funnel_stage='new').
 
-### Заполнение шаблонов сообщений (seed)
+### Перезагрузка шаблонов
 
 ```bash
-uv run scripts/seed_crm_templates.py
+uv run cli.py templates-reload
 ```
 
-INSERT-ONLY: загружает шаблоны из `data/email_templates.json` в `crm_templates`. Пропускает уже существующие (по имени). Шаблоны: `cold_email_v1`, `cold_email_marquiz`, `cold_email_bitrix`, `follow_up_email_v1`. Актуальный список шаблонов — см. `data/email_templates.json`.
+Перезагружает шаблоны из `data/email_templates.json` без рестарта сервера. Полезно после ручного редактирования JSON-файла. Альтернатива: `POST /api/v1/templates/reload`.
 
 ### Обновление статуса городов
 
@@ -352,7 +352,7 @@ uv run pytest --cov=granite                # С покрытием
 | `WA_API_URL` | URL WhatsApp API |
 | `WA_API_TOKEN` | Токен WhatsApp API |
 | `FROM_NAME` | Имя для плейсхолдера `{from_name}` |
-| `GRANITE_API_KEY` | Ключ авторизации API (если задан) |
+| `GRANITE_API_KEY` | Ключ авторизации API (если задан — все `/api/v1/*` требуют `X-API-Key` заголовок) |
 | `CORS_ORIGINS` | CORS origins (через запятую) |
 | `GRANITE_CONFIG` | Путь к config.yaml |
 | `DEBUG` | Показывать детали ошибок в API |
