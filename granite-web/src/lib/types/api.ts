@@ -112,3 +112,14 @@ export interface Stats {
   with_email: number;
   top_cities: { city: string, count: number }[];
 }
+
+export interface Touch {
+  id: number;
+  company_id: number;
+  channel: string;
+  direction: string;
+  subject: string | null;
+  body: string | null;
+  template_name: string | null;
+  created_at: string | null;
+}

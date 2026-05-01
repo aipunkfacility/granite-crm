@@ -29,12 +29,13 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-// P4R-L13: Типизация STATUS_CONFIG — variant как union Badge, icon как LucideIcon
-type BadgeVariant = "default" | "secondary" | "outline" | "destructive" | "success";
+// P4R-L13: Типизация STATUS_CONFIG — variant выводится из badgeVariants, icon как LucideIcon
+import { badgeVariants } from "@/components/ui/badge";
+type BadgeVariant = NonNullable<Parameters<typeof badgeVariants>[0]>["variant"];
 
 interface StatusConfig {
   label: string;
-  variant: BadgeVariant;
+  variant: NonNullable<BadgeVariant>;
   icon: LucideIcon;
 }
 
