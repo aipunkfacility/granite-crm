@@ -329,7 +329,7 @@ scoring:
     has_website: 5
     cms_bitrix: 10
     cms_modern: 3
-    has_marquiz: 8
+    has_marquiz: 3
     has_telegram: 15
     has_whatsapp: 10
     tg_trust_multiplier: 3   # E2: trust_score tiers: 0→bot(-10), 1→3pts, 2→6pts, 3→9pts
