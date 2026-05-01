@@ -162,7 +162,7 @@ config.yaml                 granite/database.py              alembic/
 
 > **Внимание:** Эта таблица оставлена для backward compatibility. Новые записи НЕ пишутся. Source of truth — `data/email_templates.json`, загружаемый через `TemplateRegistry` (`granite/templates.py`). Поля `retired` и метод `render()` больше не используются приложением.
 
-Шаблоны с плейсхолдерами `{from_name}`, `{city}`, `{company_name}`. Подстановка через `str.replace()` (безопасная, без eval).
+Шаблоны с плейсхолдерами `{from_name}`, `{city}`, `{city_locative}`, `{company_name}`. Подстановка через `str.replace()` (безопасная, без eval). `{city_locative}` — автоматический плейсхолдер, вычисляется из `city` через `granite/city_declensions.py` (данные: `data/city_declensions.json`, 1093 города).
 
 | Колонка | Тип | Описание |
 |---------|-----|----------|

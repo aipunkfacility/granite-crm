@@ -47,7 +47,7 @@
 1. Открыть карточку компании в CRM
 2. Убедиться, что входящий ответ распознан как «interested»
 3. Нажать кнопку «Playbook» → выбрать сценарий «Заинтересован»
-4. Шаблон `reply_interested` автоматически подставит `{city}`, `{company_name}`
+4. Шаблон `reply_interested` автоматически подставит `{city_locative}`, `{company_name}`
 5. Предпросмотр — проверить текст, при необходимости дописать конкретику
 6. Отправить → `CrmTouchRow(direction="outgoing")` + `funnel_stage = "interested"`
 
@@ -457,7 +457,7 @@ Content-Type: application/json
 1. `CrmTemplateRow.render(**kwargs)` — подставляет плейсхолдеры через `str.replace()`
 2. Для `body_type="html"` — значения экранируются через `html.escape()`
 3. Для `body_type="plain"` — подстановка как есть
-4. Незаполненные плейсхолдеры логируются как warning
+`city_locative` вычисляется из `city` автоматически через `get_locative()` из модуля `granite/city_declensions.py` — оператору не нужно заполнять отдельно. Данные: `data/city_declensions.json` (1093 города).
 
 **Доступные плейсхолдеры:**
 
@@ -470,6 +470,7 @@ Content-Type: application/json
 | `{contact_name}` | Ручной ввод | Иван |
 | `{phone}` | `CompanyRow.phones[0]` | 79001234567 |
 | `{unsubscribe_url}` | Автогенерация | `https://.../unsubscribe?...` |
+| `{city_locative}` | Город в предложном падеже (авто из словаря) | Москве |
 | `{original_subject}` | Из предыдущего письма | Помощь с подготовкой фото |
 
 ### 5.5 A/B тестирование и шаблоны

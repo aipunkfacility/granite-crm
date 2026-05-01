@@ -57,6 +57,7 @@ cd granite-web && npm install && npm run dev  # Фронтенд
 ├── data/
 │   ├── granite.db         # SQLite (WAL)
 │   ├── email_templates.json  # Шаблоны писем (source of truth)
+│   ├── city_declensions.json # 1093 города: именительный → предложный
 │   ├── regions.yaml       # 40 областей, 566 городов
 │   └── export/            # CSV/MD экспорт
 └── docs/                  # Документация

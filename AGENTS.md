@@ -16,6 +16,7 @@
 |----------|------|
 | ORM + БД | `granite/database.py` |
 | Шаблоны | `granite/templates.py` — EmailTemplate + TemplateRegistry (JSON as source of truth) |
+| Склонения | `granite/city_declensions.py` — nominative→locative (1093 города) |
 | Шаблоны JSON | `data/email_templates.json` — единственный источник шаблонов |
 | Пайплайн | `granite/pipeline/` |
 | Скреперы | `granite/scrapers/` (jsprav, jsprav_playwright) ⚠️ dgis/yell отключены, web_search работает |
@@ -182,6 +183,7 @@ granite/
 ├── messenger/ # TG/WA (mock)
 ├── exporters/ # CSV/Markdown экспорт
 ├── templates.py # EmailTemplate + TemplateRegistry (JSON → память)
+├── city_declensions.py # склонение городов (nominative→locative)
 └── data/     # справочники
 ```
 
