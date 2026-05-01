@@ -689,8 +689,17 @@ def repair_db(
         scorer = ScoringPhase(db, classifier)
 
         with db.session_scope() as session:
+            # Сначала populated-города, затем fallback на города с enriched-данными
             cities = session.query(CityRefRow.name).filter(CityRefRow.is_populated == True).all()
             city_names = [c.name for c in cities]
+            if not city_names:
+                from granite.database import EnrichedCompanyRow
+                from sqlalchemy import distinct
+                city_names = [
+                    r[0] for r in session.query(distinct(EnrichedCompanyRow.city)).all() if r[0]
+                ]
+                if city_names:
+                    logger.info(f"No populated cities, found {len(city_names)} cities with enriched data")
 
         if not city_names:
             print_status("No populated cities found for scoring", "warning")
