@@ -6,6 +6,15 @@ export const apiClient = axios.create({
   timeout: 15000,
 });
 
+// Добавляем X-API-Key ко всем запросам (если задан)
+apiClient.interceptors.request.use((config) => {
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+  if (apiKey) {
+    config.headers['X-API-Key'] = apiKey;
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
