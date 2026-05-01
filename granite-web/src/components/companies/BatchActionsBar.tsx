@@ -1,11 +1,13 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Ban, CheckCircle2, X } from 'lucide-react';
+import { Ban, CheckCircle2, X, Mail } from 'lucide-react';
+import { AddToCampaignDialog } from './AddToCampaignDialog';
 
 interface BatchActionsBarProps {
   selectedCount: number;
+  selectedCompanyIds: number[];
   onBatchSpam: () => void;
   onBatchApprove: () => void;
   onClearSelection: () => void;
@@ -14,11 +16,14 @@ interface BatchActionsBarProps {
 
 export function BatchActionsBar({
   selectedCount,
+  selectedCompanyIds,
   onBatchSpam,
   onBatchApprove,
   onClearSelection,
   isAdmin,
 }: BatchActionsBarProps) {
+  const [addToCampaignOpen, setAddToCampaignOpen] = useState(false);
+
   if (selectedCount === 0) return null;
 
   return (
@@ -35,6 +40,15 @@ export function BatchActionsBar({
 
         {isAdmin ? (
           <>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddToCampaignOpen(true)}
+              className="gap-1.5"
+            >
+              <Mail className="h-3.5 w-3.5" />
+              В кампанию
+            </Button>
             <Button
               variant="destructive"
               size="sm"
@@ -72,6 +86,14 @@ export function BatchActionsBar({
           <X className="h-4 w-4" />
         </Button>
       </div>
+
+      <AddToCampaignDialog
+        open={addToCampaignOpen}
+        onOpenChange={setAddToCampaignOpen}
+        companyIds={selectedCompanyIds}
+        count={selectedCount}
+        onSuccess={onClearSelection}
+      />
     </div>
   );
 }

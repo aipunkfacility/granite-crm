@@ -14,11 +14,11 @@ from granite.api.schemas import (
     CreateCampaignRequest, UpdateCampaignRequest, OkResponse,
     OkWithIdResponse, CampaignResponse, CampaignDetailResponse,
     CampaignStatsResponse, PaginatedResponse, StaleCampaignsResponse,
-    CampaignFilters,
+    CampaignFilters, AddRecipientsRequest, RemoveRecipientsRequest,
 )
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
-    CrmEmailLogRow, CrmEmailCampaignRow,
+    CrmEmailLogRow, CrmEmailCampaignRow, CampaignRecipientRow,
 )
 from loguru import logger
 
@@ -133,10 +133,13 @@ def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
 
 @router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
 def create_campaign(data: CreateCampaignRequest, request: Request, db: Session = Depends(get_db)):
-    """Создать кампанию. Body: {name, template_name, filters?: {city?, segment?, min_score?}}
+    """Создать кампанию. Body: {name, template_name, filters?, recipient_mode?, company_ids?}
 
     FIX HIGH-7: Валидация template_name — проверяем существование шаблона
     до создания кампании, чтобы ошибка обнаружилась сразу, а не при запуске.
+
+    Поддержка manual-режима: если recipient_mode='manual' и передан company_ids,
+    компании добавляются в campaign_recipients.
     """
     template = request.app.state.template_registry.get(data.template_name)
     if not template:
@@ -158,9 +161,15 @@ def create_campaign(data: CreateCampaignRequest, request: Request, db: Session =
         filters=data.filters.model_dump(exclude_none=True),
         subject_a=data.subject_a,
         subject_b=data.subject_b,
+        recipient_mode=data.recipient_mode,
     )
     db.add(campaign)
     db.flush()
+
+    # Добавляем начальный список компаний для manual-режима
+    if data.recipient_mode == "manual" and data.company_ids:
+        _add_recipients_to_campaign(campaign, data.company_ids, db)
+
     return OkWithIdResponse(ok=True, id=campaign.id)
 
 
@@ -184,6 +193,7 @@ def list_campaigns(
         {
             "id": c.id, "name": c.name, "template_name": c.template_name,
             "status": c.status,
+            "recipient_mode": c.recipient_mode or "filter",
             "subject_a": c.subject_a, "subject_b": c.subject_b,
             "total_sent": c.total_sent,
             "total_opened": c.total_opened, "total_replied": c.total_replied,
@@ -197,7 +207,11 @@ def list_campaigns(
 
 
 def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
-    """Найти получателей кампании по фильтрам.
+    """Найти получателей кампании.
+
+    Поддерживает два режима:
+    - filter: получатели по фильтрам (существующее поведение)
+    - manual: получатели из campaign_recipients (новое)
 
     Дедупликация:
     - По campaign_id (не отправлять дважды в одну кампанию).
@@ -206,6 +220,11 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
     FIX-3: После базовой фильтрации применяется validate_recipients()
     для проверки агрегаторов, невалидных email, SESSION_GAP.
     """
+    # Manual-режим — получатели из junction-таблицы
+    if campaign.recipient_mode == "manual":
+        return _get_manual_recipients(campaign, db)
+
+    # Filter-режим — существующее поведение
     # AUDIT #15: filters теперь JSON-колонка (не Text), читаем напрямую
     filters = campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}")
 
@@ -262,6 +281,83 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
     return valid
 
 
+def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
+    """Получатели из campaign_recipients (manual mode).
+
+    Использует один JOIN-запрос вместо N+1 (аудит, п.1).
+    SESSION_GAP пропускается для manual-режима (аудит, п.4).
+    Агрегаторы и Gmail-блок остаются (техническая защита).
+    """
+    # 1. Получить company_ids из junction-таблицы
+    recipient_rows = (
+        db.query(CampaignRecipientRow.company_id)
+        .filter(CampaignRecipientRow.campaign_id == campaign.id)
+        .all()
+    )
+    company_ids = [r[0] for r in recipient_rows]
+
+    if not company_ids:
+        return []
+
+    # 2. Один JOIN-запрос вместо N+1 (аудит, п.1)
+    q = (
+        db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
+        .outerjoin(EnrichedCompanyRow, EnrichedCompanyRow.id == CompanyRow.id)
+        .outerjoin(CrmContactRow, CrmContactRow.company_id == CompanyRow.id)
+        .filter(CompanyRow.id.in_(company_ids))
+        .filter(CompanyRow.deleted_at.is_(None))  # аудит, мелочь: soft-delete
+    )
+
+    # Batch iteration (как в filter-режиме)
+    from sqlalchemy.exc import StatementError
+    try:
+        rows_iter = q.yield_per(100).execution_options(stream_results=True)
+    except StatementError:
+        try:
+            rows_iter = q.yield_per(100)
+        except StatementError:
+            rows_iter = q.all()
+
+    # 3. Дедуп по уже отправленным
+    sent_company_ids = {
+        row[0] for row in
+        db.query(CrmEmailLogRow.company_id)
+        .filter(CrmEmailLogRow.campaign_id == campaign.id)
+        .all()
+    }
+
+    raw_recipients = []
+    seen_emails = set()
+    for company, enriched, contact in rows_iter:
+        if company.id in sent_company_ids:
+            continue
+        if contact and contact.stop_automation:
+            continue
+        emails = company.emails or []
+        if not emails:
+            continue
+        email_to = emails[0].lower().strip()
+        if email_to in seen_emails:
+            continue
+        seen_emails.add(email_to)
+        raw_recipients.append((company, enriched, contact, email_to))
+
+    # 4. Валидация: агрегаторы + Gmail-блок, БЕЗ SESSION_GAP (аудит, п.4)
+    from granite.email.validator import validate_recipients
+    valid, warnings = validate_recipients(
+        raw_recipients,
+        db_session=db,
+        skip_session_gap=True,
+    )
+    if warnings:
+        logger.warning(
+            f"Campaign {campaign.id} (manual): {len(warnings)} recipients filtered by validator: "
+            + "; ".join(f"{w.get('name', '?')} ({w.get('reason', '?')})" for w in warnings[:5])
+            + (f"... +{len(warnings) - 5} more" if len(warnings) > 5 else "")
+        )
+    return valid
+
+
 @router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)
 def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_db)):
     """Детали кампании + предпросмотр получателей + статистика.
@@ -305,10 +401,19 @@ def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_d
         elif campaign.subject_b and not campaign.subject_a:
             validator_warnings.append("A/B тест: задан только вариант B — укажите также вариант A")
 
+    # recipient_count — только в detail, не в списке (аудит, п.7: N+1)
+    recipient_count = None
+    if campaign.recipient_mode == "manual":
+        recipient_count = db.query(func.count(CampaignRecipientRow.campaign_id)).filter(
+            CampaignRecipientRow.campaign_id == campaign.id
+        ).scalar() or 0
+
     return {
         "id": campaign.id, "name": campaign.name,
         "template_name": campaign.template_name,
         "status": campaign.status,
+        "recipient_mode": campaign.recipient_mode or "filter",
+        "recipient_count": recipient_count,
         "filters": campaign.filters if isinstance(campaign.filters, dict) else json.loads(campaign.filters or "{}"),
         "subject_a": campaign.subject_a,
         "subject_b": campaign.subject_b,
@@ -821,3 +926,170 @@ def get_ab_stats(campaign_id: int, db: Session = Depends(get_db)):
         "winner": None,
         "note": "Победитель — по количеству ответов (см. раздел 6.4 плана)",
     }
+
+
+# ============================================================
+# Manual campaign recipients — ручной отбор компаний
+# ============================================================
+
+_EDITABLE_STATUSES = {"draft", "paused", "paused_daily_limit"}
+
+
+def _add_recipients_to_campaign(
+    campaign: CrmEmailCampaignRow,
+    company_ids: list[int],
+    db: Session,
+) -> dict:
+    """Добавить компании в кампанию. Возвращает {added, skipped}.
+
+    Используется из create_campaign и add_recipients эндпоинта.
+    """
+    added = 0
+    skipped = 0
+
+    # Уже добавленные компании (для дедупа)
+    existing_ids = {
+        r[0] for r in
+        db.query(CampaignRecipientRow.company_id)
+        .filter(CampaignRecipientRow.campaign_id == campaign.id)
+        .all()
+    }
+
+    for cid in company_ids:
+        if cid in existing_ids:
+            skipped += 1
+            continue
+
+        # Проверяем компанию
+        company = db.get(CompanyRow, cid)
+        if not company or company.deleted_at:
+            skipped += 1
+            continue
+
+        emails = company.emails or []
+        if not emails:
+            skipped += 1
+            continue
+
+        # Проверяем stop_automation
+        contact = db.get(CrmContactRow, cid)
+        if contact and contact.stop_automation:
+            skipped += 1
+            continue
+
+        db.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=cid))
+        existing_ids.add(cid)
+        added += 1
+
+    db.flush()
+    return {"added": added, "skipped": skipped}
+
+
+@router.post("/campaigns/{campaign_id}/recipients")
+def add_recipients(
+    campaign_id: int,
+    data: AddRecipientsRequest,
+    db: Session = Depends(get_db),
+):
+    """Добавить компании в кампанию (manual mode).
+
+    Если кампания в filter-режиме — требуется force=true для переключения на manual.
+    """
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    if campaign.status not in _EDITABLE_STATUSES:
+        raise HTTPException(
+            409,
+            f"Cannot modify recipients for campaign in status '{campaign.status}'. "
+            f"Only {', '.join(sorted(_EDITABLE_STATUSES))} campaigns can be modified.",
+        )
+
+    # Аудит, п.2: автопереключение filter→manual убрано
+    if campaign.recipient_mode == "filter":
+        if not data.force:
+            raise HTTPException(
+                409,
+                "Кампания в режиме фильтров. Передайте force=true для переключения "
+                "в ручной режим или создайте новую кампанию с recipient_mode='manual'.",
+            )
+        campaign.recipient_mode = "manual"
+        db.flush()
+
+    result = _add_recipients_to_campaign(campaign, data.company_ids, db)
+    return {"ok": True, **result}
+
+
+@router.post("/campaigns/{campaign_id}/recipients/remove")
+def remove_recipients(
+    campaign_id: int,
+    data: RemoveRecipientsRequest,
+    db: Session = Depends(get_db),
+):
+    """Удалить компании из кампании (POST /remove — аудит, п.6: DELETE с body нестандартен)."""
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    if campaign.status not in _EDITABLE_STATUSES:
+        raise HTTPException(
+            409,
+            f"Cannot modify recipients for campaign in status '{campaign.status}'.",
+        )
+
+    removed = (
+        db.query(CampaignRecipientRow)
+        .filter(
+            CampaignRecipientRow.campaign_id == campaign.id,
+            CampaignRecipientRow.company_id.in_(data.company_ids),
+        )
+        .delete(synchronize_session="fetch")
+    )
+    db.flush()
+
+    return {"ok": True, "removed": removed}
+
+
+@router.get("/campaigns/{campaign_id}/recipients")
+def list_recipients(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=200),
+):
+    """Список компаний в кампании (manual mode). Пагинированный."""
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+
+    # Базовый запрос — JOIN для получения данных компании
+    q = (
+        db.query(CompanyRow, EnrichedCompanyRow)
+        .join(CampaignRecipientRow, CampaignRecipientRow.company_id == CompanyRow.id)
+        .outerjoin(EnrichedCompanyRow, EnrichedCompanyRow.id == CompanyRow.id)
+        .filter(CampaignRecipientRow.campaign_id == campaign_id)
+    )
+
+    total = q.count()
+
+    rows = (
+        q.order_by(CampaignRecipientRow.added_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+
+    items = [
+        {
+            "id": c.id,
+            "name": c.name_best,
+            "city": c.city,
+            "emails": c.emails or [],
+            "segment": e.segment if e else None,
+            "crm_score": e.crm_score if e else 0,
+        }
+        for c, e in rows
+    ]
+
+    return {"items": items, "total": total, "page": page, "per_page": per_page}

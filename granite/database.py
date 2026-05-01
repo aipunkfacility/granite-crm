@@ -404,6 +404,9 @@ class CrmEmailCampaignRow(Base):
     total_errors = Column(Integer, default=0)  # Задача 3: счётчик ошибок отправки
     total_recipients = Column(Integer, default=0)  # FIX-A5: кол-во получателей при старте
 
+    # Режим отбора получателей: 'filter' (по фильтрам) или 'manual' (из campaign_recipients)
+    recipient_mode = Column(String(10), default="filter", server_default="filter", nullable=False)
+
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -414,12 +417,25 @@ class CrmEmailCampaignRow(Base):
         return f"<CrmEmailCampaignRow(id={self.id}, name={self.name!r}, status={self.status!r})>"
 
 
+class CampaignRecipientRow(Base):
+    """Связь кампания <-> компания для ручного отбора."""
+    __tablename__ = "campaign_recipients"
+
+    campaign_id = Column(Integer, ForeignKey("crm_email_campaigns.id", ondelete="CASCADE"), primary_key=True)
+    company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
+    added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    def __repr__(self):
+        return f"<CampaignRecipientRow(campaign_id={self.campaign_id}, company_id={self.company_id})>"
+
+
 __all__ = [
     "Base", "Database",
     "RawCompanyRow", "CompanyRow", "EnrichedCompanyRow",
     "CityRefRow", "UnmatchedCityRow",
     "CrmContactRow", "CrmTouchRow", "CrmTemplateRow",
     "CrmEmailLogRow", "CrmTaskRow", "CrmEmailCampaignRow",
+    "CampaignRecipientRow",
     "VALID_STAGES",
 ]
 

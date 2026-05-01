@@ -166,8 +166,28 @@ class CreateCampaignRequest(BaseModel):
     name: str = Field("Campaign", min_length=1)
     template_name: str = Field("cold_email_v1", min_length=1)
     filters: CampaignFilters = Field(default_factory=CampaignFilters)
+    recipient_mode: str = Field("filter", pattern="^(filter|manual)$")
     subject_a: Optional[str] = Field(None, description="Тема письма вариант A (по умолчанию — из шаблона)")
     subject_b: Optional[str] = Field(None, description="Тема письма вариант B (для A/B теста)")
+    company_ids: Optional[List[int]] = Field(None, description="Начальный список компаний (только для manual mode)")
+
+    @model_validator(mode="after")
+    def validate_mode_consistency(self):
+        """company_ids доступен только при recipient_mode='manual'."""
+        if self.recipient_mode == "filter" and self.company_ids:
+            raise ValueError("company_ids доступен только при recipient_mode='manual'")
+        return self
+
+
+class AddRecipientsRequest(BaseModel):
+    """Добавить компании в кампанию (manual mode)."""
+    company_ids: List[int] = Field(..., min_length=1, max_length=500)
+    force: bool = Field(False, description="Принудительно переключить filter→manual")
+
+
+class RemoveRecipientsRequest(BaseModel):
+    """Удалить компании из кампании."""
+    company_ids: List[int] = Field(..., min_length=1)
 
 
 # ============================================================
@@ -292,6 +312,7 @@ class CampaignResponse(BaseModel):
     name: str
     template_name: str
     status: str
+    recipient_mode: str = "filter"
     subject_a: Optional[str] = None
     subject_b: Optional[str] = None
     total_sent: int = 0
@@ -317,6 +338,8 @@ class CampaignDetailResponse(BaseModel):
     name: str
     template_name: str
     status: str
+    recipient_mode: str = "filter"
+    recipient_count: Optional[int] = None
     filters: dict = {}
     subject_a: Optional[str] = None
     subject_b: Optional[str] = None

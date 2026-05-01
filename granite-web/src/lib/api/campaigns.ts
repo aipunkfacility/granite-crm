@@ -12,6 +12,7 @@ export interface Campaign {
   name: string;
   template_name: string;
   status: CampaignStatus;  // P4R-H7: был string, теперь union
+  recipient_mode: 'filter' | 'manual';
   subject_a: string | null;
   subject_b: string | null;
   total_sent: number;
@@ -26,7 +27,9 @@ export interface CampaignDetail {
   id: number;
   name: string;
   template_name: string;
-  status: CampaignStatus;  // P4R-H7: был string, теперь union как у Campaign
+  status: CampaignStatus;
+  recipient_mode: 'filter' | 'manual';
+  recipient_count: number | null;
   filters: Record<string, any>;
   subject_a: string | null;
   subject_b: string | null;
@@ -70,8 +73,10 @@ export interface CreateCampaignPayload {
   name: string;
   template_name: string;
   filters?: Record<string, any>;
+  recipient_mode?: 'filter' | 'manual';
   subject_a?: string;
   subject_b?: string;
+  company_ids?: number[];  // Для manual-режима: начальный список компаний
 }
 
 export const fetchCampaigns = async (params: { page?: number; per_page?: number } = {}): Promise<PaginatedResponse<Campaign>> => {
@@ -122,3 +127,49 @@ export const previewRecipients = async (filters: Record<string, any>): Promise<P
 
 // P4R-H8: Удалена fetchCampaignProgress — мёртвый код с неправильным SSE-паттерном.
 // Dashboard использует EventSource напрямую для SSE.
+
+// ============================================================
+// Manual campaign recipients API
+// ============================================================
+
+export interface RecipientItem {
+  id: number;
+  name: string;
+  city: string;
+  emails: string[];
+  segment: string | null;
+  crm_score: number;
+}
+
+export const addRecipients = async (
+  campaignId: number,
+  companyIds: number[],
+  force = false,
+): Promise<{ ok: boolean; added: number; skipped: number }> => {
+  const { data } = await apiClient.post(`campaigns/${campaignId}/recipients`, {
+    company_ids: companyIds,
+    force,
+  });
+  return data;
+};
+
+export const removeRecipients = async (
+  campaignId: number,
+  companyIds: number[],
+): Promise<{ ok: boolean; removed: number }> => {
+  const { data } = await apiClient.post(`campaigns/${campaignId}/recipients/remove`, {
+    company_ids: companyIds,
+  });
+  return data;
+};
+
+export const fetchRecipients = async (
+  campaignId: number,
+  page = 1,
+  perPage = 50,
+): Promise<PaginatedResponse<RecipientItem>> => {
+  const { data } = await apiClient.get(`campaigns/${campaignId}/recipients`, {
+    params: { page, per_page: perPage },
+  });
+  return data;
+};

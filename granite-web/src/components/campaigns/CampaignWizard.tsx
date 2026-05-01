@@ -29,6 +29,7 @@ import {
   Plus,
   Check,
   Sparkles,
+  Mail,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiClient } from '@/lib/api/client';
@@ -45,6 +46,10 @@ interface WizardProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: () => void;
+  /** Предзаполненные company_ids (из BatchActionsBar/CompanySheet) */
+  preselectedCompanyIds?: number[];
+  /** Предустановленный режим (manual при вызове из карточки) */
+  initialRecipientMode?: 'filter' | 'manual';
 }
 
 const STEPS = [
@@ -63,11 +68,14 @@ const SEGMENT_OPTIONS: { value: Segment; label: string }[] = [
   { value: 'spam', label: 'Spam' },
 ];
 
-export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
+export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyIds, initialRecipientMode }: WizardProps) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [templateName, setTemplateName] = useState('');
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
+
+  // Режим отбора: filter (по фильтрам) или manual (ручной выбор)
+  const [recipientMode, setRecipientMode] = useState<'filter' | 'manual'>(initialRecipientMode || 'filter');
 
   // Фильтры
   const [filterCity, setFilterCity] = useState('');
@@ -156,6 +164,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
     setName('');
     setTemplateName('');
     setSelectedTemplate(null);
+    setRecipientMode(initialRecipientMode || 'filter');
     setFilterCity('');
     setFilterSegment('');
     setFilterMinScore('');
@@ -183,7 +192,9 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
       await createCampaign({
         name: name.trim(),
         template_name: templateName,
-        filters: Object.keys(filters).length > 0 ? filters : undefined,
+        recipient_mode: recipientMode,
+        filters: recipientMode === 'filter' && Object.keys(filters).length > 0 ? filters : undefined,
+        company_ids: recipientMode === 'manual' && preselectedCompanyIds && preselectedCompanyIds.length > 0 ? preselectedCompanyIds : undefined,
         subject_a: subjectA || undefined,
         subject_b: showVariantB ? subjectB : undefined,
       });
@@ -199,7 +210,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
   const canGoNext = () => {
     switch (step) {
       case 1: return name.trim() && templateName;
-      case 2: return true;
+      case 2: return recipientMode === 'manual' || previewTotal !== null;
       case 3: return !showVariantB || subjectB.trim();
       case 4: return true;
       default: return false;
@@ -292,6 +303,45 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                 )}
               </div>
 
+              {/* Переключатель режима отбора */}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-2 block">Режим отбора получателей</label>
+                <div className="flex gap-2">
+                  <button
+                    className={cn(
+                      "flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors",
+                      recipientMode === 'filter'
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/30 text-muted-foreground hover:border-primary/30"
+                    )}
+                    onClick={() => setRecipientMode('filter')}
+                  >
+                    <Users className="h-4 w-4 inline mr-2" />
+                    По фильтрам
+                  </button>
+                  <button
+                    className={cn(
+                      "flex-1 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-colors",
+                      recipientMode === 'manual'
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border bg-muted/30 text-muted-foreground hover:border-primary/30"
+                    )}
+                    onClick={() => setRecipientMode('manual')}
+                  >
+                    <Mail className="h-4 w-4 inline mr-2" />
+                    Ручной отбор
+                  </button>
+                </div>
+                {recipientMode === 'manual' && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Компании будут добавлены позже со страницы «Компании».
+                    {preselectedCompanyIds && preselectedCompanyIds.length > 0 && (
+                      <span className="text-primary font-medium"> Уже выбрано: {preselectedCompanyIds.length}</span>
+                    )}
+                  </p>
+                )}
+              </div>
+
               {/* Превью шаблона */}
               {selectedTemplate && (
                 <Card className="border-border/50 bg-muted/30">
@@ -317,82 +367,104 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
             </div>
           )}
 
-          {/* Step 2: Фильтры + превью получателей */}
+          {/* Step 2: Фильтры + превью получателей (или информация для manual) */}
           {step === 2 && (
             <div className="space-y-5">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Город</label>
-                  <Select value={filterCity} onValueChange={setFilterCity}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Все города" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">Все города</SelectItem>
-                      {cities.map(c => (
-                        <SelectItem key={c} value={c}>{c}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Сегмент</label>
-                  <Select value={filterSegment} onValueChange={setFilterSegment}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Все сегменты" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__all__">Все сегменты</SelectItem>
-                      {/* P4R-M21: Сегменты из типа Segment */}
-                      {SEGMENT_OPTIONS.map(s => (
-                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Мин. скор</label>
-                  <Input
-                    type="number"
-                    placeholder="0"
-                    min={0}
-                    max={200}
-                    value={filterMinScore}
-                    onChange={e => setFilterMinScore(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {/* Превью получателей */}
-              <Card className={cn(
-                "border-border/50",
-                previewTotal === 0 ? "bg-destructive/5 border-destructive/20" : "bg-success/5 border-success/20"
-              )}>
-                <CardContent className="py-4 px-4 flex items-center gap-3">
-                  <Users className={cn("h-8 w-8", previewTotal === 0 ? "text-destructive" : "text-success")} />
-                  <div>
-                    {previewLoading ? (
-                      <div className="flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Подсчёт получателей...</span>
-                      </div>
-                    ) : previewTotal !== null ? (
-                      <>
-                        <p className={cn("text-2xl font-bold", previewTotal === 0 ? "text-destructive" : "text-success")}>
-                          {previewTotal}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {previewTotal === 0
-                            ? 'Нет компаний по выбранным фильтрам'
-                            : 'компаний получат письмо (приблизительно)'}
-                        </p>
-                      </>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Выберите фильтры для подсчёта</p>
-                    )}
+              {recipientMode === 'manual' ? (
+                /* Manual: компании добавляются позже */
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="py-6 px-4 flex flex-col items-center gap-3 text-center">
+                    <Mail className="h-10 w-10 text-primary" />
+                    <div>
+                      <p className="text-lg font-semibold text-foreground">Ручной отбор компаний</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Компании будут добавлены позже со страницы «Компании» — через карточку компании или массовый выбор.
+                        {preselectedCompanyIds && preselectedCompanyIds.length > 0 && (
+                          <span className="block mt-2 text-primary font-medium">
+                            Уже выбрано: {preselectedCompanyIds.length} компаний
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Город</label>
+                      <Select value={filterCity} onValueChange={setFilterCity}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Все города" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Все города</SelectItem>
+                          {cities.map(c => (
+                            <SelectItem key={c} value={c}>{c}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Сегмент</label>
+                      <Select value={filterSegment} onValueChange={setFilterSegment}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Все сегменты" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__all__">Все сегменты</SelectItem>
+                          {/* P4R-M21: Сегменты из типа Segment */}
+                          {SEGMENT_OPTIONS.map(s => (
+                            <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Мин. скор</label>
+                      <Input
+                        type="number"
+                        placeholder="0"
+                        min={0}
+                        max={200}
+                        value={filterMinScore}
+                        onChange={e => setFilterMinScore(e.target.value)}
+                      />
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+
+                  {/* Превью получателей */}
+                  <Card className={cn(
+                    "border-border/50",
+                    previewTotal === 0 ? "bg-destructive/5 border-destructive/20" : "bg-success/5 border-success/20"
+                  )}>
+                    <CardContent className="py-4 px-4 flex items-center gap-3">
+                      <Users className={cn("h-8 w-8", previewTotal === 0 ? "text-destructive" : "text-success")} />
+                      <div>
+                        {previewLoading ? (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                            <span className="text-sm text-muted-foreground">Подсчёт получателей...</span>
+                          </div>
+                        ) : previewTotal !== null ? (
+                          <>
+                            <p className={cn("text-2xl font-bold", previewTotal === 0 ? "text-destructive" : "text-success")}>
+                              {previewTotal}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {previewTotal === 0
+                                ? 'Нет компаний по выбранным фильтрам'
+                                : 'компаний получат письмо (приблизительно)'}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">Выберите фильтры для подсчёта</p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </div>
           )}
 
@@ -472,14 +544,30 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
                   <p className="font-mono text-primary">{templateName}</p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted border border-border">
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Фильтры</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Режим</p>
                   <p className="font-medium">
-                    {filterCity && filterCity !== '__all__' ? filterCity : 'Все города'} / Сегмент {filterSegment && filterSegment !== '__all__' ? filterSegment : 'Все'} / Мин. скор {filterMinScore || '0'}
+                    {recipientMode === 'manual' ? (
+                      <><Mail className="h-3 w-3 inline mr-1 text-primary" />Ручной отбор</>
+                    ) : (
+                      <><Users className="h-3 w-3 inline mr-1 text-primary" />По фильтрам</>
+                    )}
                   </p>
                 </div>
                 <div className="p-3 rounded-lg bg-muted border border-border">
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Получатели</p>
-                  <p className="font-bold text-success">{previewTotal ?? '?'} компаний</p>
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
+                    {recipientMode === 'manual' ? 'Компании' : 'Фильтры'}
+                  </p>
+                  {recipientMode === 'manual' ? (
+                    <p className="font-medium">
+                      {preselectedCompanyIds && preselectedCompanyIds.length > 0
+                        ? `${preselectedCompanyIds.length} компаний выбрано`
+                        : 'Будут добавлены позже'}
+                    </p>
+                  ) : (
+                    <p className="font-medium">
+                      {filterCity && filterCity !== '__all__' ? filterCity : 'Все города'} / Сегмент {filterSegment && filterSegment !== '__all__' ? filterSegment : 'Все'} / Мин. скор {filterMinScore || '0'}
+                    </p>
+                  )}
                 </div>
                 <div className="p-3 rounded-lg bg-muted border border-border col-span-2">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">
@@ -534,7 +622,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated }: WizardProps) {
               <Button
                 onClick={handleCreate}
                 // P4R-M15: Кнопка disabled при previewTotal === null (ещё не загружен)
-                disabled={!name.trim() || !templateName || isSaving || previewTotal === null || previewTotal === 0}
+                disabled={!name.trim() || !templateName || isSaving || (recipientMode === 'filter' && (previewTotal === null || previewTotal === 0))}
                 className="bg-success hover:bg-success/90 text-success-foreground"
               >
                 {isSaving ? (

@@ -30,6 +30,7 @@ import {
   ExternalLink,
   Clock,
   Smartphone,
+  MailPlus,
 } from "lucide-react";
 import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { FunnelStage } from "@/lib/types/api";
@@ -42,6 +43,7 @@ import { CompanyEditDialog } from "@/components/companies/CompanyEditDialog";
 import { ReEnrichDialog } from "@/components/companies/ReEnrichDialog";
 import { MarkSpamDialog } from "@/components/companies/MarkSpamDialog";
 import { MarkDuplicateDialog } from "@/components/companies/MarkDuplicateDialog";
+import { AddToCampaignDialog } from "@/components/companies/AddToCampaignDialog";
 
 /* V-01: Карточка компании — Sheet (side panel) вместо отдельной страницы */
 
@@ -83,6 +85,7 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
   const [isReEnrichOpen, setIsReEnrichOpen] = useState(false);
   const [isSpamDialogOpen, setIsSpamDialogOpen] = useState(false);
   const [isDuplicateDialogOpen, setIsDuplicateDialogOpen] = useState(false);
+  const [isAddToCampaignOpen, setIsAddToCampaignOpen] = useState(false);
 
   const { data: company, isLoading, error } = useQuery({
     queryKey: ['company', companyId],
@@ -240,6 +243,15 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                       <Undo2 className="h-3.5 w-3.5" />
                     </Button>
                   )}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-full border-primary/30 hover:bg-primary/10 hover:text-primary"
+                    onClick={() => setIsAddToCampaignOpen(true)}
+                    title="Добавить в кампанию"
+                  >
+                    <MailPlus className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="icon"
@@ -566,6 +578,13 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                 onClose={() => setIsDuplicateDialogOpen(false)}
                 onConfirm={handleMarkDuplicate}
                 isSaving={false}
+              />
+
+              <AddToCampaignDialog
+                open={isAddToCampaignOpen}
+                onOpenChange={setIsAddToCampaignOpen}
+                companyIds={[company.id]}
+                count={1}
               />
             </>
           )}

@@ -51,12 +51,14 @@ __all__ = ["validate_recipients", "check_gmail_block_signs", "init_email_config"
 def validate_recipients(
     recipients: list[tuple],
     db_session=None,
+    skip_session_gap: bool = False,
 ) -> tuple[list[tuple], list[dict]]:
     """Валидация списка получателей перед отправкой.
 
     Args:
         recipients: список кортежей (company, enriched, contact, email_to).
         db_session: опциональная сессия БД для проверки Gmail block signs.
+        skip_session_gap: пропустить проверку SESSION_GAP (для manual-режима).
 
     Returns:
         Кортеж (valid, warnings):
@@ -90,7 +92,7 @@ def validate_recipients(
             continue
         seen_emails.add(email_lower)
 
-        reason = _check_recipient(company, contact, email_to, blocked_domains)
+        reason = _check_recipient(company, contact, email_to, blocked_domains, skip_session_gap=skip_session_gap)
         if reason:
             warnings.append({
                 "company_id": company.id,
@@ -103,8 +105,11 @@ def validate_recipients(
     return valid, warnings
 
 
-def _check_recipient(company, contact, email_to: str, blocked_domains: Optional[set[str]] = None) -> str | None:
+def _check_recipient(company, contact, email_to: str, blocked_domains: Optional[set[str]] = None, skip_session_gap: bool = False) -> str | None:
     """Проверить одного получателя.
+
+    Args:
+        skip_session_gap: пропустить проверку SESSION_GAP (manual-режим).
 
     Returns:
         None = валиден, строка = причина пропуска.
@@ -134,18 +139,21 @@ def _check_recipient(company, contact, email_to: str, blocked_domains: Optional[
         return "название слишком длинное (SEO?)"
 
     # Проверка интервала между письмами (EMAIL_SESSION_GAP_HRS)
-    if contact and hasattr(contact, "last_email_sent_at") and contact.last_email_sent_at:
-        # FIX A2: безопасная конвертация tz — не крашимся на already-aware timestamps (PostgreSQL TIMESTAMPTZ)
-        last_sent = contact.last_email_sent_at
-        if last_sent.tzinfo is None:
-            last_sent = last_sent.replace(tzinfo=timezone.utc)
-        else:
-            last_sent = last_sent.astimezone(timezone.utc)
-        gap = datetime.now(timezone.utc) - last_sent
-        session_gap = _email_config.get("session_gap_hrs", _EMAIL_SESSION_GAP_HRS_DEFAULT)
-        if gap.total_seconds() < session_gap * 3600:
-            hrs_left = session_gap - gap.total_seconds() / 3600
-            return f"письмо недавно ({hrs_left:.1f}ч до следующего)"
+    # Пропускается для manual-режима (аудит, п.4): если пользователь вручную
+    # выбрал компанию — значит хочет написать именно ей
+    if not skip_session_gap:
+        if contact and hasattr(contact, "last_email_sent_at") and contact.last_email_sent_at:
+            # FIX A2: безопасная конвертация tz
+            last_sent = contact.last_email_sent_at
+            if last_sent.tzinfo is None:
+                last_sent = last_sent.replace(tzinfo=timezone.utc)
+            else:
+                last_sent = last_sent.astimezone(timezone.utc)
+            gap = datetime.now(timezone.utc) - last_sent
+            session_gap = _email_config.get("session_gap_hrs", _EMAIL_SESSION_GAP_HRS_DEFAULT)
+            if gap.total_seconds() < session_gap * 3600:
+                hrs_left = session_gap - gap.total_seconds() / 3600
+                return f"письмо недавно ({hrs_left:.1f}ч до следующего)"
 
     return None
 
