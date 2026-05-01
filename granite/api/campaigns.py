@@ -666,9 +666,11 @@ def run_campaign(campaign_id: int, request: Request):
                     yield f"data: {json.dumps({'status': 'paused_daily_limit', 'reason': 'daily_limit'})}\n\n"
                     return
                 city = company.city or ""
+                from granite.city_declensions import get_locative
                 render_kwargs = {
                     "from_name": from_name,
                     "city": city,
+                    "city_locative": get_locative(city),
                     "company_name": company.name_best or "",
                     "website": company.website or "",
                     "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}",

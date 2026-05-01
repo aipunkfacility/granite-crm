@@ -55,9 +55,11 @@ class MessengerDispatcher:
         if text:
             message = text
         elif template:
+            from granite.city_declensions import get_locative
             render_kwargs = {
                 "from_name": self.from_name,
                 "city": city,
+                "city_locative": get_locative(city),
                 "company_name": company_name,
             }
             message = template.render(**render_kwargs)

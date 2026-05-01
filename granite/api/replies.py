@@ -44,9 +44,12 @@ def _get_reply_context(company: CompanyRow, contact: CrmContactRow | None) -> di
     P4R-M12: Убран неиспользуемый параметр enriched.
     """
     from_name = os.environ.get("FROM_NAME", "")
+    city = company.city or ""
+    from granite.city_declensions import get_locative
     return {
         "from_name": from_name,
-        "city": company.city or "",
+        "city": city,
+        "city_locative": get_locative(city),
         "company_name": company.name_best or "",
         "website": company.website or "",
         "contact_name": "",

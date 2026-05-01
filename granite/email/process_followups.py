@@ -153,10 +153,16 @@ def process_followups(db_session) -> int:
             render_kwargs = {
                 "from_name": from_name,
                 "city": city,
+                "city_locative": "",
                 "company_name": company.name_best or "",
                 "original_subject": original_subject,
                 "unsubscribe_url": unsubscribe_url,
             }
+
+            # City locative: add if city is present
+            if city:
+                from granite.city_declensions import get_locative
+                render_kwargs["city_locative"] = get_locative(city)
 
             rendered_body = template.render(**render_kwargs)
 
