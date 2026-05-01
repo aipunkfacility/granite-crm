@@ -419,15 +419,15 @@ GROUP BY ab_variant
 | Хранилище | Назначение | Формат |
 |-----------|-----------|--------|
 | `docs/EMAIL_TEMPLATES.md` | **Спецификация** — человекочитаемый каталог, который правит Александр | Markdown + YAML-блоки |
-| `crm_templates` (таблица БД) | **Рабочие шаблоны** — используются при отправке | ORM: `CrmTemplateRow` |
+| `data/email_templates.json` | **Рабочие шаблоны** — загружаются через `TemplateRegistry` | JSON |
 
 ### 5.2 Путь от спецификации к отправке
 
 ```
 docs/EMAIL_TEMPLATES.md  (человек правит тексты)
          │
-         ▼  cli.py db seed-templates
-crm_templates (CrmTemplateRow в БД)
+         ▼  вручную обновить data/email_templates.json
+data/email_templates.json  (TemplateRegistry загружает при запуске)
          │
          ├──▶ Кампания: template_name → body + subject_a/subject_b
          │
@@ -437,24 +437,19 @@ crm_templates (CrmTemplateRow в БД)
 ### 5.3 Команды для работы с шаблонами
 
 ```bash
-# Загрузить все шаблоны из EMAIL_TEMPLATES.md в БД
-uv run cli.py db seed-templates
+# 1. Отредактировать шаблоны в docs/EMAIL_TEMPLATES.md
+# 2. Обновить data/email_templates.json вручную
+# 3. Перезагрузить без рестарта:
+uv run cli.py templates-reload
+# или через API: POST /api/v1/templates/reload
 
-# Обновить конкретный шаблон (по имени)
-uv run cli.py db seed-templates --only reply_interested
-
-# Посмотреть все шаблоны в БД
-uv run cli.py db list-templates
-
-# Обновить HTML-шаблон через API
-PUT /api/v1/templates/{name}
-Content-Type: application/json
-{"body": "<html>...", "subject": "...", "body_type": "html"}
+# Посмотреть текущие шаблоны
+curl http://localhost:8000/api/v1/templates
 ```
 
 ### 5.4 Как работает рендеринг шаблонов
 
-1. `CrmTemplateRow.render(**kwargs)` — подставляет плейсхолдеры через `str.replace()`
+1. `TemplateRegistry` загружает `data/email_templates.json` и подставляет плейсхолдеры через `str.replace()`
 2. Для `body_type="html"` — значения экранируются через `html.escape()`
 3. Для `body_type="plain"` — подстановка как есть
 `city_locative` вычисляется из `city` автоматически через `get_locative()` из модуля `granite/city_declensions.py` — оператору не нужно заполнять отдельно. Данные: `data/city_declensions.json` (1093 города).
