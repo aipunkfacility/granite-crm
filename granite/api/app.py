@@ -67,6 +67,34 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"CRM API started. DB: {db._db_path}")
 
+    # IMAP worker: автоматическая обработка bounce/reply каждый час
+    import asyncio as _asyncio
+
+    async def _imap_worker():
+        """Фоновая обработка bounce и reply из IMAP."""
+        from granite.email.process_bounces import process_bounces
+        from granite.email.process_replies import process_replies
+        await _asyncio.sleep(60)  # дать серверу полностью стартовать
+        while True:
+            try:
+                session = db.SessionLocal()
+                try:
+                    b = process_bounces(session)
+                    r = process_replies(session)
+                    session.commit()
+                    if b or r:
+                        logger.info(f"IMAP worker: {b} bounces, {r} replies processed")
+                except Exception as e:
+                    session.rollback()
+                    logger.warning(f"IMAP worker error: {e}")
+                finally:
+                    session.close()
+            except Exception as e:
+                logger.error(f"IMAP worker fatal: {e}")
+            await _asyncio.sleep(3600)  # каждый час
+
+    _asyncio.create_task(_imap_worker())
+
     # Задача 2.1: Recovery — все running кампании → paused при старте сервера.
     # BackgroundTask живёт в памяти процесса; при перезапуске задача теряется.
     # Кампания остаётся в status="running" без работающего отправщика → зависает.

@@ -100,8 +100,8 @@ def process_followups(db_session) -> int:
     for task in tasks:
         try:
             company = db_session.get(CompanyRow, task.company_id)
-            if not company:
-                logger.warning(f"task_id={task.id}: company_id={task.company_id} not found")
+            if not company or company.deleted_at:
+                logger.warning(f"task_id={task.id}: company_id={task.company_id} not found or deleted")
                 task.status = "done"
                 task.completed_at = now
                 db_session.commit()

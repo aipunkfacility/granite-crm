@@ -1,4 +1,5 @@
 """Unsubscribe эндпоинт — отписка от email-рассылки."""
+import re
 import secrets
 from datetime import datetime, timezone
 
@@ -13,6 +14,9 @@ from granite.api.helpers import cancel_followup_tasks
 __all__ = ["router"]
 
 router = APIRouter()
+
+# Валидация формата токена: hex(16) = 32 символа
+_TOKEN_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 _UNSUBSCRIBE_PAGE = """<!DOCTYPE html>
 <html><body style="font-family:sans-serif;max-width:500px;margin:60px auto;text-align:center">
@@ -34,6 +38,8 @@ def ensure_unsubscribe_token(contact: CrmContactRow, db: Session) -> str:
 def unsubscribe_page(token: str, db: Session = Depends(get_db)):
     """Страница подтверждения отписки. НЕ отписывает при GET —
     защита от префетча почтовыми клиентами."""
+    if not _TOKEN_PATTERN.match(token):
+        raise HTTPException(404, "Ссылка недействительна")
     contact = db.query(CrmContactRow).filter_by(unsubscribe_token=token).first()
     if not contact:
         raise HTTPException(404, "Ссылка недействительна")
@@ -58,6 +64,8 @@ def unsubscribe_page(token: str, db: Session = Depends(get_db)):
 @router.post("/unsubscribe/{token}", response_class=HTMLResponse)
 def unsubscribe_confirm(token: str, db: Session = Depends(get_db)):
     """Собственно отписка — только POST."""
+    if not _TOKEN_PATTERN.match(token):
+        raise HTTPException(404, "Ссылка недействительна")
     contact = db.query(CrmContactRow).filter_by(unsubscribe_token=token).first()
     if not contact:
         raise HTTPException(404, "Ссылка недействительна")
