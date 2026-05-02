@@ -108,8 +108,8 @@ class MarkSpamRequest(BaseModel):
     reason: str = Field(
         ...,
         min_length=1,
-        pattern="^(aggregator|duplicate|foreign_city|not_target|closed|other|spam_complaint)$",
-        description="Причина пометки: aggregator, duplicate, foreign_city, not_target, closed, other, spam_complaint",
+        pattern="^(aggregator|duplicate|duplicate_contact|foreign_city|not_target|wrong_category|closed|other|spam_complaint)$",
+        description="Причина пометки: aggregator, duplicate, duplicate_contact, foreign_city, not_target, wrong_category, closed, other, spam_complaint",
     )
 
 
