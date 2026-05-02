@@ -5,7 +5,7 @@
 > Рабочие шаблоны загружаются из `data/email_templates.json` (TemplateRegistry).
 > Для перезагрузки без рестарта: `POST /api/v1/templates/reload` или `uv run cli.py templates-reload`
 >
-> Плейсхолдеры: `{city}`, `{city_locative}`, `{company_name}`, `{from_name}`, `{unsubscribe_url}`, `{original_subject}`
+> Плейсхолдеры: `{city}`, `{city_locative}`, `{company_name}`, `{from_name}`, `{whatsapp_number}`, `{unsubscribe_url}`, `{original_subject}`
 >
 > `{city_locative}` — город в предложном падеже (Москве, Казани), подставляется автоматически
 > из словаря `data/city_declensions.json` через `granite/city_declensions.py`.
@@ -215,7 +215,7 @@ description: "Ответ на «расскажите подробнее» — д
 
 С уважением,
 {from_name}
-Telegram: @ganjavagen | WhatsApp: +84 946 943 543
+Telegram: @ganjavagen | WhatsApp: {whatsapp_number}
 
 ---
 Отписаться: {unsubscribe_url}
@@ -396,6 +396,7 @@ curl http://localhost:8000/api/v1/templates
 | Плейсхолдер | Описание | Пример подстановки |
 |---|---|---|
 | `{from_name}` | Имя отправителя | Александр |
+| `{whatsapp_number}` | WhatsApp-номер отправителя (из config.yaml → sender.whatsapp) | +7 900 143-00-78 |
 | `{city}` | Название города (именительный падеж) | Екатеринбург |
 | `{city_locative}` | Город в предложном падеже (после «в») | Екатеринбурге |
 | `{company_name}` | Название компании | Гранит-М |

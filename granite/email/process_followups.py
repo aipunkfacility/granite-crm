@@ -150,8 +150,10 @@ def process_followups(db_session) -> int:
             if contact and contact.unsubscribe_token:
                 unsubscribe_url = f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}"
 
+            from granite.constants import get_sender_field
             render_kwargs = {
                 "from_name": from_name,
+                "whatsapp_number": get_sender_field("whatsapp"),
                 "city": city,
                 "city_locative": "",
                 "company_name": company.name_best or "",

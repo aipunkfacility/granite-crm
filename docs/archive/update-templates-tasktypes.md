@@ -36,7 +36,7 @@
 
 **Контакты:**
 - Telegram: @ganjavagen → https://t.me/ganjavagen
-- WhatsApp: +8 494 694 35 43 → https://wa.me/84946943543
+- WhatsApp: +7 900 143-00-78 → https://wa.me/89001430078
 - Email: ganjavagen@gmail.com
 
 **Сайт для отправки в сообщениях:** https://retouchgrav.netlify.app/

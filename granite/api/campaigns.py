@@ -612,7 +612,9 @@ def run_campaign(campaign_id: int, request: Request):
 
             recipients = _get_campaign_recipients(campaign, session)
 
-            from_name = os.environ.get("FROM_NAME", "")
+            from granite.constants import get_sender_field
+            from_name = get_sender_field("from_name")
+            whatsapp_number = get_sender_field("whatsapp")
             sender = EmailSender()
             sent = campaign.total_sent or 0
             total = len(recipients)
@@ -669,6 +671,7 @@ def run_campaign(campaign_id: int, request: Request):
                 from granite.city_declensions import get_locative
                 render_kwargs = {
                     "from_name": from_name,
+                    "whatsapp_number": whatsapp_number,
                     "city": city,
                     "city_locative": get_locative(city),
                     "company_name": company.name_best or "",

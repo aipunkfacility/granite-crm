@@ -329,7 +329,7 @@ scoring:
     has_website: 5
     cms_bitrix: 10
     cms_modern: 3
-    has_marquiz: 3
+    has_marquiz: 4  # слабый сигнал — квиз ≠ поток заказов, в отличие от Bitrix
     has_telegram: 15
     has_whatsapp: 10
     tg_trust_multiplier: 3   # E2: trust_score tiers: 0→bot(-10), 1→3pts, 2→6pts, 3→9pts
@@ -437,6 +437,12 @@ email:
     "post:/companies/.*/send":  [2, 60]     # 2 письма/мин (безопасно для Gmail)
     "post:/campaigns/.*/run":   [3, 60]     # 3 запуска кампаний/мин (кампания сама throttling'ет)
     "get:/export/.*":           [20, 60]    # 20 экспортов/мин
+
+# ===== Отправитель =====
+sender:
+  from_name: "Александр"
+  telegram: "https://t.me/ganjavagen"
+  whatsapp: "+7 900 143-00-78"
 
 # ===== База данных =====
 database:

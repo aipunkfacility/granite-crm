@@ -16,7 +16,9 @@ class MessengerDispatcher:
     def __init__(self):
         self.tg = TgSender()
         self.wa = WaSender()
-        self.from_name = os.environ.get("FROM_NAME", "")
+        from granite.constants import get_sender_field
+        self.from_name = get_sender_field("from_name")
+        self.whatsapp_number = get_sender_field("whatsapp")
 
     def send(
         self,
@@ -58,6 +60,7 @@ class MessengerDispatcher:
             from granite.city_declensions import get_locative
             render_kwargs = {
                 "from_name": self.from_name,
+                "whatsapp_number": self.whatsapp_number,
                 "city": city,
                 "city_locative": get_locative(city),
                 "company_name": company_name,
