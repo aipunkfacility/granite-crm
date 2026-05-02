@@ -167,25 +167,19 @@ class EmailSender:
         )
         retryer(self._smtp_send_impl)(email_to, msg)
 
-    @staticmethod
-    def _smtp_send_impl(email_to: str, msg: MIMEMultipart) -> None:
+    def _smtp_send_impl(self, email_to: str, msg: MIMEMultipart) -> None:
         """Реальная SMTP-отправка (без retry-обёртки)."""
-        smtp_host = os.environ.get("SMTP_HOST", "smtp.gmail.com")
-        smtp_port = int(os.environ.get("SMTP_PORT", "465"))
-        smtp_user = os.environ.get("SMTP_USER", "")
-        smtp_pass = os.environ.get("SMTP_PASS", "")
-
-        if smtp_port == 465:
-            with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_user, [email_to], msg.as_bytes())
+        if self.smtp_port == 465:
+            with smtplib.SMTP_SSL(self.smtp_host, self.smtp_port) as server:
+                server.login(self.smtp_user, self.smtp_pass)
+                server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
         else:
-            with smtplib.SMTP(smtp_host, smtp_port) as server:
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.ehlo()
                 server.starttls()
                 server.ehlo()
-                server.login(smtp_user, smtp_pass)
-                server.sendmail(smtp_user, [email_to], msg.as_bytes())
+                server.login(self.smtp_user, self.smtp_pass)
+                server.sendmail(self.smtp_user, [email_to], msg.as_bytes())
 
     def _log_to_db(
         self,

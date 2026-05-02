@@ -5,6 +5,7 @@
 """
 import hmac
 import os
+import re as _re
 from contextlib import asynccontextmanager
 
 import yaml
@@ -326,7 +327,6 @@ async def rate_limit_middleware(request: Request, call_next):
 
     # Проверяем, попал ли запрос под лимит
     for pattern, (max_requests, window_sec) in _RATE_LIMITS.items():
-        import re as _re
         if _re.match(pattern, key):
             now = time.time()
             bucket_key = f"{client_ip}:{pattern}"

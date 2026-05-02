@@ -231,6 +231,7 @@ def fetch_imap_messages(
         message_ids = message_ids[-limit:]
 
         results = []
+        fetched_mids = []
         for mid in message_ids:
             # FIX P3-M2: убрана мёртвая переменная fetch_flag
             if not mark_seen:
@@ -247,7 +248,17 @@ def fetch_imap_messages(
                     raw_email = response_part[1]
                     msg = email.message_from_bytes(raw_email, policy=default_policy)
                     results.append((mid, msg))
+                    fetched_mids.append(mid)
                     break
+
+        # Помечаем обработанные письма как прочитанные
+        if not mark_seen and fetched_mids:
+            try:
+                for mid in fetched_mids:
+                    conn.store(mid, '+FLAGS', '\\Seen')
+                logger.debug(f"Marked {len(fetched_mids)} IMAP messages as seen")
+            except Exception as e:
+                logger.warning(f"Failed to mark IMAP messages as seen: {e}")
 
         return results
     finally:
