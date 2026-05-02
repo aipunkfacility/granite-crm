@@ -19,6 +19,7 @@ class MessengerDispatcher:
         from granite.constants import get_sender_field
         self.from_name = get_sender_field("from_name")
         self.whatsapp_number = get_sender_field("whatsapp")
+        self.telegram_link = get_sender_field("telegram")
 
     def send(
         self,
@@ -61,6 +62,7 @@ class MessengerDispatcher:
             render_kwargs = {
                 "from_name": self.from_name,
                 "whatsapp_number": self.whatsapp_number,
+                "telegram_link": self.telegram_link,
                 "city": city,
                 "city_locative": get_locative(city),
                 "company_name": company_name,

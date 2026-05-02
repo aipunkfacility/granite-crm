@@ -50,6 +50,7 @@ def _get_reply_context(company: CompanyRow, contact: CrmContactRow | None) -> di
     return {
         "from_name": from_name,
         "whatsapp_number": get_sender_field("whatsapp"),
+        "telegram_link": get_sender_field("telegram"),
         "city": city,
         "city_locative": get_locative(city),
         "company_name": company.name_best or "",

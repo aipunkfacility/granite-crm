@@ -154,6 +154,7 @@ def process_followups(db_session) -> int:
             render_kwargs = {
                 "from_name": from_name,
                 "whatsapp_number": get_sender_field("whatsapp"),
+                "telegram_link": get_sender_field("telegram"),
                 "city": city,
                 "city_locative": "",
                 "company_name": company.name_best or "",
