@@ -673,7 +673,9 @@ def run_campaign(campaign_id: int, request: Request):
                 render_kwargs = {
                     "from_name": from_name,
                     "whatsapp_number": whatsapp_number,
+                    "whatsapp_link": get_sender_field("whatsapp_link"),
                     "telegram_link": telegram_link,
+                    "landing_url": get_sender_field("landing"),
                     "city": city,
                     "city_locative": get_locative(city),
                     "company_name": company.name_best or "",

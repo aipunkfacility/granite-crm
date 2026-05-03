@@ -443,6 +443,8 @@ sender:
   from_name: "Александр"
   telegram: "https://t.me/ganjavagen"
   whatsapp: "+7 900 143-00-78"
+  whatsapp_link: "https://wa.me/89001430078"
+  landing: "https://retouchgrav.netlify.app"
 
 # ===== База данных =====
 database:

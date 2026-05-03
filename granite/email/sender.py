@@ -8,6 +8,7 @@
 """
 import html
 import os
+import re
 import secrets
 import smtplib
 from datetime import datetime, timezone
@@ -103,10 +104,12 @@ class EmailSender:
         pixel_img = f'<img src="{pixel_url}" width="1" height="1" style="display:none" alt="">'
 
         if body_html is None:
-            # Старое поведение: plain text → <pre>
+            # Plain text → <pre> с автолинковкой URL
+            escaped = html.escape(body_text)
+            escaped = re.sub(r'(https?://\S+)', r'<a href="\1" style="color:#2563eb">\1</a>', escaped)
             body_html = (
                 f"<pre style='font-family:sans-serif;white-space:pre-wrap'>"
-                f"{html.escape(body_text)}</pre>"
+                f"{escaped}</pre>"
                 f"{pixel_img}"
             )
         else:

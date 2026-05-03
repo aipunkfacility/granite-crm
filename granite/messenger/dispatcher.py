@@ -59,10 +59,13 @@ class MessengerDispatcher:
             message = text
         elif template:
             from granite.city_declensions import get_locative
+            from granite.constants import get_sender_field
             render_kwargs = {
                 "from_name": self.from_name,
                 "whatsapp_number": self.whatsapp_number,
+                "whatsapp_link": get_sender_field("whatsapp_link"),
                 "telegram_link": self.telegram_link,
+                "landing_url": get_sender_field("landing"),
                 "city": city,
                 "city_locative": get_locative(city),
                 "company_name": company_name,
