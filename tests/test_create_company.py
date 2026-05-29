@@ -1,6 +1,5 @@
 """Tests for POST /api/v1/companies."""
-import pytest
-from tests.helpers import create_company
+from granite.database import CompanyRow
 
 
 class TestCreateCompany:
@@ -14,8 +13,13 @@ class TestCreateCompany:
         assert data["ok"] is True
         assert isinstance(data["id"], int)
         assert data["id"] > 0
+        row = db_session.get(CompanyRow, data["id"])
+        assert row is not None
+        assert row.name_best == "Тестовая компания"
+        assert row.city == "Москва"
+        assert row.sources == ["manual"]
 
-    def test_create_company_full(self, client):
+    def test_create_company_full(self, client, db_session):
         resp = client.post("/api/v1/companies", json={
             "name": "ООО Пример",
             "city": "Казань",
@@ -28,6 +32,12 @@ class TestCreateCompany:
         assert resp.status_code == 200
         data = resp.json()
         assert data["ok"] is True
+        assert isinstance(data["id"], int)
+        assert data["id"] > 0
+        row = db_session.get(CompanyRow, data["id"])
+        assert row is not None
+        assert row.phones == ["79001234567", "79007654321"]
+        assert row.emails == ["info@example.ru"]
 
     def test_create_company_missing_name(self, client):
         resp = client.post("/api/v1/companies", json={"city": "Москва"})
