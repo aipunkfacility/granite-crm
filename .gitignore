@@ -1,5 +1,5 @@
 /backups
-# *.db
+*.db
 *.db-wal
 *.db-shm
 __pycache__/
@@ -15,3 +15,4 @@ build/
 venv/
 scratch/
 requirements.txt
+.agents/
