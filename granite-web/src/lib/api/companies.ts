@@ -69,6 +69,22 @@ export const updateCompany = async (id: number, updates: Partial<Company>): Prom
   return data;
 };
 
+export interface CreateCompanyPayload {
+  name: string;
+  city: string;
+  region?: string;
+  phones?: string[];
+  emails?: string[];
+  website?: string;
+  address?: string;
+  messengers?: Record<string, string>;
+}
+
+export const createCompany = async (data: CreateCompanyPayload): Promise<{ ok: boolean; id: number }> => {
+  const { data: result } = await apiClient.post<{ ok: boolean; id: number }>('companies', data);
+  return result;
+};
+
 export const reEnrichPreview = async (id: number): Promise<any> => {
   const { data } = await apiClient.post(`companies/${id}/re-enrich-preview`);
   return data;
