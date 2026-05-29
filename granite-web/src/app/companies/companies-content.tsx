@@ -276,6 +276,7 @@ export function CompaniesPageContent() {
       {/* Batch actions floating bar */}
       <BatchActionsBar
         selectedCount={selectedIds.size}
+        selectedCompanyIds={Array.from(selectedIds)}
         onBatchSpam={handleBatchSpam}
         onBatchApprove={handleBatchApprove}
         onClearSelection={handleClearSelection}
