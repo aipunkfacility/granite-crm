@@ -50,6 +50,17 @@ class UpdateCompanyRequest(BaseModel):
     stop_automation: Optional[bool] = None
 
 
+class CreateCompanyRequest(BaseModel):
+    name: str = Field(..., min_length=1, description="Название компании")
+    city: str = Field(..., min_length=1, description="Город")
+    region: Optional[str] = Field(None, description="Регион (авто-определение если не указан)")
+    phones: Optional[list[str]] = None
+    emails: Optional[list[str]] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    messengers: Optional[dict[str, str]] = None
+
+
 class CreateTaskRequest(BaseModel):
     title: str = Field("Follow-up", min_length=1)
     description: str = ""
