@@ -1,4 +1,5 @@
 """Companies API: список, карточка, обновление CRM-полей, similar, merge."""
+import re as _re
 from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
@@ -12,7 +13,9 @@ from granite.api.schemas import (
     PaginatedResponse, MergeRequest, MarkSpamRequest, MarkDuplicateRequest,
     ResolveReviewRequest,
     SimilarCompaniesResponse, ReEnrichPreviewResponse, ReEnrichApplyRequest,
+    CreateCompanyRequest, OkWithIdResponse,
 )
+from granite.pipeline.region_resolver import lookup_region
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
     CrmTouchRow, CityRefRow,
@@ -290,7 +293,15 @@ def list_companies(
     if search:
         # FIX 3.7: Экранируем LIKE-спецсимволы (% и _) в пользовательском вводе
         escaped = search.replace("%", r"\%").replace("_", r"\_")
-        q = q.filter(CompanyRow.name_best.ilike(f"%{escaped}%", escape="\\"))
+        # Поиск по названию + по телефону (через json_each)
+        phone_clean = _re.sub(r"[\s\-\(\)\+]", "", search)
+        q = q.filter(
+            CompanyRow.name_best.ilike(f"%{escaped}%", escape="\\")
+            | sa_text(
+                "EXISTS (SELECT 1 FROM json_each(companies.phones) "
+                "WHERE replace(json_each.value, '+', '') LIKE :phone_pattern)"
+            ).bindparams(phone_pattern=f"%{phone_clean}%")
+        )
 
     order_col = {
         "crm_score": EnrichedCompanyRow.crm_score,
@@ -323,6 +334,45 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
     enriched = db.get(EnrichedCompanyRow, company_id)
     contact = db.get(CrmContactRow, company_id)
     return _build_company_response(company, enriched, contact)
+
+
+@router.post("/companies", response_model=OkWithIdResponse)
+def create_company(data: CreateCompanyRequest, db: Session = Depends(get_db)):
+    """Создать новую компанию вручную."""
+    region = data.region or lookup_region(data.city) or ""
+
+    company = CompanyRow(
+        name_best=data.name,
+        city=data.city,
+        region=region,
+        phones=normalize_phones(data.phones or []),
+        emails=data.emails or [],
+        website=data.website,
+        address=data.address or "",
+        sources=["manual"],
+    )
+    db.add(company)
+    db.flush()
+
+    contact = CrmContactRow(company_id=company.id)
+    db.add(contact)
+
+    messengers = data.messengers or {}
+    enriched = EnrichedCompanyRow(
+        id=company.id,
+        name=data.name,
+        city=data.city,
+        region=region,
+        phones=company.phones,
+        emails=company.emails,
+        website=company.website,
+        address_raw=data.address or "",
+        messengers=messengers,
+    )
+    db.add(enriched)
+
+    db.commit()
+    return {"ok": True, "id": company.id}
 
 
 @router.patch("/companies/{company_id}", response_model=OkResponse)

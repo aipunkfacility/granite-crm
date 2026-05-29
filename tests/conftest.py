@@ -99,6 +99,9 @@ def client(engine, monkeypatch, tmp_path):
     # Установить рабочий каталог проекта, чтобы lifespan нашёл config.yaml
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     monkeypatch.chdir(project_root)
+    # Отключаем API-аутентификацию в тестах (dev mode).
+    # Устанавливаем пустой ключ ДО load_dotenv в lifespan, чтобы тот не перезаписал
+    monkeypatch.setenv("GRANITE_API_KEY", "")
 
     from granite.api.app import app
     from granite.templates import TemplateRegistry
