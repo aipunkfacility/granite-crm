@@ -10,14 +10,17 @@ import { BatchActionsBar } from "@/components/companies/BatchActionsBar";
 import { BatchConfirmDialog, BatchAction } from "@/components/companies/BatchConfirmDialog";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { Search, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PresetManager } from "@/components/companies/PresetManager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchCmsTypes, fetchSourceTypes } from "@/lib/api/companies";
+import { fetchCmsTypes, fetchSourceTypes, createCompany } from "@/lib/api/companies";
 import { batchApprove, batchSpam } from "@/lib/api/admin";
 import { apiClient } from "@/lib/api/client";
 import { useAdmin } from "@/lib/admin-context";
+import { Button } from "@/components/ui/button";
+import { AddCompanyDialog } from "@/components/companies/AddCompanyDialog";
+import { toast } from "sonner";
 
 export function CompaniesPageContent() {
   const [page, setPage] = useState(1);
@@ -30,6 +33,7 @@ export function CompaniesPageContent() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [batchAction, setBatchAction] = useState<BatchAction>('spam');
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   const { isActive: isAdmin, token: adminToken } = useAdmin();
   const queryClient = useQueryClient();
@@ -174,6 +178,14 @@ export function CompaniesPageContent() {
     setSelectedIds(new Set());
   }, []);
 
+  const handleAddCompany = useCallback(async (data: Parameters<typeof createCompany>[0]) => {
+    const result = await createCompany(data);
+    toast.success('Компания создана');
+    queryClient.invalidateQueries({ queryKey: ['companies'] });
+    setAddDialogOpen(false);
+    return result;
+  }, [queryClient]);
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -194,11 +206,20 @@ export function CompaniesPageContent() {
         </div>
 
         <div className="flex items-center gap-3">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setAddDialogOpen(true)}
+            className="gap-1.5"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Добавить</span>
+          </Button>
           <PresetManager filters={filters} onApplyPreset={applyPreset} />
           <div className="relative w-full max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Поиск по названию..."
+              placeholder="Поиск по названию или телефону..."
               className="pl-10"
               value={filters.search}
               onChange={(e) => setFilter('search', e.target.value)}
@@ -290,6 +311,13 @@ export function CompaniesPageContent() {
         selectedCount={selectedIds.size}
         onClose={handleBatchDialogClose}
         onConfirm={handleBatchConfirm}
+      />
+
+      <AddCompanyDialog
+        isOpen={addDialogOpen}
+        onClose={() => setAddDialogOpen(false)}
+        onSave={handleAddCompany}
+        isSaving={false}
       />
     </div>
   );
