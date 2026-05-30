@@ -36,7 +36,7 @@ def _load() -> dict[str, str]:
         return _DECLENSIONS
 
     try:
-        with open(_JSON_PATH, "r", encoding="utf-8") as f:
+        with open(_JSON_PATH, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
         if not isinstance(data, dict):
             logger.error(f"city_declensions.json: expected dict, got {type(data).__name__}")
