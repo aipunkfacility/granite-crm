@@ -31,10 +31,12 @@ FUNNEL_ORDER = [
 def get_stats(
     db: Session = Depends(get_db),
     city: Optional[str] = None,
+    region: Optional[str] = None,
 ):
     """Агрегированная статистика: воронка, сегменты, топ-города, мессенджеры.
 
-    ?city=Москва — фильтрация по городу.
+    ?city=Москва       — фильтрация по городу.
+    ?region=Липецкая   — фильтрация по области.
 
     Все агрегации выполняются на стороне SQL (func.count, GROUP BY) —
     не загружаем данные в память Python.
@@ -43,6 +45,8 @@ def get_stats(
     base_filter = [CompanyRow.deleted_at.is_(None)]
     if city:
         base_filter.append(CompanyRow.city == city)
+    if region:
+        base_filter.append(CompanyRow.region == region)
 
     # --- Total companies ---
     total = db.query(func.count(CompanyRow.id)).filter(*base_filter).scalar()

@@ -2,6 +2,8 @@
 
 import { useStats } from "@/lib/hooks/use-stats";
 import { usePipelineStatus } from "@/lib/hooks/use-pipeline";
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api/client';
 import {
   BarChart,
   Bar,
@@ -74,9 +76,21 @@ function ChartBox({ children, className }: { children: (w: number, h: number) =>
 
 export default function StatsPage() {
   const [selectedCity, setSelectedCity] = useState<string>("all");
+  const [selectedRegion, setSelectedRegion] = useState<string>("all");
   const [mounted, setMounted] = useState(false);
-  const { data: stats, isLoading } = useStats(selectedCity === "all" ? undefined : selectedCity);
+  const { data: stats, isLoading } = useStats(
+    selectedCity === "all" ? undefined : selectedCity,
+    selectedRegion === "all" ? undefined : selectedRegion,
+  );
   const { data: cities } = usePipelineStatus();
+  const { data: regionsData } = useQuery({
+    queryKey: ['regions'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<{ items: string[] }>('regions');
+      return data.items;
+    },
+    staleTime: 60 * 1000,
+  });
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -110,18 +124,33 @@ export default function StatsPage() {
           <p className="text-sm text-muted-foreground">Общая статистика базы и эффективность воронки продаж.</p>
         </div>
 
-        <div className="w-64">
-          <Select value={selectedCity} onValueChange={setSelectedCity}>
-            <SelectTrigger>
-              <SelectValue placeholder="Все города" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все города</SelectItem>
-              {cities?.map(c => (
-                <SelectItem key={c.city} value={c.city}>{c.city}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-3">
+          <div className="w-64">
+            <Select value={selectedRegion} onValueChange={(v) => { setSelectedRegion(v); setSelectedCity("all"); }}>
+              <SelectTrigger>
+                <SelectValue placeholder="Все области" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все области</SelectItem>
+                {regionsData?.map(r => (
+                  <SelectItem key={r} value={r}>{r}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-64">
+            <Select value={selectedCity} onValueChange={setSelectedCity}>
+              <SelectTrigger>
+                <SelectValue placeholder="Все города" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все города</SelectItem>
+                {cities?.map(c => (
+                  <SelectItem key={c.city} value={c.city}>{c.city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
