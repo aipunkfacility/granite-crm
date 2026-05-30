@@ -505,271 +505,250 @@ def delete_campaign(campaign_id: int, db: Session = Depends(get_db)):
     return OkResponse(ok=True)
 
 
+def _run_campaign_send_loop(
+    campaign_id: int,
+    session_factory,
+    config: dict,
+    template_registry,
+    lock: threading.Lock,
+):
+    """Фоновая отправка писем кампании (без SSE, fire-and-forget).
+
+    Создаёт собственную сессию БД, читает config/template из параметров.
+    При ошибке — логирует и переводит кампанию в 'paused'.
+    В finally — освобождает lock.
+    """
+    import time as _time
+    from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTouchRow
+    from granite.email.sender import EmailSender
+
+    _email_cfg = config.get("email", {})
+    SEND_DELAY_MIN = int(_email_cfg.get("send_delay_min", 3))
+    SEND_DELAY_MAX = int(_email_cfg.get("send_delay_max", 3))
+    import random as _random
+    EMAIL_DAILY_LIMIT = int(_email_cfg.get("daily_limit", 50))
+    MAX_SENDS_PER_RUN = int(_email_cfg.get("max_sends_per_run", 100))
+
+    from granite.email.ab import determine_ab_variant
+    from sqlalchemy import func as _func
+
+    campaign = None
+    session = None
+    try:
+        session = session_factory()
+        campaign = session.get(CrmEmailCampaignRow, campaign_id)
+        if not campaign:
+            logger.error(f"Campaign {campaign_id}: not found in send loop")
+            return
+
+        if campaign.status == "completed":
+            logger.warning(f"Campaign {campaign_id}: already completed, cannot restart")
+            return
+
+        template = template_registry.get(campaign.template_name)
+        if not template:
+            campaign.status = "paused"
+            session.commit()
+            logger.error(f"Campaign {campaign_id}: template '{campaign.template_name}' not found — paused")
+            return
+
+        recipients = _get_campaign_recipients(campaign, session)
+
+        from granite.constants import get_sender_field
+        from_name = get_sender_field("from_name")
+        whatsapp_number = get_sender_field("whatsapp")
+        telegram_link = get_sender_field("telegram")
+        sender = EmailSender()
+        sent = campaign.total_sent or 0
+        total = len(recipients)
+
+        if total > MAX_SENDS_PER_RUN:
+            campaign.total_recipients = MAX_SENDS_PER_RUN
+            recipients = recipients[:MAX_SENDS_PER_RUN]
+            logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
+        else:
+            campaign.total_recipients = total
+
+        campaign.started_at = datetime.now(timezone.utc)
+        session.commit()
+        logger.info(f"Campaign {campaign_id}: started, {len(recipients)} recipients")
+
+        for company, enriched, contact, email_to in recipients:
+            session.refresh(campaign)
+            if campaign.status != "running":
+                logger.info(f"Campaign {campaign_id}: status changed to '{campaign.status}', exiting")
+                return
+
+            if not contact:
+                logger.warning(
+                    f"Campaign {campaign_id}: skipping company {company.id} — "
+                    f"no contact (unsubscribe unavailable)"
+                )
+                campaign.total_errors = (campaign.total_errors or 0) + 1
+                session.commit()
+                continue
+
+            last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+            sent_today = (
+                session.query(_func.count(CrmEmailLogRow.id))
+                .filter(CrmEmailLogRow.sent_at >= last_24h)
+                .scalar()
+            )
+            if sent_today >= EMAIL_DAILY_LIMIT:
+                campaign.status = "paused_daily_limit"
+                campaign.updated_at = datetime.now(timezone.utc)
+                session.commit()
+                logger.info(f"Campaign {campaign_id}: daily limit reached ({EMAIL_DAILY_LIMIT})")
+                return
+
+            city = company.city or ""
+            from granite.city_declensions import get_locative
+            render_kwargs = {
+                "from_name": from_name,
+                "whatsapp_number": whatsapp_number,
+                "whatsapp_link": get_sender_field("whatsapp_link"),
+                "telegram_link": telegram_link,
+                "landing_url": get_sender_field("landing"),
+                "city": city,
+                "city_locative": get_locative(city),
+                "company_name": company.name_best or "",
+                "website": company.website or "",
+                "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}",
+            }
+
+            subject_a = template.render_subject(subject_override=campaign.subject_a, **render_kwargs)
+            subject_b = template.render_subject(subject_override=campaign.subject_b, **render_kwargs) if campaign.subject_b else None
+            ab_variant, subject = determine_ab_variant(
+                company_id=company.id,
+                subject_a=subject_a,
+                subject_b=subject_b,
+            )
+            rendered = template.render(**render_kwargs)
+            if template.body_type == "html":
+                from granite.utils import html_to_plain_text
+                body_text = html_to_plain_text(rendered)
+                tracking_id = sender.send(
+                    company_id=company.id,
+                    email_to=email_to,
+                    subject=subject,
+                    body_text=body_text,
+                    body_html=rendered,
+                    template_name=template.name,
+                    rendered_body=body_text,
+                    db_session=session,
+                    campaign_id=campaign.id,
+                    ab_variant=ab_variant,
+                )
+            else:
+                tracking_id = sender.send(
+                    company_id=company.id,
+                    email_to=email_to,
+                    subject=subject,
+                    body_text=rendered,
+                    template_name=template.name,
+                    rendered_body=rendered,
+                    db_session=session,
+                    campaign_id=campaign.id,
+                    ab_variant=ab_variant,
+                )
+
+            if tracking_id:
+                sent += 1
+                campaign.total_sent = sent
+                session.add(CrmTouchRow(
+                    company_id=company.id, channel="email", direction="outgoing",
+                    subject=subject, body=f"[tracking_id={tracking_id}] [ab={ab_variant}]",
+                ))
+                from granite.api.stage_transitions import apply_outgoing_touch
+                apply_outgoing_touch(contact, "email")
+                campaign.updated_at = datetime.now(timezone.utc)
+                session.commit()
+            else:
+                campaign.total_errors = (campaign.total_errors or 0) + 1
+                session.commit()
+
+            delay = _random.randint(SEND_DELAY_MIN, SEND_DELAY_MAX)
+            _time.sleep(delay)
+
+        campaign.status = "completed"
+        campaign.completed_at = datetime.now(timezone.utc)
+        session.commit()
+        logger.info(f"Campaign {campaign_id}: completed ({sent} sent)")
+    except Exception:
+        logger.exception(f"Campaign {campaign_id}: error in send loop")
+        if campaign:
+            try:
+                camp = session.get(CrmEmailCampaignRow, campaign_id)
+                if camp and camp.status == "running":
+                    camp.status = "paused"
+                    session.commit()
+            except Exception:
+                pass
+    finally:
+        if session:
+            session.close()
+        lock.release()
+        _release_campaign_lock(campaign_id)
+
+
 @router.post("/campaigns/{campaign_id}/run")
 def run_campaign(campaign_id: int, request: Request):
-    """Запустить кампанию с SSE прогресс-баром.
+    """Запустить кампанию (fire-and-forget).
 
-    Возвращает Server-Sent Events: data: {"sent": N, "total": M, "current": "email"}
-
-    FIX 2.4: Используем Session из app.state (общий engine с WAL),
-    вместо создания второго Database() с отдельным engine.
-
-    Rate limiting: задержка из config.yaml (email.send_delay_min/max).
-    Batch commits: после каждого письма.
-    Interruption: try/finally ставит status="paused" при обрыве SSE.
+    Проверяет валидность и статус, выполняет атомарный UPDATE
+    в 'running', запускает фоновый поток отправки и возвращает
+    OkResponse. Прогресс — через GET /campaigns/{id}/progress.
     """
-    # FIX HIGH-3: Проверяем статус кампании в БД (survives uvicorn restart).
-    # В дополнение к in-memory lock — защита от concurrent runs через HTTP.
     SessionFactory = request.app.state.Session
     check_session = SessionFactory()
     try:
         db_campaign = check_session.get(CrmEmailCampaignRow, campaign_id)
         if not db_campaign:
-            return StreamingResponse(
-                iter([f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"]),
-                media_type="text/event-stream",
-            )
+            raise HTTPException(404, "Campaign not found")
         if db_campaign.status == "running":
-            return StreamingResponse(
-                iter([f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"]),
-                media_type="text/event-stream",
-            )
+            raise HTTPException(409, "Campaign already running")
     finally:
         check_session.close()
 
-    # FIX BUG-3: Проверяем, не запущена ли уже эта кампания (in-memory lock)
     lock = _get_campaign_lock(campaign_id)
     if not lock.acquire(blocking=False):
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': 'Campaign already running'})}\n\n"]),
-            media_type="text/event-stream",
-        )
+        raise HTTPException(409, "Campaign already running")
 
-    # Атомарно обновляем статус в БД ПЕРЕД запуском потока
-    # AUDIT #12: Атомарный UPDATE с WHERE — защита от TOCTOU race condition.
-    # Ранее проверка и обновление были в разных сессиях, что позволяло
-    # параллельным запросам оба пройти проверку (в multi-worker deploy).
-    pre_session = SessionFactory()
     try:
-        result = pre_session.execute(
-            sa_text(
-                "UPDATE crm_email_campaigns SET status='running', updated_at=:now "
-                "WHERE id=:id AND status NOT IN ('running', 'completed')"
-            ).bindparams(id=campaign_id, now=datetime.now(timezone.utc)),
-        )
-        pre_session.commit()
-        if result.rowcount == 0:
-            # P4R-H1: Обязательно освобождаем lock перед return!
-            lock.release()
-            _release_campaign_lock(campaign_id)
-            return StreamingResponse(
-                iter([f"data: {json.dumps({'error': 'Campaign already running or completed'})}\n\n"]),
-                media_type="text/event-stream",
-            )
-    finally:
-        pre_session.close()
-
-    def generate():
-        import time as _time
-        from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTouchRow
-        from granite.email.sender import EmailSender
-
-        # Задача 2.3: задержка и лимиты из config.yaml (секция email)
-        _cfg = request.app.state.config
-        _email_cfg = _cfg.get("email", {})
-        SEND_DELAY_MIN = int(_email_cfg.get("send_delay_min", 3))
-        SEND_DELAY_MAX = int(_email_cfg.get("send_delay_max", 3))
-        import random as _random
-        EMAIL_DAILY_LIMIT = int(_email_cfg.get("daily_limit", 50))
-        MAX_SENDS_PER_RUN = int(_email_cfg.get("max_sends_per_run", 100))
-
-        # FIX-P1: A/B логика вынесена в granite.email.ab — единый модуль для переиспользования
-        from granite.email.ab import determine_ab_variant
-
-        # P4R-M7: Импорт func вынесен наверх generate(), вне цикла
-        from sqlalchemy import func as _func
-
-        campaign = None
-        session = SessionFactory()
+        pre_session = SessionFactory()
         try:
-            campaign = session.get(CrmEmailCampaignRow, campaign_id)
-            if not campaign:
-                yield f"data: {json.dumps({'error': 'Campaign not found'})}\n\n"
-                return
-
-            # P4R-H2: После atomic UPDATE статус 'running' — ОЖИДАЕМЫЙ.
-            # Guard проверяет только 'completed' — запрещаем перезапуск завершённых.
-            if campaign.status == "completed":
-                yield f"data: {json.dumps({'error': f'Cannot restart campaign in status {campaign.status}'})}\n\n"
-                return
-
-            template = request.app.state.template_registry.get(campaign.template_name)
-            if not template:
-                campaign.status = "paused"
-                session.commit()
-                yield f"data: {json.dumps({'error': 'Template not found — campaign paused'})}\n\n"
-                return
-
-            recipients = _get_campaign_recipients(campaign, session)
-
-            from granite.constants import get_sender_field
-            from_name = get_sender_field("from_name")
-            whatsapp_number = get_sender_field("whatsapp")
-            telegram_link = get_sender_field("telegram")
-            sender = EmailSender()
-            sent = campaign.total_sent or 0
-            total = len(recipients)
-
-            # FIX-A5: Сохраняем total_recipients при старте кампании,
-            # чтобы SSE progress не пересчитывал _get_campaign_recipients()
-            if total > MAX_SENDS_PER_RUN:
-                campaign.total_recipients = MAX_SENDS_PER_RUN
-                recipients = recipients[:MAX_SENDS_PER_RUN]
-                logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
-            else:
-                campaign.total_recipients = total
-
-            # Статус уже установлен в "running" атомарно перед запуском потока.
-            # Здесь только фиксируем started_at в рамках текущей сессии.
-            campaign.started_at = datetime.now(timezone.utc)
-            session.commit()
-
-            yield f"data: {json.dumps({'status': 'started', 'total': len(recipients)})}\n\n"
-
-            for company, enriched, contact, email_to in recipients:
-                # Задача 2.3: проверка паузы/отмены
-                session.refresh(campaign)
-                if campaign.status != "running":
-                    logger.info(f"Campaign {campaign_id}: status '{campaign.status}', exiting")
-                    return
-
-                # P4R-H3: Пропуск получателей без contact — нет unsubscribe (152-ФЗ)
-                if not contact:
-                    logger.warning(
-                        f"Campaign {campaign_id}: skipping company {company.id} — "
-                        f"no contact (unsubscribe unavailable)"
-                    )
-                    campaign.total_errors = (campaign.total_errors or 0) + 1
-                    session.commit()
-                    yield f"data: {json.dumps({'status': 'skipped', 'reason': 'no_contact', 'company_id': company.id})}\n\n"
-                    continue
-
-                # Задача 2.3: проверка дневного лимита
-                last_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-                sent_today = (
-                    session.query(_func.count(CrmEmailLogRow.id))
-                    .filter(CrmEmailLogRow.sent_at >= last_24h)
-                    .scalar()
-                )
-                if sent_today >= EMAIL_DAILY_LIMIT:
-                    campaign.status = "paused_daily_limit"
-                    campaign.updated_at = datetime.now(timezone.utc)
-                    session.commit()
-                    logger.info(f"Campaign {campaign_id}: daily limit reached ({EMAIL_DAILY_LIMIT})")
-                    yield f"data: {json.dumps({'status': 'paused_daily_limit', 'reason': 'daily_limit'})}\n\n"
-                    return
-                city = company.city or ""
-                from granite.city_declensions import get_locative
-                render_kwargs = {
-                    "from_name": from_name,
-                    "whatsapp_number": whatsapp_number,
-                    "whatsapp_link": get_sender_field("whatsapp_link"),
-                    "telegram_link": telegram_link,
-                    "landing_url": get_sender_field("landing"),
-                    "city": city,
-                    "city_locative": get_locative(city),
-                    "company_name": company.name_best or "",
-                    "website": company.website or "",
-                    "unsubscribe_url": f"{sender.base_url}/api/v1/unsubscribe/{contact.unsubscribe_token}",
-                }
-
-                # Задача 3: A/B тема письма — через модульную функцию
-                subject_a = template.render_subject(subject_override=campaign.subject_a, **render_kwargs)
-                subject_b = template.render_subject(subject_override=campaign.subject_b, **render_kwargs) if campaign.subject_b else None
-                ab_variant, subject = determine_ab_variant(
-                    company_id=company.id,
-                    subject_a=subject_a,
-                    subject_b=subject_b,
-                )
-                rendered = template.render(**render_kwargs)
-                if template.body_type == "html":
-                    from granite.utils import html_to_plain_text
-                    body_text = html_to_plain_text(rendered)
-                    tracking_id = sender.send(
-                        company_id=company.id,
-                        email_to=email_to,
-                        subject=subject,
-                        body_text=body_text,
-                        body_html=rendered,
-                        template_name=template.name,
-                        rendered_body=body_text,  # plain text для истории
-                        db_session=session,
-                        campaign_id=campaign.id,
-                        ab_variant=ab_variant,
-                    )
-                else:
-                    tracking_id = sender.send(
-                        company_id=company.id,
-                        email_to=email_to,
-                        subject=subject,
-                        body_text=rendered,
-                        template_name=template.name,
-                        rendered_body=rendered,  # plain text = сам рендер
-                        db_session=session,
-                        campaign_id=campaign.id,
-                        ab_variant=ab_variant,
-                    )
-                if tracking_id:
-                    sent += 1
-                    campaign.total_sent = sent
-
-                    # Задача 2.3: commit после КАЖДОГО письма — не теряем данные при краше
-                    session.add(CrmTouchRow(
-                        company_id=company.id, channel="email", direction="outgoing",
-                        subject=subject, body=f"[tracking_id={tracking_id}] [ab={ab_variant}]",
-                    ))
-                    from granite.api.stage_transitions import apply_outgoing_touch
-                    apply_outgoing_touch(contact, "email")
-                    # Commit после каждого письма
-                    campaign.updated_at = datetime.now(timezone.utc)
-                    session.commit()
-
-                else:
-                    # Ошибка отправки — инкремент total_errors
-                    campaign.total_errors = (campaign.total_errors or 0) + 1
-                    session.commit()
-
-                # Задача 2.3: задержка из env (случайная в диапазоне MIN-MAX)
-                delay = _random.randint(SEND_DELAY_MIN, SEND_DELAY_MAX)
-
-                # AUDIT #11: Маскируем email в SSE — не передаём PII (152-ФЗ/GDPR).
-                # Заменяем полный email на company_id для клиента.
-                yield f"data: {json.dumps({'sent': sent, 'total': len(recipients), 'company_id': company.id})}\n\n"
-                _time.sleep(delay)
-
-            # P4R-L5: Убран лишний session.commit() — статус обновится ниже
-
-            campaign.status = "completed"
-            campaign.completed_at = datetime.now(timezone.utc)
-            session.commit()
-            yield f"data: {json.dumps({'status': 'completed', 'sent': sent, 'total': len(recipients)})}\n\n"
-        except GeneratorExit:
-            if campaign:
-                try:
-                    camp = session.get(CrmEmailCampaignRow, campaign_id)
-                    if camp and camp.status == "running":
-                        camp.status = "paused"
-                        session.commit()
-                except Exception:
-                    pass
-            logger.info(f"Campaign {campaign_id}: SSE disconnected, status set to 'paused'")
+            result = pre_session.execute(
+                sa_text(
+                    "UPDATE crm_email_campaigns SET status='running', updated_at=:now "
+                    "WHERE id=:id AND status NOT IN ('running', 'completed')"
+                ).bindparams(id=campaign_id, now=datetime.now(timezone.utc)),
+            )
+            pre_session.commit()
+            if result.rowcount == 0:
+                raise HTTPException(409, "Campaign already running or completed")
         finally:
-            session.close()
-            lock.release()
-            # P4R-M1: Очищаем lock из storage после release
-            _release_campaign_lock(campaign_id)
+            pre_session.close()
+    except HTTPException:
+        # Lock was acquired but atomic UPDATE failed or campaign can't start.
+        # Release the lock so the campaign can be retried.
+        lock.release()
+        _release_campaign_lock(campaign_id)
+        raise
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    thread = threading.Thread(
+        target=_run_campaign_send_loop,
+        args=(
+            campaign_id,
+            SessionFactory,
+            request.app.state.config,
+            request.app.state.template_registry,
+            lock,
+        ),
+        daemon=True,
+    )
+    thread.start()
+
+    return OkResponse(ok=True)
 
 
 @router.get("/campaigns/{campaign_id}/progress")
