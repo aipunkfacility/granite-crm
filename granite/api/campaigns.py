@@ -537,6 +537,8 @@ def _run_campaign_send_loop(
     try:
         session = session_factory()
         campaign = session.get(CrmEmailCampaignRow, campaign_id)
+        if campaign:
+            logger.info(f"Campaign {campaign_id} loaded: template_name={campaign.template_name!r}")
         if not campaign:
             logger.error(f"Campaign {campaign_id}: not found in send loop")
             return

@@ -80,9 +80,7 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
   // EventSource не поддерживает кастомные заголовки, поэтому передаём
   // токен через URL. Пока auth не реализован — токен пустой.
   const getSSEToken = useCallback((): string => {
-    // TODO: Заменить на реальный токен когда будет auth
-    // Пример: return localStorage.getItem('auth_token') || '';
-    return '';
+    return process.env.NEXT_PUBLIC_API_KEY || '';
   }, []);
 
   // P4R-H5: Подключение к SSE с exponential backoff

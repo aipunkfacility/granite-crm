@@ -441,7 +441,7 @@ async def api_key_auth_middleware(request: Request, call_next):
         # Ключ не настроен — пропускаем без проверки (dev-режим)
         return await call_next(request)
 
-    provided_key = request.headers.get("X-API-Key", "")
+    provided_key = request.headers.get("X-API-Key", "") or request.query_params.get("token", "")
     if not provided_key or not hmac.compare_digest(provided_key, expected_key):
         return JSONResponse(
             status_code=401,
