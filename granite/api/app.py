@@ -153,7 +153,8 @@ async def lifespan(app: FastAPI):
                     session.close()
             except Exception as e:
                 logger.error(f"IMAP worker fatal: {e}")
-            await _asyncio.sleep(3600)
+            poll_interval = int(os.environ.get("IMAP_POLL_INTERVAL", "3600"))
+            await _asyncio.sleep(poll_interval)
 
     _asyncio.create_task(_imap_worker())
 
