@@ -29,6 +29,7 @@ __all__ = [
     "extract_bounced_email",
     "extract_dsn",
     "fetch_imap_messages",
+    "mark_imap_messages_as_seen",
 ]
 
 
@@ -183,6 +184,25 @@ def extract_dsn(dsn_text: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
+# ── IMAP marking ──────────────────────────────────────────
+
+def mark_imap_messages_as_seen(conn: imaplib.IMAP4_SSL, mids: list[bytes]) -> None:
+    """Пометить сообщения как прочитанные (\Seen).
+
+    Args:
+        conn: открытое IMAP-соединение.
+        mids: список message_id (bytes) для пометки.
+    """
+    if not mids:
+        return
+    try:
+        for mid in mids:
+            conn.store(mid, '+FLAGS', '\\Seen')
+        logger.debug(f"Marked {len(mids)} IMAP messages as seen")
+    except Exception as e:
+        logger.warning(f"Failed to mark IMAP messages as seen: {e}")
+
+
 # ── IMAP connection ───────────────────────────────────────
 
 def fetch_imap_messages(
@@ -231,7 +251,6 @@ def fetch_imap_messages(
         message_ids = message_ids[-limit:]
 
         results = []
-        fetched_mids = []
         for mid in message_ids:
             # FIX P3-M2: убрана мёртвая переменная fetch_flag
             if not mark_seen:
@@ -248,17 +267,7 @@ def fetch_imap_messages(
                     raw_email = response_part[1]
                     msg = email.message_from_bytes(raw_email, policy=default_policy)
                     results.append((mid, msg))
-                    fetched_mids.append(mid)
                     break
-
-        # Помечаем обработанные письма как прочитанные
-        if not mark_seen and fetched_mids:
-            try:
-                for mid in fetched_mids:
-                    conn.store(mid, '+FLAGS', '\\Seen')
-                logger.debug(f"Marked {len(fetched_mids)} IMAP messages as seen")
-            except Exception as e:
-                logger.warning(f"Failed to mark IMAP messages as seen: {e}")
 
         return results
     finally:
