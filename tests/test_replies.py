@@ -286,6 +286,39 @@ class TestReplyParser:
         assert campaign.total_replied == 1
 
 
+    def test_reply_case_insensitive_email(self, db_session):
+        """Email с заглавными буквами в reply → совпадает с нижним регистром в логе"""
+        company_id = create_company(db_session, funnel_stage="email_sent")
+        contact = db_session.query(CrmContactRow).filter_by(company_id=company_id).one()
+
+        campaign = CrmEmailCampaignRow(
+            name="test", template_name="cold_email_1", status="running"
+        )
+        db_session.add(campaign)
+        db_session.flush()
+
+        log = CrmEmailLogRow(
+            company_id=company_id, email_to="Info@Test.Ru",
+            email_subject="Test", template_name="cold_email_1",
+            campaign_id=campaign.id, tracking_id="case1",
+            status="sent", sent_at=datetime.now(timezone.utc),
+        )
+        db_session.add(log)
+        db_session.commit()
+
+        reply_msg = MIMEText("Ответ", "plain", "utf-8")
+        reply_msg["From"] = "info@test.ru"
+        reply_msg["Subject"] = "Re: Test"
+
+        mock = [(b"1", reply_msg)]
+        with patch("granite.email.process_replies.fetch_imap_messages",
+                    return_value=mock):
+            process_replies(db_session)
+
+        db_session.refresh(contact)
+        assert contact.funnel_stage == "replied"
+
+
 # ── Helpers ──
 
 def _make_reply_messages(from_email, subject, body):

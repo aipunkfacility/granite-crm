@@ -12,6 +12,7 @@
 """
 from datetime import datetime, timezone
 from loguru import logger
+from sqlalchemy import func
 
 from granite.email.imap_helpers import (
     extract_email, extract_body, is_bounce,
@@ -114,6 +115,9 @@ def process_bounces(db_session, messages: list | None = None) -> int:
                     from_header = msg.get("From", "") or ""
                     bounced_email = extract_email(from_header)
 
+            if bounced_email:
+                bounced_email = bounced_email.lower().strip()
+
             if not bounced_email:
                 logger.debug(f"process_bounces: cannot extract bounced email from message {mid}")
                 continue
@@ -121,7 +125,7 @@ def process_bounces(db_session, messages: list | None = None) -> int:
             # Найти лог отправленного письма по email_to
             log = (
                 db_session.query(CrmEmailLogRow)
-                .filter_by(email_to=bounced_email)
+                .filter(func.lower(CrmEmailLogRow.email_to) == bounced_email)
                 .order_by(CrmEmailLogRow.sent_at.desc())
                 .first()
             )

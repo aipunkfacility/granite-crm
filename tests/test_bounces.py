@@ -191,6 +191,43 @@ class TestBounceParser:
         assert contact.funnel_stage == "unreachable"
 
 
+    def test_bounce_case_insensitive_email(self, db_session):
+        """Bounced email с заглавными буквами → совпадает с нижним регистром в логе"""
+        company_id = create_company(db_session, funnel_stage="email_sent")
+        contact = db_session.query(CrmContactRow).filter_by(company_id=company_id).one()
+
+        campaign = CrmEmailCampaignRow(
+            name="test", template_name="cold_email_1", status="running"
+        )
+        db_session.add(campaign)
+        db_session.flush()
+
+        log = CrmEmailLogRow(
+            company_id=company_id, email_to="Info@Test.Ru",
+            email_subject="Test", template_name="cold_email_1",
+            campaign_id=campaign.id, tracking_id="bouncecase1",
+            status="sent", sent_at=datetime.now(timezone.utc),
+        )
+        db_session.add(log)
+        db_session.commit()
+
+        dsn_body = (
+            "Final-Recipient: rfc822; INFO@TEST.RU\n"
+            "Diagnostic-Code: smtp; 5.1.1 User unknown\n"
+        )
+        bounce_msg = MIMEMultipart("report")
+        bounce_msg["From"] = "mailer-daemon@example.com"
+        bounce_msg["Subject"] = "Delivery Status Notification (Failure)"
+        bounce_msg.attach(MIMEText(dsn_body, "plain"))
+
+        with patch("granite.email.process_bounces.fetch_imap_messages",
+                    return_value=[(b"1", bounce_msg)]):
+            process_bounces(db_session)
+
+        db_session.refresh(log)
+        assert log.status == "bounced"
+
+
 # ── Helpers ──
 
 def _make_bounce_messages(bounced_email, dsn_code, dsn_message):

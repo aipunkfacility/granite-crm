@@ -14,6 +14,7 @@ import re
 from datetime import datetime, timezone
 
 from loguru import logger
+from sqlalchemy import func
 
 from granite.email.imap_helpers import (
     extract_email, extract_body, is_bounce, is_ooo,
@@ -72,6 +73,9 @@ def process_replies(db_session, messages: list | None = None) -> int:
             from_header = msg.get("From", "") or ""
             reply_email = extract_email(from_header)
 
+            if reply_email:
+                reply_email = reply_email.lower().strip()
+
             if not reply_email:
                 logger.debug(f"process_replies: cannot extract reply email from message {mid}")
                 continue
@@ -79,7 +83,7 @@ def process_replies(db_session, messages: list | None = None) -> int:
             # Найти лог отправленного письма по email_to
             log = (
                 db_session.query(CrmEmailLogRow)
-                .filter_by(email_to=reply_email)
+                .filter(func.lower(CrmEmailLogRow.email_to) == reply_email)
                 .order_by(CrmEmailLogRow.sent_at.desc())
                 .first()
             )
