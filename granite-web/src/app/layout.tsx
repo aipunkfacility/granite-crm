@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import QueryProvider from "@/providers/query-provider";
@@ -10,8 +10,14 @@ import { AdminProvider } from "@/lib/admin-context";
 
 const inter = Inter({ subsets: ["latin", "cyrillic"] });
 
-/* V-09: Geist Mono → JetBrains Mono */
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
+/* V-09: Geist Mono → JetBrains Mono (local) */
+const jetbrainsMono = localFont({
+  src: "../fonts/JetBrainsMono.woff2",
+  weight: "400 700",
+  style: "normal",
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Granite CRM",

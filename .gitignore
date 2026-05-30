@@ -16,3 +16,4 @@ venv/
 scratch/
 requirements.txt
 .agents/
+docs/superpowers/
