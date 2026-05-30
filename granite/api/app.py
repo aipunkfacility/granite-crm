@@ -476,6 +476,9 @@ app.include_router(replies.router, prefix="/api/v1", tags=["replies"])
 from granite.api import pipeline_status
 app.include_router(pipeline_status.router, prefix="/api/v1", tags=["pipeline"])
 
+from granite.api import debug as debug_router
+app.include_router(debug_router.router, prefix="/api/v1", tags=["debug"])
+
 
 @app.get("/health")
 def health(request: Request):

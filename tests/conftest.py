@@ -144,3 +144,12 @@ def client(engine, monkeypatch, tmp_path):
         app.dependency_overrides.clear()
         app.state.Session = original_session
         app.state.template_registry = original_registry
+
+
+@pytest.fixture
+def admin_headers(client, monkeypatch) -> dict:
+    """Headers with valid X-Admin-Token для debug/admin эндпоинтов."""
+    monkeypatch.setenv("GRANITE_ADMIN_PASSWORD", "test_secret")
+    resp = client.post("/api/v1/admin/login", json={"password": "test_secret"})
+    token = resp.json()["token"]
+    return {"X-Admin-Token": token}
