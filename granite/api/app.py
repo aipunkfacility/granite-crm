@@ -89,23 +89,63 @@ async def lifespan(app: FastAPI):
 
     logger.info(f"CRM API started. DB: {db._db_path}")
 
-    # IMAP worker: автоматическая обработка bounce/reply каждый час
+    # IMAP worker: обработка bounce/reply каждый час
+    # BUGFIX: раньше process_bounces() и process_replies() вызывали
+    # fetch_imap_messages() каждая со своим IMAP-соединением. Первая
+    # пометила все сообщения как \Seen, вторая не нашла ничего.
+    # Теперь загружаем один раз, передаём в оба процессора, помечаем
+    # как Seen после успешной обработки.
     import asyncio as _asyncio
+    import imaplib as _imaplib
 
     async def _imap_worker():
         """Фоновая обработка bounce и reply из IMAP."""
         from granite.email.process_bounces import process_bounces
         from granite.email.process_replies import process_replies
-        await _asyncio.sleep(60)  # дать серверу полностью стартовать
+        from granite.email.imap_helpers import (
+            fetch_imap_messages,
+            mark_imap_messages_as_seen,
+        )
+        await _asyncio.sleep(60)
         while True:
             try:
                 session = db.SessionLocal()
                 try:
-                    b = process_bounces(session)
-                    r = process_replies(session)
-                    session.commit()
-                    if b or r:
-                        logger.info(f"IMAP worker: {b} bounces, {r} replies processed")
+                    all_messages = fetch_imap_messages(mark_seen=False)
+                    if all_messages:
+                        b = process_bounces(session, messages=all_messages)
+                        r = process_replies(session, messages=all_messages)
+                        session.commit()
+                        if b or r:
+                            logger.info(
+                                f"IMAP worker: {b} bounces, {r} replies processed"
+                            )
+                        # Mark all as Seen (новое IMAP-соединение для marking)
+                        imap_user = os.environ.get("SMTP_USER", "")
+                        imap_pass = os.environ.get(
+                            "IMAP_PASS", os.environ.get("SMTP_PASS", "")
+                        )
+                        if imap_user and imap_pass:
+                            try:
+                                conn = _imaplib.IMAP4_SSL(
+                                    os.environ.get("IMAP_HOST", "imap.gmail.com"),
+                                    int(os.environ.get("IMAP_PORT", "993")),
+                                )
+                                conn.login(imap_user, imap_pass)
+                                conn.select("INBOX")
+                                mark_imap_messages_as_seen(
+                                    conn, [m[0] for m in all_messages]
+                                )
+                                conn.close()
+                                conn.logout()
+                            except Exception as e:
+                                logger.warning(
+                                    f"IMAP worker: mark-as-seen failed: {e}"
+                                )
+                    else:
+                        process_bounces(session)
+                        process_replies(session)
+                        session.commit()
                 except Exception as e:
                     session.rollback()
                     logger.warning(f"IMAP worker error: {e}")
@@ -113,7 +153,7 @@ async def lifespan(app: FastAPI):
                     session.close()
             except Exception as e:
                 logger.error(f"IMAP worker fatal: {e}")
-            await _asyncio.sleep(3600)  # каждый час
+            await _asyncio.sleep(3600)
 
     _asyncio.create_task(_imap_worker())
 
