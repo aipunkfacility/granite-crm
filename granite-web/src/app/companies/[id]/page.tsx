@@ -42,6 +42,7 @@ export default function CompanyDetailPage() {
   const { data: company, isLoading, error } = useQuery({
     queryKey: ['company', id],
     queryFn: () => fetchCompany(id),
+    refetchInterval: 15 * 1000,
   });
 
   const updateMutation = useMutation({

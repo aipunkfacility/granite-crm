@@ -7,5 +7,6 @@ export function useCompanies(filters: CompanyFilters) {
     queryFn: () => fetchCompanies(filters),
     placeholderData: keepPreviousData,
     staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
   });
 }

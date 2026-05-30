@@ -91,6 +91,7 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
     queryKey: ['company', companyId],
     queryFn: () => fetchCompany(companyId!),
     enabled: open && !!companyId,
+    refetchInterval: 15 * 1000,
   });
 
   const updateMutation = useMutation({
