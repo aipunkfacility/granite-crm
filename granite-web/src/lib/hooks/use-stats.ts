@@ -5,6 +5,7 @@ export function useStats(city?: string) {
   return useQuery({
     queryKey: ['stats', city],
     queryFn: () => fetchStats(city),
-    staleTime: 60 * 1000, // Статистику можно обновлять раз в минуту
+    staleTime: 60 * 1000,
+    refetchInterval: 30 * 1000,
   });
 }
