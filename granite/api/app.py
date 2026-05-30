@@ -130,6 +130,7 @@ async def lifespan(app: FastAPI):
         retention="30 days",
         level="INFO",
         encoding="utf-8",
+        enqueue=True,
     )
 
     yield
