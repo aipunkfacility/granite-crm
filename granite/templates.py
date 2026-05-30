@@ -40,15 +40,19 @@ class EmailTemplate:
             logger.warning(f"Template '{self.name}': unfilled placeholders: {leftovers}")
         return result
 
-    def render_subject(self, **kwargs) -> str:
+    def render_subject(self, subject_override: str | None = None, **kwargs) -> str:
         """Подставить значения в тему письма.
 
         Subject — всегда plain text (RFC 2047), экранирование не требуется
         даже для HTML-шаблонов.
+
+        Args:
+            subject_override: если передан — рендерится он вместо self.subject.
+                              Нужен для кампаний, где тема хранится отдельно.
         """
-        if not self.subject:
+        result = subject_override if subject_override is not None else self.subject
+        if not result:
             return ""
-        result = self.subject
         for key, value in kwargs.items():
             result = result.replace(f"{{{key}}}", str(value))
         return result

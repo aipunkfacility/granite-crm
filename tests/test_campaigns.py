@@ -248,7 +248,7 @@ class TestCampaignRecipients:
 class TestCampaignProgress:
     """GET /campaigns/{id}/progress — SSE-эндпоинт."""
 
-    def test_campaign_progress_endpoint(self, engine):
+    def test_campaign_progress_endpoint(self, engine, monkeypatch):
         from fastapi.testclient import TestClient
         from granite.api.app import app
         from granite.api.deps import get_db
@@ -277,6 +277,7 @@ class TestCampaignProgress:
         app.state.Session = Session
 
         try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
             with TestClient(app) as client:
                 resp = client.get(f"/api/v1/campaigns/{campaign_id}/progress")
                 assert resp.status_code == 200
@@ -298,7 +299,7 @@ class TestCampaignProgress:
         finally:
             app.dependency_overrides.clear()
 
-    def test_campaign_progress_not_found(self, engine):
+    def test_campaign_progress_not_found(self, engine, monkeypatch):
         from fastapi.testclient import TestClient
         from granite.api.app import app
         from granite.api.deps import get_db
@@ -320,13 +321,14 @@ class TestCampaignProgress:
         app.state.Session = Session
 
         try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
             with TestClient(app) as client:
                 resp = client.get("/api/v1/campaigns/999999/progress")
                 assert resp.status_code == 404
         finally:
             app.dependency_overrides.clear()
 
-    def test_campaign_progress_completed(self, engine):
+    def test_campaign_progress_completed(self, engine, monkeypatch):
         from fastapi.testclient import TestClient
         from granite.api.app import app
         from granite.api.deps import get_db
@@ -355,6 +357,7 @@ class TestCampaignProgress:
         app.state.Session = Session
 
         try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
             with TestClient(app) as client:
                 resp = client.get(f"/api/v1/campaigns/{campaign_id}/progress")
                 assert resp.status_code == 200
@@ -394,7 +397,7 @@ class TestTotalRecipients:
         db.refresh(campaign)
         assert campaign.total_recipients == 42
 
-    def test_progress_uses_total_recipients(self, engine):
+    def test_progress_uses_total_recipients(self, engine, monkeypatch):
         from fastapi.testclient import TestClient
         from granite.api.app import app
         from granite.api.deps import get_db
@@ -424,6 +427,7 @@ class TestTotalRecipients:
         app.state.Session = Session
 
         try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
             with TestClient(app) as client:
                 resp = client.get(f"/api/v1/campaigns/{campaign_id}/progress")
                 assert resp.status_code == 200
@@ -439,7 +443,7 @@ class TestTotalRecipients:
         finally:
             app.dependency_overrides.clear()
 
-    def test_get_campaign_uses_total_recipients(self, engine):
+    def test_get_campaign_uses_total_recipients(self, engine, monkeypatch):
         from fastapi.testclient import TestClient
         from granite.api.app import app
         from granite.api.deps import get_db
@@ -469,6 +473,7 @@ class TestTotalRecipients:
         app.state.Session = Session
 
         try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
             with TestClient(app) as client:
                 resp = client.get(f"/api/v1/campaigns/{campaign_id}")
                 assert resp.status_code == 200

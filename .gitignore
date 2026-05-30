@@ -1,4 +1,5 @@
 /backups
+cloudflared.exe
 *.db
 *.db-wal
 *.db-shm

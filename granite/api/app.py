@@ -24,6 +24,27 @@ import threading
 _rate_limit_store: dict[str, list[float]] = {}
 _rate_limit_lock = threading.Lock()
 
+# Файловый лог — один хендлер на весь процесс, не в lifespan.
+# В lifespan хендлер создаётся и удаляется при каждом TestClient → фоновые треды
+# с enqueue=True не успевают завершиться (особенно на Windows при ротации),
+# оставляя зомби-хендлеры с открытым файлом → PermissionError.
+# PermissionError при ротации: os.rename на Windows не перезаписывает
+# существующий файл. Удаляем старые rotated-файлы перед стартом.
+import glob
+for f in glob.glob("data/crm.*.log"):
+    try:
+        os.remove(f)
+    except OSError:
+        pass
+logger.add(
+    "data/crm.log",
+    rotation="10 MB",
+    retention="30 days",
+    level="INFO",
+    encoding="utf-8",
+    enqueue=True,
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -123,15 +144,8 @@ async def lifespan(app: FastAPI):
     if not os.environ.get("GRANITE_API_KEY"):
         logger.warning("GRANITE_API_KEY not set — API authentication DISABLED (dev mode)")
 
-    # Файловый лог с ротацией
-    logger.add(
-        "data/crm.log",
-        rotation="10 MB",
-        retention="30 days",
-        level="INFO",
-        encoding="utf-8",
-        enqueue=True,
-    )
+    # Файловый лог добавлен на уровне модуля — один на весь процесс,
+    # чтобы избежать PermissionError при ротации в параллельных тестах.
 
     yield
 

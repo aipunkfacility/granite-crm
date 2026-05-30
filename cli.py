@@ -41,7 +41,7 @@ def setup_logging(config: dict):
     # Файл
     os.makedirs("data/logs", exist_ok=True)
     logger.add("data/logs/granite.log", level=level, format=fmt,
-               rotation=rotation, retention=retention, encoding="utf-8")
+               rotation=rotation, retention=retention, encoding="utf-8", enqueue=True)
 
 def load_config(config_path: str | None = None):
     path = config_path or _config_path

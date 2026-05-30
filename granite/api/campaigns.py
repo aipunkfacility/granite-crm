@@ -684,11 +684,12 @@ def run_campaign(campaign_id: int, request: Request):
                 }
 
                 # Задача 3: A/B тема письма — через модульную функцию
-                subject_a = campaign.subject_a or template.render_subject(**render_kwargs)
+                subject_a = template.render_subject(subject_override=campaign.subject_a, **render_kwargs)
+                subject_b = template.render_subject(subject_override=campaign.subject_b, **render_kwargs) if campaign.subject_b else None
                 ab_variant, subject = determine_ab_variant(
                     company_id=company.id,
                     subject_a=subject_a,
-                    subject_b=campaign.subject_b,
+                    subject_b=subject_b,
                 )
                 rendered = template.render(**render_kwargs)
                 if template.body_type == "html":

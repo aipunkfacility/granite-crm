@@ -136,6 +136,9 @@ def client(engine, monkeypatch, tmp_path):
         with TestClient(app) as c:
             # Переписываем template_registry ПОСЛЕ lifespan (который создаёт свой)
             app.state.template_registry = TemplateRegistry(str(test_json))
+            # load_dotenv() в lifespan перезаписал GRANITE_API_KEY из .env —
+            # возвращаем пустой ключ для тестов
+            monkeypatch.setenv("GRANITE_API_KEY", "")
             yield c
     finally:
         app.dependency_overrides.clear()
