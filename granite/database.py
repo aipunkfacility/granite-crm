@@ -338,6 +338,7 @@ class CrmEmailLogRow(Base):
 
     sent_at = Column(DateTime, nullable=True)
     opened_at = Column(DateTime, nullable=True)
+    suspicious_open = Column(Boolean, default=False, server_default="0")
     replied_at = Column(DateTime, nullable=True)
     bounced_at = Column(DateTime, nullable=True)
     error_message = Column(Text, default="")
