@@ -187,7 +187,7 @@ def extract_dsn(dsn_text: str) -> Optional[str]:
 # ── IMAP marking ──────────────────────────────────────────
 
 def mark_imap_messages_as_seen(conn: imaplib.IMAP4_SSL, mids: list[bytes]) -> None:
-    """Пометить сообщения как прочитанные (\Seen).
+    """Пометить сообщения как прочитанные (\\Seen).
 
     Args:
         conn: открытое IMAP-соединение.
