@@ -29,8 +29,13 @@ _SPAM_PATTERNS = re.compile(
 )
 
 
-def process_replies(db_session) -> int:
+def process_replies(db_session, messages: list | None = None) -> int:
     """Обработать ответы из IMAP.
+
+    Args:
+        db_session: SQLAlchemy-сессия.
+        messages: опциональный список (mid, msg). Если не передан —
+                  загружает из IMAP самостоятельно.
 
     Returns:
         Количество обработанных ответов.
@@ -40,11 +45,12 @@ def process_replies(db_session) -> int:
     )
     from granite.api.helpers import cancel_followup_tasks
 
-    try:
-        messages = fetch_imap_messages()
-    except Exception as e:
-        logger.error(f"process_replies: IMAP connection error: {e}")
-        return 0
+    if messages is None:
+        try:
+            messages = fetch_imap_messages()
+        except Exception as e:
+            logger.error(f"process_replies: IMAP connection error: {e}")
+            return 0
 
     if not messages:
         return 0

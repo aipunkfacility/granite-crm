@@ -62,19 +62,25 @@ def _extract_all_text(msg) -> str:
     return "\n".join(parts)
 
 
-def process_bounces(db_session) -> int:
+def process_bounces(db_session, messages: list | None = None) -> int:
     """Обработать bounce-уведомления из IMAP.
+
+    Args:
+        db_session: SQLAlchemy-сессия.
+        messages: опциональный список (mid, msg). Если не передан —
+                  загружает из IMAP самостоятельно.
 
     Returns:
         Количество обработанных bounce-уведомлений.
     """
     from granite.database import CrmEmailLogRow, CrmContactRow
 
-    try:
-        messages = fetch_imap_messages()
-    except Exception as e:
-        logger.error(f"process_bounces: IMAP connection error: {e}")
-        return 0
+    if messages is None:
+        try:
+            messages = fetch_imap_messages()
+        except Exception as e:
+            logger.error(f"process_bounces: IMAP connection error: {e}")
+            return 0
 
     if not messages:
         return 0
