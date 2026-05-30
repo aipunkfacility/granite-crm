@@ -481,3 +481,222 @@ class TestTotalRecipients:
                 assert data["preview_recipients"] == 12
         finally:
             app.dependency_overrides.clear()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Fire-and-forget: POST /run
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _release_all_campaign_locks():
+    """Очистить глобальное хранилище блокировок кампаний.
+
+    Нужно между тестами /run, потому что заглушенный фоновый поток
+    не освобождает lock, и следующий тест с тем же campaign_id получит 409.
+    """
+    from granite.api.campaigns import _campaign_locks_storage
+    _campaign_locks_storage.clear()
+
+
+class TestRunCampaign:
+    """POST /campaigns/{id}/run — fire-and-forget.
+
+    Background send loop is mocked to avoid threading issues
+    with in-memory engine disposal between tests.
+    """
+
+    def test_run_returns_ok_immediately(self, engine, monkeypatch):
+        """POST /run возвращает ok=true сразу, без ожидания отправки."""
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s)
+            campaign = _make_campaign(s, status="draft")
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+
+        try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
+            with TestClient(app) as client:
+                app.state.Session = Session
+                with patch("granite.api.campaigns._run_campaign_send_loop"):
+                    resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
+                assert resp.status_code == 200
+                data = resp.json()
+                assert data["ok"] is True
+        finally:
+            app.dependency_overrides.clear()
+            _release_all_campaign_locks()
+
+    def test_run_sets_status_running(self, engine, monkeypatch):
+        """После POST /run статус кампании — running."""
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s)
+            campaign = _make_campaign(s, status="draft")
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+
+        try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
+            with TestClient(app) as client:
+                app.state.Session = Session
+                with patch("granite.api.campaigns._run_campaign_send_loop"):
+                    resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
+                assert resp.status_code == 200
+
+            with Session() as s:
+                c = s.get(CrmEmailCampaignRow, campaign_id)
+                assert c is not None
+                assert c.status == "running"
+        finally:
+            app.dependency_overrides.clear()
+            _release_all_campaign_locks()
+
+    def test_run_rejects_completed(self, engine, monkeypatch):
+        """Завершённую кампанию нельзя перезапустить — 409."""
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s)
+            campaign = _make_campaign(s, status="completed", total_sent=10)
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+
+        try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
+            with TestClient(app) as client:
+                app.state.Session = Session
+                with patch("granite.api.campaigns._run_campaign_send_loop"):
+                    resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
+                assert resp.status_code == 409
+        finally:
+            app.dependency_overrides.clear()
+            _release_all_campaign_locks()
+
+    def test_run_rejects_running(self, engine, monkeypatch):
+        """Уже запущенную кампанию нельзя запустить снова — 409."""
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s)
+            campaign = _make_campaign(s, status="running")
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+
+        try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
+            with TestClient(app) as client:
+                app.state.Session = Session
+                with patch("granite.api.campaigns._run_campaign_send_loop"):
+                    resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
+                assert resp.status_code == 409
+        finally:
+            app.dependency_overrides.clear()
+            _release_all_campaign_locks()
+
+    def test_run_not_found(self, engine, monkeypatch):
+        """Несуществующая кампания — 404."""
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+
+        Session = sessionmaker(bind=engine)
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+
+        try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
+            with TestClient(app) as client:
+                app.state.Session = Session
+                with patch("granite.api.campaigns._run_campaign_send_loop"):
+                    resp = client.post("/api/v1/campaigns/999999/run")
+                assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.clear()
+            _release_all_campaign_locks()
