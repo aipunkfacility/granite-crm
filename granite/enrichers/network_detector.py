@@ -171,3 +171,92 @@ class NetworkDetector:
                 f"телефонов: {len(network_phones)}, "
                 f"email-доменов: {len(network_email_domains)})."
             )
+
+    def find_candidate_groups(self, session, threshold: int = 2) -> list[dict]:
+        """Найти группы кандидатов на сеть/дубль по email-домену, сайту, телефону.
+
+        Возвращает список групп, где группа = dict с ключами:
+        {
+            "group_id": str,        # "email:vsepamyatniki.ru"
+            "signal_type": str,     # "email_domain" | "website" | "phone"
+            "signal_value": str,
+            "company_count": int,
+            "company_ids": list[int],
+            "companies": list[dict]  # {id, name, city, website, phones, emails}
+        }
+        """
+        rows = session.query(
+            EnrichedCompanyRow.id,
+            EnrichedCompanyRow.name,
+            EnrichedCompanyRow.city,
+            EnrichedCompanyRow.website,
+            EnrichedCompanyRow.phones,
+            EnrichedCompanyRow.emails,
+        ).all()
+
+        email_domain_map: dict[str, list[int]] = {}
+        website_map: dict[str, list[int]] = {}
+        phone_map: dict[str, list[int]] = {}
+        row_details: dict[int, dict] = {}
+
+        for row_id, name, city, website, phones, emails in rows:
+            row_details[row_id] = {
+                "id": row_id, "name": name, "city": city,
+                "website": website, "phones": phones or [],
+                "emails": emails or [],
+            }
+
+            if website:
+                domain = extract_domain(website)
+                if domain:
+                    website_map.setdefault(domain, []).append(row_id)
+
+            for p in (phones or []):
+                norm = normalize_phone(p)
+                if norm:
+                    phone_map.setdefault(norm, []).append(row_id)
+
+            for email in (emails or []):
+                if isinstance(email, str) and '@' in email:
+                    domain = email.split('@', 1)[1].lower().strip()
+                    if domain and domain not in FREE_EMAIL_DOMAINS:
+                        email_domain_map.setdefault(domain, []).append(row_id)
+
+        groups = []
+
+        for domain, ids in email_domain_map.items():
+            if len(ids) >= threshold:
+                groups.append({
+                    "group_id": f"email:{domain}",
+                    "signal_type": "email_domain",
+                    "signal_value": domain,
+                    "company_count": len(ids),
+                    "company_ids": ids,
+                    "companies": [row_details[i] for i in ids],
+                })
+
+        for domain, ids in website_map.items():
+            cities = {row_details[i]["city"] for i in ids}
+            if len(cities) >= threshold:
+                groups.append({
+                    "group_id": f"website:{domain}",
+                    "signal_type": "website",
+                    "signal_value": domain,
+                    "company_count": len(ids),
+                    "company_ids": ids,
+                    "companies": [row_details[i] for i in ids],
+                })
+
+        for phone, ids in phone_map.items():
+            cities = {row_details[i]["city"] for i in ids}
+            if len(cities) >= threshold:
+                groups.append({
+                    "group_id": f"phone:{phone}",
+                    "signal_type": "phone",
+                    "signal_value": phone,
+                    "company_count": len(ids),
+                    "company_ids": ids,
+                    "companies": [row_details[i] for i in ids],
+                })
+
+        return groups
