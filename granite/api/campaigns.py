@@ -563,9 +563,10 @@ def _run_campaign_send_loop(
         sender = EmailSender()
         sent = campaign.total_sent or 0
         total = len(recipients)
+        was_truncated = total > MAX_SENDS_PER_RUN
 
-        if total > MAX_SENDS_PER_RUN:
-            campaign.total_recipients = MAX_SENDS_PER_RUN
+        if was_truncated:
+            campaign.total_recipients = total
             recipients = recipients[:MAX_SENDS_PER_RUN]
             logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
         else:
@@ -672,10 +673,15 @@ def _run_campaign_send_loop(
             delay = _random.randint(SEND_DELAY_MIN, SEND_DELAY_MAX)
             _time.sleep(delay)
 
-        campaign.status = "completed"
-        campaign.completed_at = datetime.now(timezone.utc)
-        session.commit()
-        logger.info(f"Campaign {campaign_id}: completed ({sent} sent)")
+        if was_truncated:
+            campaign.status = "paused"
+            session.commit()
+            logger.info(f"Campaign {campaign_id}: paused after batch ({sent}/{total} sent, max per run)")
+        else:
+            campaign.status = "completed"
+            campaign.completed_at = datetime.now(timezone.utc)
+            session.commit()
+            logger.info(f"Campaign {campaign_id}: completed ({sent} sent)")
     except Exception:
         logger.exception(f"Campaign {campaign_id}: error in send loop")
         if campaign:
