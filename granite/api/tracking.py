@@ -65,6 +65,7 @@ def track_open(tracking_id: str, request: Request, db: Session = Depends(get_db)
 
         log.opened_at = now
         log.status = "opened"
+        log.suspicious_open = False
 
         contact = db.get(CrmContactRow, log.company_id)
         if contact:
