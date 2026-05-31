@@ -17,7 +17,7 @@ export default function NetworksPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['network-candidates'],
-    queryFn: fetchNetworkCandidates,
+    queryFn: () => fetchNetworkCandidates(),
     staleTime: 10_000,
   });
 
