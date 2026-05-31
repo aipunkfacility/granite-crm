@@ -172,17 +172,28 @@ class NetworkDetector:
                 f"email-доменов: {len(network_email_domains)})."
             )
 
-    def find_candidate_groups(self, session, threshold: int = 2) -> list[dict]:
+    def find_candidate_groups(
+        self, session,
+        threshold: int = 2,
+        signal_type: str | None = None,
+        include_resolved: bool = False,
+    ) -> list[dict]:
         """Найти группы кандидатов на сеть/дубль по email-домену, сайту, телефону.
+
+        Args:
+            session: SQLAlchemy session.
+            threshold: Минимальное кол-во компаний для группы.
+            signal_type: Фильтр по типу ('email_domain'|'website'|'phone').
+            include_resolved: Включать группы, где все уже помечены is_network.
 
         Возвращает список групп, где группа = dict с ключами:
         {
-            "group_id": str,        # "email:vsepamyatniki.ru"
-            "signal_type": str,     # "email_domain" | "website" | "phone"
+            "group_id": str,
+            "signal_type": str,
             "signal_value": str,
             "company_count": int,
             "company_ids": list[int],
-            "companies": list[dict]  # {id, name, city, website, phones, emails}
+            "companies": list[dict]
         }
         """
         rows = session.query(
@@ -225,10 +236,34 @@ class NetworkDetector:
                     if domain and domain not in FREE_EMAIL_DOMAINS:
                         email_domain_map.setdefault(domain, set()).add(row_id)
 
+        # Загружаем is_network для фильтрации уже размеченных
+        all_ids: set[int] = set()
+        for ids in email_domain_map.values():
+            all_ids.update(ids)
+        for ids in website_map.values():
+            all_ids.update(ids)
+        for ids in phone_map.values():
+            all_ids.update(ids)
+
+        existing_network: set[int] = set()
+        if all_ids and not include_resolved:
+            existing_network = {
+                r[0] for r in session.query(EnrichedCompanyRow.id).filter(
+                    EnrichedCompanyRow.id.in_(list(all_ids)),
+                    EnrichedCompanyRow.is_network == True,
+                ).all()
+            }
+
+        from granite.constants import SPAM_DOMAINS, NON_NETWORK_DOMAINS
+
         groups = []
 
-        for domain, ids in email_domain_map.items():
-            if len(ids) >= threshold:
+        if not signal_type or signal_type == "email_domain":
+            for domain, ids in email_domain_map.items():
+                if not include_resolved:
+                    ids = {i for i in ids if i not in existing_network}
+                if len(ids) < threshold:
+                    continue
                 groups.append({
                     "group_id": f"email:{domain}",
                     "signal_type": "email_domain",
@@ -238,9 +273,15 @@ class NetworkDetector:
                     "companies": [row_details[i] for i in ids],
                 })
 
-        for domain, ids in website_map.items():
-            cities = {row_details[i]["city"] for i in ids}
-            if len(cities) >= threshold:
+        if not signal_type or signal_type == "website":
+            for domain, ids in website_map.items():
+                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
+                    continue
+                if not include_resolved:
+                    ids = {i for i in ids if i not in existing_network}
+                cities = {row_details[i]["city"] for i in ids}
+                if len(cities) < threshold or len(ids) < threshold:
+                    continue
                 groups.append({
                     "group_id": f"website:{domain}",
                     "signal_type": "website",
@@ -250,9 +291,13 @@ class NetworkDetector:
                     "companies": [row_details[i] for i in ids],
                 })
 
-        for phone, ids in phone_map.items():
-            cities = {row_details[i]["city"] for i in ids}
-            if len(cities) >= threshold:
+        if not signal_type or signal_type == "phone":
+            for phone, ids in phone_map.items():
+                if not include_resolved:
+                    ids = {i for i in ids if i not in existing_network}
+                cities = {row_details[i]["city"] for i in ids}
+                if len(cities) < threshold or len(ids) < threshold:
+                    continue
                 groups.append({
                     "group_id": f"phone:{phone}",
                     "signal_type": "phone",
