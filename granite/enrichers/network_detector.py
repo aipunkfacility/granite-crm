@@ -194,9 +194,9 @@ class NetworkDetector:
             EnrichedCompanyRow.emails,
         ).all()
 
-        email_domain_map: dict[str, list[int]] = {}
-        website_map: dict[str, list[int]] = {}
-        phone_map: dict[str, list[int]] = {}
+        email_domain_map: dict[str, set[int]] = {}
+        website_map: dict[str, set[int]] = {}
+        phone_map: dict[str, set[int]] = {}
         row_details: dict[int, dict] = {}
 
         for row_id, name, city, website, phones, emails in rows:
@@ -209,18 +209,21 @@ class NetworkDetector:
             if website:
                 domain = extract_domain(website)
                 if domain:
-                    website_map.setdefault(domain, []).append(row_id)
+                    website_map.setdefault(domain, set()).add(row_id)
+                base = extract_base_domain(website)
+                if base:
+                    website_map.setdefault(base, set()).add(row_id)
 
             for p in (phones or []):
                 norm = normalize_phone(p)
                 if norm:
-                    phone_map.setdefault(norm, []).append(row_id)
+                    phone_map.setdefault(norm, set()).add(row_id)
 
             for email in (emails or []):
                 if isinstance(email, str) and '@' in email:
                     domain = email.split('@', 1)[1].lower().strip()
                     if domain and domain not in FREE_EMAIL_DOMAINS:
-                        email_domain_map.setdefault(domain, []).append(row_id)
+                        email_domain_map.setdefault(domain, set()).add(row_id)
 
         groups = []
 
@@ -231,7 +234,7 @@ class NetworkDetector:
                     "signal_type": "email_domain",
                     "signal_value": domain,
                     "company_count": len(ids),
-                    "company_ids": ids,
+                    "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
                 })
 
@@ -243,7 +246,7 @@ class NetworkDetector:
                     "signal_type": "website",
                     "signal_value": domain,
                     "company_count": len(ids),
-                    "company_ids": ids,
+                    "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
                 })
 
@@ -255,7 +258,7 @@ class NetworkDetector:
                     "signal_type": "phone",
                     "signal_value": phone,
                     "company_count": len(ids),
-                    "company_ids": ids,
+                    "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
                 })
 
