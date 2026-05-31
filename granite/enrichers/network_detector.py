@@ -2,6 +2,7 @@
 from granite.database import Database, EnrichedCompanyRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
+from granite.constants import FREE_EMAIL_DOMAINS
 
 
 class NetworkDetector:
@@ -96,7 +97,7 @@ class NetworkDetector:
                 for email in (emails or []):
                     if isinstance(email, str) and '@' in email:
                         domain = email.split('@', 1)[1].lower().strip()
-                        if domain:
+                        if domain and domain not in FREE_EMAIL_DOMAINS:
                             email_domains.append(domain)
                             email_domain_count[domain] = email_domain_count.get(domain, 0) + 1
                 cached_email_domains[row_id] = email_domains

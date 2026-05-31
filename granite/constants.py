@@ -57,6 +57,12 @@ NON_NETWORK_DOMAINS: frozenset[str] = frozenset({
     "instagram.com", "facebook.com",
 })
 
+FREE_EMAIL_DOMAINS: frozenset[str] = frozenset({
+    "mail.ru", "inbox.ru", "bk.ru", "list.ru", "yandex.ru", "ya.ru",
+    "gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com",
+    "rambler.ru", "yahoo.com", "protonmail.com", "zoho.com", "mail.com",
+})
+
 SPAM_DOMAINS: frozenset[str] = frozenset({
     "uslugio.com", "zoon.ru", "jsprav.ru", "yell.ru",
     "orgpage.ru", "spravka-inform.ru", "2gis.ru",
