@@ -57,8 +57,7 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
   const { data: campaign, isLoading, refetch } = useQuery({
     queryKey: ['campaign-detail', campaignId],
     queryFn: () => fetchCampaignDetail(campaignId),
-    refetchInterval: (query) => {
-      const data = query.state.data;
+    refetchInterval: (data) => {
       return data?.status === 'running' ? 3000 : 15000;
     },
   });

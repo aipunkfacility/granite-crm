@@ -972,6 +972,7 @@ def _add_recipients_to_campaign(
         existing_ids.add(cid)
         added += 1
 
+    campaign.total_recipients = len(existing_ids)
     db.flush()
     return {"added": added, "skipped": skipped}
 
@@ -1036,6 +1037,11 @@ def remove_recipients(
             CampaignRecipientRow.company_id.in_(data.company_ids),
         )
         .delete(synchronize_session="fetch")
+    )
+    campaign.total_recipients = (
+        db.query(func.count(CampaignRecipientRow.campaign_id))
+        .filter(CampaignRecipientRow.campaign_id == campaign.id)
+        .scalar() or 0
     )
     db.flush()
 

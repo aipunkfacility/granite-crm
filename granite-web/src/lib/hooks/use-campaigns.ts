@@ -7,8 +7,7 @@ export function useCampaigns(params: { page?: number; per_page?: number } = {}) 
     queryKey: ['campaigns', params],
     queryFn: () => fetchCampaigns(params),
     refetchInterval: (data) => {
-      // Если есть запущенные кампании, обновляем чаще (каждые 5 сек)
-      const hasRunning = data?.state.data?.items.some(c => c.status === 'running');
+      const hasRunning = data?.items?.some(c => c.status === 'running');
       return hasRunning ? 5000 : 30000;
     }
   });
