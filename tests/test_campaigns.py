@@ -591,7 +591,7 @@ class TestRunCampaign:
             _release_all_campaign_locks()
 
     def test_run_rejects_completed(self, engine, monkeypatch):
-        """Завершённую кампанию нельзя перезапустить — 409."""
+        """Завершённую кампанию можно перезапустить — 200."""
         from unittest.mock import patch
         from fastapi.testclient import TestClient
         from granite.api.app import app
@@ -624,7 +624,7 @@ class TestRunCampaign:
                 app.state.Session = Session
                 with patch("granite.api.campaigns._run_campaign_send_loop"):
                     resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
-                assert resp.status_code == 409
+                assert resp.status_code == 200
         finally:
             app.dependency_overrides.clear()
             _release_all_campaign_locks()

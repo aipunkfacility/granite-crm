@@ -728,12 +728,12 @@ def run_campaign(campaign_id: int, request: Request):
             result = pre_session.execute(
                 sa_text(
                     "UPDATE crm_email_campaigns SET status='running', updated_at=:now "
-                    "WHERE id=:id AND status NOT IN ('running', 'completed')"
+                    "WHERE id=:id AND status != 'running'"
                 ).bindparams(id=campaign_id, now=datetime.now(timezone.utc)),
             )
             pre_session.commit()
             if result.rowcount == 0:
-                raise HTTPException(409, "Campaign already running or completed")
+                raise HTTPException(409, "Campaign is already running")
         finally:
             pre_session.close()
     except HTTPException:
