@@ -545,3 +545,39 @@ class PaginatedResponse(BaseModel, Generic[_T]):
     total: int = 0
     page: int = 1
     per_page: int = 50
+
+
+# ============================================================
+# Network candidates (Tasks 3-5)
+# ============================================================
+
+class NetworkCandidateCompany(BaseModel):
+    """Компания-кандидат в группе сети/дубля."""
+    id: int
+    name: str
+    city: str
+    website: Optional[str] = None
+    phones: list[str] = []
+    emails: list[str] = []
+
+
+class NetworkCandidateGroup(BaseModel):
+    """Группа кандидатов на сеть/дубль по общему сигналу."""
+    group_id: str = Field(..., description="Уникальный ID группы: email:домен / website:домен / phone:номер")
+    signal_type: str = Field(..., pattern="^(email_domain|website|phone)$")
+    signal_value: str
+    company_count: int
+    companies: list[NetworkCandidateCompany]
+
+
+class NetworkCandidatesResponse(BaseModel):
+    """Ответ GET /network-candidates."""
+    groups: list[NetworkCandidateGroup]
+    total: int
+
+
+class ResolveNetworkGroupRequest(BaseModel):
+    """Запрос POST /network-candidates/resolve."""
+    group_id: str = Field(..., description="ID группы для разрешения")
+    action: str = Field(..., pattern="^(network|duplicate)$")
+    target_id: Optional[int] = Field(None, description="ID оригинальной компании (обязателен для duplicate)")

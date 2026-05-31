@@ -609,7 +609,9 @@ def cities_status():
 
 
 @app.command()
-def scan_networks():
+def scan_networks(
+    candidates: bool = typer.Option(False, "--candidates", help="Показать группы кандидатов на сеть/дубль для ручной верификации"),
+):
     """А-6: Глобальный поиск агрегаторских сетей (3+ города) и их маркировка."""
     config = load_config()
     setup_logging(config)
@@ -620,6 +622,21 @@ def scan_networks():
         print_status(f"Успешно: помечено {modified} записей как сети/агрегаторы", "success")
     else:
         print_status("Сетей или новых агрегаторов не обнаружено", "info")
+
+    if candidates:
+        from granite.enrichers.network_detector import NetworkDetector
+        detector = NetworkDetector(db)
+        with db.session_scope() as session:
+            groups = detector.find_candidate_groups(session)
+        if groups:
+            print(f"\nНайдено {len(groups)} групп кандидатов:")
+            for g in groups:
+                cities = sorted({c["city"] for c in g["companies"]})
+                print(f"  [{g['signal_type']}] {g['signal_value']}: "
+                      f"{g['company_count']} компаний, города: {', '.join(cities)}")
+        else:
+            print("\nКандидатов на сеть/дубль не найдено.")
+
     db.engine.dispose()
 
 
