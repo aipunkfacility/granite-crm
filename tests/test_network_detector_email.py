@@ -114,6 +114,24 @@ class TestEmailDomainDetection:
         # Should not crash, should not mark as network
         assert not any(r.is_network for r in results)
 
+    def test_scan_for_networks_marks_email_domain_networks(self, in_memory_db):
+        """scan_for_networks should mark companies with same email domain."""
+        session = in_memory_db
+        for i in range(3):
+            session.add(EnrichedCompanyRow(
+                id=i + 50, name=f"B{i}", city="City",
+                emails=["office@chain.ru"], website=f"http://n{i}.ru", phones=[],
+            ))
+        session.commit()
+
+        db = MagicMock(spec=Database)
+        db.session_scope.return_value.__enter__.return_value = session
+
+        detector = NetworkDetector(db)
+        detector.scan_for_networks(threshold=2)
+
+        results = session.query(EnrichedCompanyRow).all()
+        assert all(r.is_network for r in results)
 
 class TestFindCandidateGroups:
     def test_find_groups_by_email_domain(self, in_memory_db):

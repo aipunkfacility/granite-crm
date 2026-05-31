@@ -623,9 +623,11 @@ def scan_networks(
     else:
         print_status("Сетей или новых агрегаторов не обнаружено", "info")
 
+    from granite.enrichers.network_detector import NetworkDetector
+    detector = NetworkDetector(db)
+    detector.scan_for_networks(threshold=2, city=None)
+
     if candidates:
-        from granite.enrichers.network_detector import NetworkDetector
-        detector = NetworkDetector(db)
         with db.session_scope() as session:
             groups = detector.find_candidate_groups(session)
         if groups:
