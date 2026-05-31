@@ -53,21 +53,29 @@ def track_open(tracking_id: str, request: Request, db: Session = Depends(get_db)
         log.opened_at = now
         log.status = "opened"
 
-        contact = db.get(CrmContactRow, log.company_id)
-        if contact:
-            contact.email_opened_count = (contact.email_opened_count or 0) + 1
-            contact.last_email_opened_at = now
-            if contact.funnel_stage == "email_sent":
-                contact.funnel_stage = "email_opened"
+        sent_at = log.sent_at
+        if sent_at is not None and sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
 
-            # Задача 5: создать follow-up задачу при первом открытии
-            from granite.email.followup_logic import maybe_create_followup_task
-            maybe_create_followup_task(contact, log.campaign_id, db)
+        if sent_at is not None and (now - sent_at).total_seconds() <= 30:
+            log.suspicious_open = True
+        else:
+            log.suspicious_open = False
 
-        # Задача 5: инкремент total_opened для кампании
-        if log.campaign_id:
-            from granite.email.followup_logic import increment_campaign_opened
-            increment_campaign_opened(log.campaign_id, db)
+        if not log.suspicious_open:
+            contact = db.get(CrmContactRow, log.company_id)
+            if contact:
+                contact.email_opened_count = (contact.email_opened_count or 0) + 1
+                contact.last_email_opened_at = now
+                if contact.funnel_stage == "email_sent":
+                    contact.funnel_stage = "email_opened"
+
+                from granite.email.followup_logic import maybe_create_followup_task
+                maybe_create_followup_task(contact, log.campaign_id, db)
+
+            if log.campaign_id:
+                from granite.email.followup_logic import increment_campaign_opened
+                increment_campaign_opened(log.campaign_id, db)
 
     return Response(
         content=TRANSPARENT_PNG,
