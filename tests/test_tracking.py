@@ -73,6 +73,8 @@ class TestSuspiciousOpen:
 
         db_session.refresh(log)
         assert log.suspicious_open is True
+        assert log.opened_at is None
+        assert log.status == "sent"
 
         contact = db_session.get(CrmContactRow, 999)
         assert contact.email_opened_count == 0
@@ -88,6 +90,8 @@ class TestSuspiciousOpen:
 
         db_session.refresh(log)
         assert log.suspicious_open is True
+        assert log.opened_at is None
+        assert log.status == "sent"
 
     def test_suspicious_open_does_not_increment_campaign(self, client, db_session):
         self._make_contact(db_session)
@@ -97,6 +101,11 @@ class TestSuspiciousOpen:
         db_session.commit()
 
         client.get(f"/api/v1/track/open/{log.tracking_id}.png")
+
+        db_session.refresh(log)
+        assert log.suspicious_open is True
+        assert log.opened_at is None
+        assert log.status == "sent"
 
         db_session.refresh(camp)
         assert camp.total_opened == 0
@@ -163,3 +172,37 @@ class TestSuspiciousOpen:
 
         db_session.refresh(log)
         assert log.suspicious_open is False
+
+    def test_real_open_after_suspicious_bot(self, client, db_session):
+        self._make_contact(db_session)
+        camp = self._make_campaign(db_session)
+        log = self._make_log(db_session, sent_seconds_ago=5)
+        log.campaign_id = camp.id
+        db_session.commit()
+
+        # First hit — bot at 2s → suspicious, opened_at NOT set
+        resp1 = client.get(f"/api/v1/track/open/{log.tracking_id}.png")
+        assert resp1.status_code == 200
+        db_session.refresh(log)
+        assert log.suspicious_open is True
+        assert log.opened_at is None
+        assert log.status == "sent"
+
+        # Simulate real open: change sent_at to >30s ago
+        log.sent_at = datetime.now(timezone.utc) - timedelta(seconds=60)
+        db_session.commit()
+
+        # Second hit — real human at 60s → normal processing
+        resp2 = client.get(f"/api/v1/track/open/{log.tracking_id}.png")
+        assert resp2.status_code == 200
+        db_session.refresh(log)
+        assert log.suspicious_open is False   # cleared by normal open
+        assert log.opened_at is not None
+        assert log.status == "opened"
+
+        contact = db_session.get(CrmContactRow, 999)
+        assert contact.email_opened_count == 1
+        assert contact.funnel_stage == "email_opened"
+
+        db_session.refresh(camp)
+        assert camp.total_opened == 1
