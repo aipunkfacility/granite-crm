@@ -18,3 +18,4 @@ scratch/
 requirements.txt
 .agents/
 docs/superpowers/
+.opencode
