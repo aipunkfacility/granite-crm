@@ -50,8 +50,6 @@ def track_open(tracking_id: str, request: Request, db: Session = Depends(get_db)
 
     if log and log.opened_at is None:
         now = datetime.now(timezone.utc)
-        log.opened_at = now
-        log.status = "opened"
 
         sent_at = log.sent_at
         if sent_at is not None and sent_at.tzinfo is None:
@@ -59,23 +57,28 @@ def track_open(tracking_id: str, request: Request, db: Session = Depends(get_db)
 
         if sent_at is not None and (now - sent_at).total_seconds() <= 30:
             log.suspicious_open = True
-        else:
-            log.suspicious_open = False
+            return Response(
+                content=TRANSPARENT_PNG,
+                media_type="image/png",
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+            )
 
-        if not log.suspicious_open:
-            contact = db.get(CrmContactRow, log.company_id)
-            if contact:
-                contact.email_opened_count = (contact.email_opened_count or 0) + 1
-                contact.last_email_opened_at = now
-                if contact.funnel_stage == "email_sent":
-                    contact.funnel_stage = "email_opened"
+        log.opened_at = now
+        log.status = "opened"
 
-                from granite.email.followup_logic import maybe_create_followup_task
-                maybe_create_followup_task(contact, log.campaign_id, db)
+        contact = db.get(CrmContactRow, log.company_id)
+        if contact:
+            contact.email_opened_count = (contact.email_opened_count or 0) + 1
+            contact.last_email_opened_at = now
+            if contact.funnel_stage == "email_sent":
+                contact.funnel_stage = "email_opened"
 
-            if log.campaign_id:
-                from granite.email.followup_logic import increment_campaign_opened
-                increment_campaign_opened(log.campaign_id, db)
+            from granite.email.followup_logic import maybe_create_followup_task
+            maybe_create_followup_task(contact, log.campaign_id, db)
+
+        if log.campaign_id:
+            from granite.email.followup_logic import increment_campaign_opened
+            increment_campaign_opened(log.campaign_id, db)
 
     return Response(
         content=TRANSPARENT_PNG,
