@@ -1,6 +1,6 @@
 """API для ручной верификации сетей/дублей."""
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from loguru import logger
 
@@ -16,10 +16,19 @@ router = APIRouter()
 
 
 @router.get("/network-candidates", response_model=NetworkCandidatesResponse)
-def list_network_candidates(db: Session = Depends(get_db)):
+def list_network_candidates(
+    db: Session = Depends(get_db),
+    signal_type: str | None = Query(None, pattern="^(email_domain|website|phone)$"),
+    min_companies: int = Query(3, ge=2, le=100),
+    include_resolved: bool = Query(False),
+):
     """Вернуть группы кандидатов на сеть/дубль."""
     detector = NetworkDetector(Database())
-    groups = detector.find_candidate_groups(db)
+    groups = detector.find_candidate_groups(
+        db, threshold=min_companies,
+        signal_type=signal_type,
+        include_resolved=include_resolved,
+    )
     return NetworkCandidatesResponse(
         groups=[NetworkCandidateGroup(**g) for g in groups],
         total=len(groups),

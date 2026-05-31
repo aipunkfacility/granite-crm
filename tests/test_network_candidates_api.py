@@ -40,6 +40,75 @@ class TestListNetworkCandidates:
         assert data["total"] == 0
         assert data["groups"] == []
 
+    def test_filters_by_signal_type(self, client, db_session):
+        """GET /network-candidates?signal_type=email_domain returns only email groups."""
+        for i in range(3):
+            db_session.add(EnrichedCompanyRow(
+                id=i + 100, name=f"E{i}", city=f"C{i}",
+                emails=["office@net.ru"], website=f"http://e{i}.ru", phones=[],
+            ))
+            db_session.add(CompanyRow(
+                id=i + 100, name_best=f"E{i}", city=f"C{i}",
+            ))
+        db_session.add(EnrichedCompanyRow(
+            id=200, name="W", city="Moscow",
+            emails=[], website="http://common.ru", phones=[],
+        ))
+        db_session.add(CompanyRow(
+            id=200, name_best="W", city="Moscow",
+        ))
+        db_session.add(EnrichedCompanyRow(
+            id=201, name="W2", city="Spb",
+            emails=[], website="http://common.ru", phones=[],
+        ))
+        db_session.add(CompanyRow(
+            id=201, name_best="W2", city="Spb",
+        ))
+        db_session.commit()
+
+        resp = client.get("/api/v1/network-candidates?signal_type=email_domain")
+        assert resp.status_code == 200
+        data = resp.json()
+        types = {g["signal_type"] for g in data["groups"]}
+        assert types == {"email_domain"}
+
+    def test_include_resolved_param(self, client, db_session):
+        """GET /network-candidates?include_resolved=true includes resolved groups."""
+        for i in range(3):
+            db_session.add(EnrichedCompanyRow(
+                id=i + 300, name=f"R{i}", city=f"C{i}",
+                emails=["office@marked.ru"], website=f"http://r{i}.ru",
+                phones=[], is_network=True,
+            ))
+            db_session.add(CompanyRow(
+                id=i + 300, name_best=f"R{i}", city=f"C{i}",
+            ))
+        db_session.commit()
+
+        resp = client.get("/api/v1/network-candidates?include_resolved=true&min_companies=2")
+        assert resp.status_code == 200
+        data = resp.json()
+        marked = [g for g in data["groups"] if g["signal_value"] == "marked.ru"]
+        assert len(marked) >= 1
+
+    def test_min_companies_param(self, client, db_session):
+        """GET /network-candidates?min_companies=5 filters small groups."""
+        for i in range(3):
+            db_session.add(EnrichedCompanyRow(
+                id=i + 400, name=f"S{i}", city=f"C{i}",
+                emails=["office@small.ru"], website=f"http://s{i}.ru", phones=[],
+            ))
+            db_session.add(CompanyRow(
+                id=i + 400, name_best=f"S{i}", city=f"C{i}",
+            ))
+        db_session.commit()
+
+        resp = client.get("/api/v1/network-candidates?min_companies=5")
+        assert resp.status_code == 200
+        data = resp.json()
+        small_ru = [g for g in data["groups"] if g["signal_value"] == "small.ru"]
+        assert len(small_ru) == 0
+
 
 class TestResolveNetworkGroup:
     @pytest.fixture
