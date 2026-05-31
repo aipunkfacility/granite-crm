@@ -18,6 +18,7 @@ import {
   Wifi,
   WifiOff,
   Loader2,
+  GitBranch,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
@@ -27,6 +28,7 @@ import { useAdmin } from '@/lib/admin-context';
 const navigation = [
   { name: 'Компании', href: '/companies', icon: Building2 },
   { name: 'На проверке', href: '/review', icon: ClipboardCheck },
+  { name: 'Сети', href: '/networks', icon: GitBranch },
   { name: 'Follow-up', href: '/followup', icon: ListTodo },
   { name: 'Задачи', href: '/tasks', icon: CheckSquare },
   { name: 'Шаблоны', href: '/templates', icon: FileText },

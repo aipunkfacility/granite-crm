@@ -123,3 +123,32 @@ export interface Touch {
   template_name: string | null;
   created_at: string | null;
 }
+
+// Network candidates
+export interface NetworkCandidateCompany {
+  id: number;
+  name: string;
+  city: string;
+  website: string | null;
+  phones: string[];
+  emails: string[];
+}
+
+export interface NetworkCandidateGroup {
+  group_id: string;
+  signal_type: 'email_domain' | 'website' | 'phone';
+  signal_value: string;
+  company_count: number;
+  companies: NetworkCandidateCompany[];
+}
+
+export interface NetworkCandidatesResponse {
+  groups: NetworkCandidateGroup[];
+  total: number;
+}
+
+export interface ResolveNetworkGroupPayload {
+  group_id: string;
+  action: 'network' | 'duplicate';
+  target_id?: number;
+}
