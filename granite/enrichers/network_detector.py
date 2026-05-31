@@ -7,14 +7,15 @@ from granite.utils import extract_domain, extract_base_domain, normalize_phone
 class NetworkDetector:
     """Выявляет сети (филиалы одного бизнеса).
 
-    Сеть определяется по трём признакам:
+    Сеть определяется по четырём признакам:
     1. Один и тот же домен сайта у 2+ компаний → сеть.
     2. Один и тот же базовый домен (SLD+TLD) у 2+ компаний → сеть
        (ловит субдоменные сети типа *.danila-master.ru).
     3. Один и тот же нормализованный телефон у 2+ компаний → сеть.
+    4. Один и тот же email-домен у 2+ компаний → сеть.
 
     Оптимизация: вместо загрузки всех ORM-объектов в память используются
-    лёгкие tuple-запросы (id, website, phones) и массовый UPDATE через IN.
+    лёгкие tuple-запросы (id, website, phones, emails) и массовый UPDATE через IN.
     """
 
     def __init__(self, db: Database, config: dict | None = None):
@@ -45,6 +46,7 @@ class NetworkDetector:
                 EnrichedCompanyRow.id,
                 EnrichedCompanyRow.website,
                 EnrichedCompanyRow.phones,
+                EnrichedCompanyRow.emails,
             )
             if city:
                 rows_q = rows_q.filter_by(city=city)
@@ -64,8 +66,10 @@ class NetworkDetector:
             cached_domains: dict[int, str | None] = {}
             # Cache: row_id -> extracted base domain
             cached_base_domains: dict[int, str | None] = {}
+            email_domain_count: dict[str, int] = {}
+            cached_email_domains: dict[int, list[str]] = {}
 
-            for row_id, website, phones in rows:
+            for row_id, website, phones, emails in rows:
                 # Domain counting
                 domain = extract_domain(website)
                 cached_domains[row_id] = domain
@@ -87,9 +91,20 @@ class NetworkDetector:
                         phone_count[norm] = phone_count.get(norm, 0) + 1
                 cached_norm_phones[row_id] = norms
 
+                # Email domain counting
+                email_domains: list[str] = []
+                for email in (emails or []):
+                    if isinstance(email, str) and '@' in email:
+                        domain = email.split('@', 1)[1].lower().strip()
+                        if domain:
+                            email_domains.append(domain)
+                            email_domain_count[domain] = email_domain_count.get(domain, 0) + 1
+                cached_email_domains[row_id] = email_domains
+
             network_domains = {d for d, cnt in domain_count.items() if cnt >= threshold}
             network_base_domains = {d for d, cnt in base_domain_count.items() if cnt >= threshold}
             network_phones = {p for p, cnt in phone_count.items() if cnt >= threshold}
+            network_email_domains = {d for d, cnt in email_domain_count.items() if cnt >= threshold}
 
             # Логируем что нашли
             if network_domains:
@@ -101,14 +116,17 @@ class NetworkDetector:
             if network_phones:
                 for p in sorted(network_phones):
                     logger.debug(f"  Сеть по телефону: {p} ({phone_count[p]} компаний)")
+            if network_email_domains:
+                for d in sorted(network_email_domains):
+                    logger.debug(f"  Сеть по email-домену: {d} ({email_domain_count[d]} компаний)")
 
-            if not network_domains and not network_base_domains and not network_phones:
+            if not network_domains and not network_base_domains and not network_phones and not network_email_domains:
                 logger.info("Сетей не обнаружено.")
                 return
 
             # ── Применяем флаги — используем кэш вместо повторного вызова ──
             network_ids: list[int] = []
-            for row_id, website, phones in rows:
+            for row_id, website, phones, emails in rows:
                 domain = cached_domains[row_id]
                 is_net = domain in network_domains
 
@@ -121,6 +139,12 @@ class NetworkDetector:
                 if not is_net:
                     for norm in cached_norm_phones[row_id]:
                         if norm in network_phones:
+                            is_net = True
+                            break
+
+                if not is_net:
+                    for ed in cached_email_domains[row_id]:
+                        if ed in network_email_domains:
                             is_net = True
                             break
 
@@ -143,5 +167,6 @@ class NetworkDetector:
                 f"Обнаружено {len(network_ids)} филиалов сетей "
                 f"(доменов: {len(network_domains)}, "
                 f"base-доменов: {len(network_base_domains)}, "
-                f"телефонов: {len(network_phones)})."
+                f"телефонов: {len(network_phones)}, "
+                f"email-доменов: {len(network_email_domains)})."
             )
