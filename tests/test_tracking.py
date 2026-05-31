@@ -180,7 +180,7 @@ class TestSuspiciousOpen:
         log.campaign_id = camp.id
         db_session.commit()
 
-        # First hit — bot at 2s → suspicious, opened_at NOT set
+        # First hit — bot at 5s → suspicious, opened_at NOT set
         resp1 = client.get(f"/api/v1/track/open/{log.tracking_id}.png")
         assert resp1.status_code == 200
         db_session.refresh(log)
@@ -203,6 +203,7 @@ class TestSuspiciousOpen:
         contact = db_session.get(CrmContactRow, 999)
         assert contact.email_opened_count == 1
         assert contact.funnel_stage == "email_opened"
+        assert contact.last_email_opened_at is not None
 
         db_session.refresh(camp)
         assert camp.total_opened == 1
