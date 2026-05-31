@@ -189,3 +189,65 @@ class TestFindCandidateGroups:
         detector = NetworkDetector(MagicMock(spec=Database))
         groups = detector.find_candidate_groups(session, threshold=2)
         assert len(groups) == 0
+
+    def test_signal_type_filter_email_only(self, in_memory_db):
+        """signal_type='email_domain' returns only email domain groups."""
+        session = in_memory_db
+        for i in range(3):
+            session.add(EnrichedCompanyRow(
+                id=i + 70, name=f"E{i}", city=f"C{i}",
+                emails=["office@net.ru"], website=f"http://e{i}.ru", phones=[],
+            ))
+        session.add(EnrichedCompanyRow(
+            id=80, name="W", city="Moscow",
+            emails=[], website="http://common.ru", phones=[],
+        ))
+        session.add(EnrichedCompanyRow(
+            id=81, name="W2", city="Spb",
+            emails=[], website="http://common.ru", phones=[],
+        ))
+        session.commit()
+
+        detector = NetworkDetector(MagicMock(spec=Database))
+        groups = detector.find_candidate_groups(session, threshold=2, signal_type="email_domain")
+
+        assert all(g["signal_type"] == "email_domain" for g in groups)
+        assert any(g["signal_value"] == "net.ru" for g in groups)
+
+    def test_include_resolved_includes_marked_networks(self, in_memory_db):
+        """include_resolved=True returns groups even if all companies are is_network."""
+        session = in_memory_db
+        for i in range(3):
+            session.add(EnrichedCompanyRow(
+                id=i + 90, name=f"R{i}", city=f"C{i}",
+                emails=["office@resolved.ru"], website=f"http://r{i}.ru",
+                phones=[], is_network=True,
+            ))
+        session.commit()
+
+        detector = NetworkDetector(MagicMock(spec=Database))
+        groups_excluded = detector.find_candidate_groups(session, threshold=2, include_resolved=False)
+        email_excluded = [g for g in groups_excluded if g["signal_type"] == "email_domain"]
+        assert not any(g["signal_value"] == "resolved.ru" for g in email_excluded)
+
+        groups_included = detector.find_candidate_groups(session, threshold=2, include_resolved=True)
+        email_included = [g for g in groups_included if g["signal_type"] == "email_domain"]
+        assert any(g["signal_value"] == "resolved.ru" for g in email_included)
+
+    def test_spam_domains_excluded_from_website_groups(self, in_memory_db):
+        """SPAM_DOMAINS like uslugio.com should not appear in website groups."""
+        session = in_memory_db
+        session.add(EnrichedCompanyRow(
+            id=100, name="S1", city="Moscow",
+            emails=[], website="http://uslugio.com", phones=[],
+        ))
+        session.add(EnrichedCompanyRow(
+            id=101, name="S2", city="Spb",
+            emails=[], website="http://uslugio.com", phones=[],
+        ))
+        session.commit()
+
+        detector = NetworkDetector(MagicMock(spec=Database))
+        groups = detector.find_candidate_groups(session, threshold=2)
+        web_groups = [g for g in groups if g["signal_type"] == "website"]
+        assert not any(g["signal_value"] == "uslugio.com" for g in web_groups)
