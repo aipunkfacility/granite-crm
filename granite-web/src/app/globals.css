@@ -7,7 +7,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-sans-inter, Inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -90,6 +90,7 @@
 
   /* Destructive — Гранат */
   --destructive: #DC2643;
+  --destructive-foreground: #FFFFFF;
 
   /* Borders — Известняк */
   --border: #D4D0CA;
@@ -115,6 +116,12 @@
 
   /* Radius — 8px B2B стандарт */
   --radius: 0.5rem;
+
+  /* Shadows — камень */
+  --shadow-sm: 0 1px 2px rgba(44, 41, 38, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(44, 41, 38, 0.08), 0 2px 4px -2px rgba(44, 41, 38, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(44, 41, 38, 0.08), 0 4px 6px -4px rgba(44, 41, 38, 0.04);
+  --shadow-xl: 0 20px 25px -5px rgba(44, 41, 38, 0.1), 0 8px 10px -6px rgba(44, 41, 38, 0.04);
 
   /* Sidebar */
   --sidebar: #E8E5E0;
@@ -162,6 +169,7 @@
 
   /* Destructive — Гранат (яркий) */
   --destructive: #F43F5E;
+  --destructive-foreground: #1A1B20;
 
   /* Borders */
   --border: #4E5058;
@@ -194,6 +202,12 @@
   --sidebar-accent-foreground: #E4E5E9;
   --sidebar-border: #4E5058;
   --sidebar-ring: #7C8CF8;
+
+  /* Shadows — камень на тёмном (более мягкие, чтобы не перебивать) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35), 0 4px 6px -4px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
 }
 
 @layer base {
