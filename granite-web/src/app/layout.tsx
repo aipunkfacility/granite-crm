@@ -8,7 +8,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { AdminProvider } from "@/lib/admin-context";
 
-const inter = Inter({ subsets: ["latin", "cyrillic"] });
+const inter = Inter({ subsets: ["latin", "cyrillic"], variable: "--font-sans-inter" });
 
 /* V-09: Geist Mono → JetBrains Mono (local) */
 const jetbrainsMono = localFont({
@@ -31,7 +31,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
-      <body className={`${inter.className} ${jetbrainsMono.variable}`}>
+      <body className={`${inter.variable} ${inter.className} ${jetbrainsMono.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
           <QueryProvider>
             <AdminProvider>
