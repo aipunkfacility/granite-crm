@@ -29,8 +29,8 @@ export default function CampaignsPage() {
     try {
       await runCampaign(id);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-    } catch (e: any) {
-      toast.error(e?.message || 'Ошибка запуска');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Ошибка запуска');
     } finally {
       setRunningId(null);
     }
@@ -41,8 +41,8 @@ export default function CampaignsPage() {
     try {
       await pauseCampaign(id);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
-    } catch (e: any) {
-      toast.error(e?.message || 'Ошибка паузы');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Ошибка паузы');
     } finally {
       setPausingId(null);
     }
@@ -53,8 +53,8 @@ export default function CampaignsPage() {
       await deleteCampaign(id);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
       toast.success('Черновик удалён');
-    } catch (e: any) {
-      toast.error(e?.message || 'Ошибка удаления');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Ошибка удаления');
     } finally {
       setDeleteConfirmId(null);
     }

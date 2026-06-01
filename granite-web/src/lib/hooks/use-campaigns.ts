@@ -6,8 +6,8 @@ export function useCampaigns(params: { page?: number; per_page?: number } = {}) 
   return useQuery({
     queryKey: ['campaigns', params],
     queryFn: () => fetchCampaigns(params),
-    refetchInterval: (data) => {
-      const hasRunning = data?.items?.some(c => c.status === 'running');
+    refetchInterval: (query) => {
+      const hasRunning = query.state.data?.items?.some(c => c.status === 'running');
       return hasRunning ? 5000 : 30000;
     }
   });
