@@ -32,12 +32,19 @@ src/
 │   ├── followup/           # Очередь follow-up
 │   ├── review/             # На проверке
 │   ├── pipeline/           # Мониторинг пайплайна
+│   ├── networks/           # Сети и группы дублей
 │   └── stats/              # Статистика
 ├── components/
-│   ├── ui/                 # shadcn/ui (button, card, input, select, table...)
+│   ├── ui/                 # shadcn/ui (button, card, input, select, table, ThemeToggle...)
 │   ├── companies/          # CompanyTable, CompanySheet, CompaniesFilters, BatchActionsBar...
-│   ├── templates/          # TemplateFormDialog, TemplateCard, TemplatePreviewDialog
-│   └── layout/             # Sidebar, AdminLoginDialog, ThemeToggle
+│   ├── campaigns/          # CampaignDashboard, CampaignCard, CampaignWizard
+│   ├── templates/          # TemplateCard, TemplatePreviewDialog
+│   ├── layout/             # Sidebar, AdminLoginDialog
+│   ├── networks/           # NetworkGroupCard, ResolveDuplicateDialog
+│   ├── followup/           # Follow-up queue components
+│   ├── pipeline/           # Pipeline monitoring components
+│   ├── tasks/              # Task components
+│   └── shared/             # Shared utilities
 ├── lib/
 │   ├── api/                # API-клиент
 │   │   ├── client.ts       # axios-инстанс (baseURL из NEXT_PUBLIC_API_URL)
@@ -48,6 +55,9 @@ src/
 │   │   ├── followup.ts     # Методы для /followup
 │   │   ├── pipeline.ts     # Методы для /pipeline
 │   │   ├── stats.ts        # Методы для /stats
+│   │   ├── networks.ts     # Методы для /networks
+│   │   ├── replies.ts      # Методы для /replies
+│   │   ├── presets.ts      # Методы для /presets
 │   │   └── admin.ts        # Методы для /admin
 │   ├── hooks/              # React Query хуки
 │   │   ├── use-companies.ts
@@ -77,9 +87,11 @@ src/
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`,
+  baseURL: (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1').replace(/\/$/, '') + '/',
+  timeout: 15000,
 });
 ```
+> `NEXT_PUBLIC_API_URL` должен содержать полный путь, включая `/api/v1`
 
 Каждый модуль (companies.ts, campaigns.ts и т.д.) экспортирует функции, которые используют `apiClient`:
 
@@ -100,10 +112,15 @@ export const getCompany = (id: number) =>
 
 ```typescript
 // lib/hooks/use-companies.ts
+import { keepPreviousData } from '@tanstack/react-query';
+
 export function useCompanies(filters: CompanyFilters) {
   return useQuery({
     queryKey: ['companies', filters],
     queryFn: () => getCompanies(filters),
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+    refetchInterval: 30 * 1000,
   });
 }
 ```
