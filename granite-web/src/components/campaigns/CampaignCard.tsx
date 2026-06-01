@@ -12,7 +12,6 @@ import {
   Clock,
   Trash2,
   Loader2,
-  Eye,
   LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -71,8 +70,8 @@ export function CampaignCard({
 
   return (
     <Card className="overflow-hidden border-border hover:shadow-md transition-shadow">
-      <CardHeader className="border-b bg-muted/50 py-3 px-6 flex flex-row items-start justify-between space-y-0 gap-4">
-        <div className="space-y-1 min-w-0">
+      <CardHeader className="border-b bg-muted/50 py-3 px-6 flex flex-row items-stretch justify-between space-y-0 gap-6">
+        <div className="flex flex-col justify-center space-y-1 min-w-0">
           <div className="flex items-center gap-2">
             <span
               className="text-lg font-bold cursor-pointer hover:text-primary truncate"
@@ -96,41 +95,21 @@ export function CampaignCard({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3 text-sm shrink-0 flex-wrap justify-end">
-          <span className="text-foreground font-medium">{campaign.total_sent}</span>
+        <div className="flex items-center gap-3 text-sm shrink-0">
+          <span className="text-foreground font-medium">Охват: {campaign.total_sent}</span>
           <span className="text-muted-foreground">·</span>
-          <span className="text-success font-medium">{campaign.total_opened} ({openRate}%)</span>
+          <span className="text-success font-medium">Открыто: {campaign.total_opened} ({openRate}%)</span>
           <span className="text-muted-foreground">·</span>
-          <span className="text-primary font-medium">{campaign.total_replied}</span>
+          <span className="text-primary font-medium">Ответов: {campaign.total_replied}</span>
           <span className="text-muted-foreground">·</span>
-          <span className="text-destructive font-medium">{campaign.total_errors || 0}</span>
+          <span className="text-destructive font-medium">Ошибок: {campaign.total_errors || 0}</span>
         </div>
       </CardHeader>
-      <CardContent className="p-6 space-y-4">
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground font-medium">Прогресс рассылки</span>
-            <span className="font-bold text-foreground">{progress}%</span>
-          </div>
-          <Progress value={progress} className="h-2" />
-          <div className="flex justify-between text-[11px] text-muted-foreground">
-            <span>Отправлено: {campaign.total_sent}</span>
-            <span>Всего: {totalTargets}</span>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-xs"
-            onClick={onOpenDashboard}
-          >
-            <Eye className="mr-1 h-3 w-3" /> Дашборд
-          </Button>
+      <CardContent className="p-6">
+        <div className="flex items-center gap-3">
           {['draft', 'paused', 'paused_daily_limit', 'completed'].includes(campaign.status) ? (
             <Button
-              className="flex-1 bg-success hover:bg-success/90 text-success-foreground h-9"
+              className="shrink-0 bg-success hover:bg-success/90 text-success-foreground h-9"
               onClick={onRun}
               disabled={isRunning}
             >
@@ -143,7 +122,7 @@ export function CampaignCard({
           ) : campaign.status === 'running' ? (
             <Button
               variant="outline"
-              className="flex-1 h-9"
+              className="shrink-0 h-9"
               onClick={onPause}
               disabled={isPausing}
             >
@@ -154,10 +133,19 @@ export function CampaignCard({
               )}
             </Button>
           ) : null}
+
+          <div className="flex-1 space-y-1">
+            <Progress value={progress} className="h-2" />
+            <div className="flex justify-between text-[11px] text-muted-foreground">
+              <span>Отправлено: {campaign.total_sent}</span>
+              <span>Всего: {totalTargets}</span>
+            </div>
+          </div>
+
           {campaign.status === 'draft' && (
             <>
               {deleteConfirmActive ? (
-                <div className="flex gap-1">
+                <div className="flex gap-1 shrink-0">
                   <Button
                     variant="destructive"
                     size="sm"
@@ -179,7 +167,7 @@ export function CampaignCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
                   onClick={onRequestDeleteConfirm}
                   title="Удалить черновик"
                 >
