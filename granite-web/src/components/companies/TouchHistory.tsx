@@ -80,7 +80,7 @@ export function TouchHistory({ companyId }: TouchHistoryProps) {
         <CardTitle className="text-sm flex items-center gap-2">
           <Clock className="h-4 w-4" />
           История касаний
-          <Badge variant="outline" className="text-[10px] px-1.5">
+          <Badge variant="outline" size="sm">
             {data?.total || 0}{(data?.total || 0) > 20 ? ` (показано ${touches.length})` : ''}  {/* P4R-L19 */}
           </Badge>
         </CardTitle>
@@ -105,9 +105,9 @@ export function TouchHistory({ companyId }: TouchHistoryProps) {
                   <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{touch.body.substring(0, 150)}</p>
                 )}
                 <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="outline" className="text-[9px] px-1 py-0">{touch.channel}</Badge>
+                  <Badge variant="outline" size="sm">{touch.channel}</Badge>
                   {touch.template_name && (
-                    <Badge variant="outline" className="text-[9px] px-1 py-0 bg-primary/10 text-primary border-primary/20">
+                    <Badge variant="outline" size="sm" className="bg-primary/10 text-primary border-primary/20">
                       {touch.template_name}
                     </Badge>
                   )}

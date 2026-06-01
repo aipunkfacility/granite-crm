@@ -120,7 +120,7 @@ export function TemplateCard({ template, onPreview }: TemplateCardProps) {
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Плейсхолдеры</p>
             <div className="flex flex-wrap gap-1.5">
               {placeholders.map(ph => (
-                <Badge key={ph} variant="outline" className="text-[11px] font-mono">
+                <Badge key={ph} variant="outline" size="sm" className="font-mono">
                   {`{${ph}}`}
                 </Badge>
               ))}

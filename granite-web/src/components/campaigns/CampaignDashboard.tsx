@@ -434,11 +434,12 @@ function CampaignRecipientsSection({ campaignId, recipientCount }: { campaignId:
   const total: number = data?.total ?? 0;
 
   const statusConfig: Record<string, { label: string; className: string }> = {
+    pending: { label: 'В очереди', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
     sent: { label: 'Отправлено', className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
     opened: { label: 'Открыто', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
     replied: { label: 'Ответили', className: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' },
-    bounced: { label: 'Ошибка', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
-    pending: { label: 'В очереди', className: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+    bounced: { label: 'Не доставлено', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+    failed: { label: 'Ошибка отправки', className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
   };
 
   return (
@@ -473,14 +474,18 @@ function CampaignRecipientsSection({ campaignId, recipientCount }: { campaignId:
                   <div className="text-xs text-muted-foreground truncate max-w-[180px]">
                     {item.emails?.[0] || '—'}
                   </div>
-                  {item.send_status && statusConfig[item.send_status] && (
-                    <span className={cn(
-                      'text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide whitespace-nowrap',
-                      statusConfig[item.send_status].className
-                    )}>
-                      {statusConfig[item.send_status].label}
-                    </span>
-                  )}
+                  {(() => {
+                    const cfg = item.send_status ? statusConfig[item.send_status] : undefined;
+                    return cfg ? (
+                      <Badge variant="outline" size="sm" className={cn('uppercase tracking-wide', cfg.className)}>
+                        {cfg.label}
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" size="sm" className="uppercase tracking-wide text-muted-foreground">
+                        Не отправлено
+                      </Badge>
+                    );
+                  })()}
                   <Button
                     variant="ghost"
                     size="icon"

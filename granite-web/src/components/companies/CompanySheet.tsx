@@ -323,11 +323,11 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                 {/* Segment & Score */}
                 <div className="flex gap-2 flex-wrap">
                   {segment && (
-                    <Badge variant={segment.variant} className="px-3 py-1 shadow-sm">
+                    <Badge variant={segment.variant} size="lg" className="shadow-sm">
                       Сегмент {segment.label}
                     </Badge>
                   )}
-                  <Badge variant="outline" className="px-3 py-1 font-mono-code bg-card shadow-sm">
+                  <Badge variant="outline" size="lg" className="font-mono bg-card shadow-sm">
                     Score: {company.crm_score}
                   </Badge>
                 </div>
@@ -541,8 +541,7 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                     {/* V-06,V-07: text-[10px] → text-xs, text-slate-400 → text-slate-500 */}
                     <div className="pt-3 text-xs text-muted-foreground uppercase tracking-widest flex justify-between">
                       <span>ID компании</span>
-                      {/* V-10: font-mono-code (13px JetBrains Mono) */}
-                      <span className="font-mono-code">{company.id}</span>
+                      <span className="font-mono">{company.id}</span>
                     </div>
                   </CardContent>
                 </Card>

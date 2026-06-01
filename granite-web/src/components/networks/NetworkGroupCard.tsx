@@ -62,7 +62,7 @@ export function NetworkGroupCard({ group, onResolved }: NetworkGroupCardProps) {
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-foreground">{signal.label}</span>
-                <Badge variant={signal.variant} className="text-[10px] h-4 px-1 font-mono">
+                <Badge variant={signal.variant} size="sm" className="font-mono">
                   {group.signal_value}
                 </Badge>
               </div>
@@ -71,7 +71,7 @@ export function NetworkGroupCard({ group, onResolved }: NetworkGroupCardProps) {
               </p>
             </div>
           </div>
-          <Badge variant="outline" className="text-xs shrink-0">
+          <Badge variant="outline" size="sm" className="shrink-0">
             {group.group_id.slice(0, 8)}
           </Badge>
         </div>
@@ -87,7 +87,7 @@ export function NetworkGroupCard({ group, onResolved }: NetworkGroupCardProps) {
                 <span className="text-sm font-medium text-foreground truncate">
                   {company.name}
                 </span>
-                <Badge variant="outline" className="text-[10px] h-4 shrink-0 font-mono">
+                <Badge variant="outline" size="sm" className="shrink-0 font-mono">
                   ID {company.id}
                 </Badge>
               </div>

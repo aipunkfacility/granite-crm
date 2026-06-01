@@ -132,11 +132,11 @@ export function MarkDuplicateDialog({
                           <MapPin className="h-3 w-3 shrink-0" />
                           <span>{c.city}</span>
                           {segment && (
-                            <Badge variant={segment.variant} className="h-4 px-1 text-[10px]">
+                            <Badge variant={segment.variant} size="sm">
                               {segment.label}
                             </Badge>
                           )}
-                          <span className="font-mono-code">{c.crm_score}</span>
+                          <span className="font-mono">{c.crm_score}</span>
                         </div>
                       </div>
                       <span className="text-xs text-muted-foreground shrink-0">ID {c.id}</span>

@@ -305,7 +305,7 @@ export function CompanyTable({
                     {/* Score */}
                     {isVisible('crm_score') && (
                       <TableCell>
-                        <span className="font-mono-code font-medium text-foreground">{company.crm_score}</span>
+                        <span className="font-mono font-medium text-foreground">{company.crm_score}</span>
                       </TableCell>
                     )}
                     {/* Воронка */}

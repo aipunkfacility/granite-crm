@@ -116,7 +116,7 @@ export function PostReplyButtons({ companyId, hasEmail, funnelStage, templateNam
         >
           <Reply className="h-4 w-4 text-primary" />
           Быстрый ответ
-          <Badge variant="outline" className="text-[10px] px-1.5">
+          <Badge variant="outline" size="sm">
             {funnelStage === 'replied' ? 'Есть ответ' : funnelStage === 'email_opened' ? 'Открыто' : 'Email'}
           </Badge>
           {expanded ? <ChevronUp className="h-3 w-3 ml-auto" /> : <ChevronDown className="h-3 w-3 ml-auto" />}

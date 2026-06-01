@@ -86,7 +86,49 @@
 
 Кнопки имеют скругление `rounded-md` (6px, `--radius-md`) и чёткие состояния (hover, active, disabled). Инпуты используют тот же радиус. Для карточек используется `rounded-xl` (8px, `--radius-lg`).
 
-#### 2.2 Таблицы (Data Tables)
+#### 2.2 Badge
+
+Badge — компактный индикатор статуса, метки или значения. Использует компонент `Badge` из `@/components/ui/badge`.
+
+**Размеры (prop `size`):**
+
+| Размер | h | px | font | Применение |
+| :--- | :--- | :--- | :--- | :--- |
+| `sm` | `h-4` | `px-1.5` | `text-[10px]` | Статусы в таблицах, ID, фильтры |
+| `default` | `h-5` | `px-2` | `text-xs` | Метки по умолчанию, счётчики |
+| `lg` | `h-6` | `px-3` | `text-sm` | Сегменты в карточках/Sheet, хедеры |
+
+**Варианты (prop `variant`):**
+
+| Вариант | Фон | Текст | Граница | Применение |
+| :--- | :--- | :--- | :--- | :--- |
+| `default` | `--primary` | `--primary-foreground` | нет | Статус компании, каналы, активное |
+| `secondary` | `--secondary` | `--secondary-foreground` | нет | Второстепенные метки |
+| `destructive` | `--destructive/10` | `--destructive` | нет | Ошибки, баунс, неуспешные отправки |
+| `outline` | прозрачный | `--foreground` | `--border` | **Используется чаще всего**: ID, счётчики, теги, метрики, "Не отправлено" |
+| `success` | `--success/10` | `--success` | `--success/20` | Отправлено, успех |
+| `ghost` | прозрачный (hover `--muted`) | `--foreground` | нет | Ховер-метки |
+| `link` | нет | `--primary` | нет | Ссылочные индикаторы |
+
+**Семантика для статусов рассылки:**
+
+| Статус | Badge |
+| :--- | :--- |
+| В очереди | `<Badge variant="secondary" size="sm">` |
+| Отправлено | `<Badge variant="success" size="sm">` |
+| Открыто | `<Badge variant="outline" size="sm" className="bg-blue-100/50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400">` |
+| Ответили | `<Badge variant="outline" size="sm" className="bg-purple-100/50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400">` |
+| Не доставлено | `<Badge variant="destructive" size="sm">` |
+| Ошибка | `<Badge variant="destructive" size="sm">` |
+| Не отправлено | `<Badge variant="outline" size="sm">` |
+
+**Правила:**
+1. Не использовать `text-[*]`, `h-*`, `px-*`, `py-*` — размеры задаются через `size`.
+2. Для моноширинного текста (Score, ID) добавить `className="font-mono"`.
+3. `font-mono-code` устарел — использовать `font-mono`.
+4. Badge с кастомными цветами (blue, purple, amber) — всегда `variant="outline"` + цветовые классы.
+
+#### 2.3 Таблицы (Data Tables)
 
 Таблица — сердце CRM. Она должна быть максимально информативной, но не перегруженной.
 

@@ -122,11 +122,11 @@ export default function CompanyDetailPage() {
               </div>
               <div className="flex gap-2">
                 {segment && (
-                  <Badge variant={segment.variant} className="px-3 py-1 shadow-sm">
+                  <Badge variant={segment.variant} size="lg" className="shadow-sm">
                     Сегмент {segment.label}
                   </Badge>
                 )}
-                <Badge variant="outline" className="px-3 py-1 text-sm font-mono bg-card shadow-sm">
+                <Badge variant="outline" size="lg" className="font-mono bg-card shadow-sm">
                   Score: {company.crm_score}
                 </Badge>
               </div>

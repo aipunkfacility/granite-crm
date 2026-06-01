@@ -107,9 +107,9 @@ export function ReviewCard({ company, onResolved, focused }: ReviewCardProps) {
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {segment && (
-            <Badge variant={segment.variant} className="text-xs">{segment.label}</Badge>
+            <Badge variant={segment.variant}>{segment.label}</Badge>
           )}
-          <Badge variant="outline" className="font-mono-code text-xs">{company.crm_score}</Badge>
+          <Badge variant="outline" className="font-mono">{company.crm_score}</Badge>
         </div>
       </div>
 
@@ -145,7 +145,7 @@ export function ReviewCard({ company, onResolved, focused }: ReviewCardProps) {
             <TgTrustMini trust={company.tg_trust} />
           </span>
         )}
-        <Badge variant={stage.variant} className="text-xs h-5">{stage.label}</Badge>
+        <Badge variant={stage.variant}>{stage.label}</Badge>
       </div>
 
       {/* Actions */}

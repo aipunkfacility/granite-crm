@@ -89,7 +89,7 @@ export function CampaignCard({
               Шаблон: <span className="font-mono text-primary">{campaign.template_name}</span>
             </p>
             {hasAB && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+              <Badge variant="outline" size="sm" className="bg-primary/10 text-primary border-primary/20">
                 A/B тест
               </Badge>
             )}

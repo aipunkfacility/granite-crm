@@ -223,8 +223,3 @@
   }
 }
 
-/* Mono font 13px для Score, ID, кодовых данных */
-.font-mono-code {
-  font-family: var(--font-mono);
-  font-size: 13px;
-}

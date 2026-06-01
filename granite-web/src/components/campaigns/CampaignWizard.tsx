@@ -504,7 +504,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyI
                     <div className="flex items-center gap-2">
                       <FlaskConical className="h-4 w-4 text-primary" />
                       <span className="text-sm font-medium text-primary">Вариант B</span>
-                      <Badge variant="outline" className="text-[10px] px-1.5">A/B тест</Badge>
+                      <Badge variant="outline" size="sm">A/B тест</Badge>
                     </div>
                     <Button
                       variant="ghost"
@@ -574,9 +574,9 @@ export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyI
                     {showVariantB ? 'A/B Тест' : 'Тема письма'}
                   </p>
                   <div className="space-y-1">
-                    <p><Badge variant="outline" className="text-[10px] mr-1.5">A</Badge> {subjectA || '(из шаблона)'}</p>
+                    <p><Badge variant="outline" size="sm" className="mr-1.5">A</Badge> {subjectA || '(из шаблона)'}</p>
                     {showVariantB && (
-                      <p><Badge variant="outline" className="text-[10px] mr-1.5">B</Badge> {subjectB}</p>
+                      <p><Badge variant="outline" size="sm" className="mr-1.5">B</Badge> {subjectB}</p>
                     )}
                   </div>
                 </div>

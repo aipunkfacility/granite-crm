@@ -90,7 +90,7 @@ export default function TasksPage() {
                 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-[10px] uppercase">
+                    <Badge variant="outline" size="sm" className="uppercase">
                       {TASK_TYPES[task.task_type] || task.task_type}
                     </Badge>
                     {task.priority > 1 && (
