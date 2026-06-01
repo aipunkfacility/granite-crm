@@ -759,6 +759,41 @@ def run_campaign(campaign_id: int, request: Request):
     return OkResponse(ok=True)
 
 
+@router.post("/campaigns/{campaign_id}/pause", response_model=OkResponse, response_model_exclude_none=True)
+def pause_campaign(campaign_id: int, request: Request):
+    """Приостановить running-кампанию.
+
+    Атомарный UPDATE: status='paused' WHERE id=:id AND status='running'.
+    Если строка не обновлена (rowcount == 0) — кампания не в статусе running,
+    возвращаем 409 Conflict.
+    """
+    SessionFactory = request.app.state.Session
+    session = SessionFactory()
+    try:
+        campaign = session.get(CrmEmailCampaignRow, campaign_id)
+        if not campaign:
+            raise HTTPException(404, "Campaign not found")
+
+        result = session.execute(
+            sa_text(
+                "UPDATE crm_email_campaigns SET status='paused', updated_at=:now "
+                "WHERE id=:id AND status='running'"
+            ).bindparams(id=campaign_id, now=datetime.now(timezone.utc)),
+        )
+        session.commit()
+
+        if result.rowcount == 0:
+            raise HTTPException(
+                409,
+                f"Cannot pause campaign in status '{campaign.status}'. "
+                f"Only 'running' campaigns can be paused.",
+            )
+
+        return OkResponse(ok=True)
+    finally:
+        session.close()
+
+
 @router.get("/campaigns/{campaign_id}/progress")
 def campaign_progress(campaign_id: int, db: Session = Depends(get_db)):
     """FIX-P2: Прогресс кампании через SSE (без запуска отправки).
