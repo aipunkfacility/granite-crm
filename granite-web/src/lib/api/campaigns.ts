@@ -106,7 +106,7 @@ export const runCampaign = async (campaignId: number): Promise<{ ok?: boolean; e
 };
 
 export const pauseCampaign = async (campaignId: number): Promise<{ ok: boolean }> => {
-  const { data } = await apiClient.patch<{ ok: boolean }>(`campaigns/${campaignId}`, { status: 'paused' });
+  const { data } = await apiClient.post<{ ok: boolean }>(`campaigns/${campaignId}/pause`);
   return data;
 };
 
