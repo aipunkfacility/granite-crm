@@ -1067,8 +1067,20 @@ def list_recipients(
         raise HTTPException(404, "Campaign not found")
 
     # Базовый запрос — JOIN для получения данных компании
+    latest_status_subq = (
+        db.query(CrmEmailLogRow.status)
+        .filter(
+            CrmEmailLogRow.campaign_id == campaign_id,
+            CrmEmailLogRow.company_id == CompanyRow.id,
+        )
+        .order_by(CrmEmailLogRow.sent_at.desc().nullslast())
+        .limit(1)
+        .correlate(CompanyRow)
+        .scalar_subquery()
+    )
+
     q = (
-        db.query(CompanyRow, EnrichedCompanyRow)
+        db.query(CompanyRow, EnrichedCompanyRow, latest_status_subq)
         .join(CampaignRecipientRow, CampaignRecipientRow.company_id == CompanyRow.id)
         .outerjoin(EnrichedCompanyRow, EnrichedCompanyRow.id == CompanyRow.id)
         .filter(CampaignRecipientRow.campaign_id == campaign_id)
@@ -1091,8 +1103,9 @@ def list_recipients(
             "emails": c.emails or [],
             "segment": e.segment if e else None,
             "crm_score": e.crm_score if e else 0,
+            "send_status": status,
         }
-        for c, e in rows
+        for c, e, status in rows
     ]
 
     return {"items": items, "total": total, "page": page, "per_page": per_page}

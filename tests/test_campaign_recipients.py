@@ -258,6 +258,25 @@ class TestListRecipients:
         assert item["emails"] == ["test@mail.ru"]
         assert item["segment"] == "A"
         assert item["crm_score"] == 50
+        assert "send_status" in item
+
+    def test_list_recipients_includes_send_status(self, db_session, client):
+        """Ответ содержит статус отправки из CrmEmailLogRow."""
+        company = CompanyRow(name_best="Тест", city="москва", emails=["test@mail.ru"])
+        db_session.add(company); db_session.flush()
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.flush()
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.flush()
+        db_session.add(CrmEmailLogRow(
+            company_id=company.id, campaign_id=campaign.id,
+            email_to="test@mail.ru", status="sent",
+        ))
+        db_session.commit()
+
+        resp = client.get(f"/api/v1/campaigns/{campaign.id}/recipients")
+        item = resp.json()["items"][0]
+        assert item["send_status"] == "sent"
 
 
 # ============================================================

@@ -62,15 +62,10 @@ export default function CampaignsPage() {
 
   if (dashboardId !== null) {
     return (
-      <div className="space-y-6">
-        <Button variant="ghost" onClick={() => setDashboardId(null)}>
-          ← Назад к списку кампаний
-        </Button>
-        <CampaignDashboard
-          campaignId={dashboardId}
-          onClose={() => setDashboardId(null)}
-        />
-      </div>
+      <CampaignDashboard
+        campaignId={dashboardId}
+        onClose={() => setDashboardId(null)}
+      />
     );
   }
 

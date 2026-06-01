@@ -139,6 +139,7 @@ export interface RecipientItem {
   emails: string[];
   segment: string | null;
   crm_score: number;
+  send_status?: string | null;
 }
 
 export const addRecipients = async (
