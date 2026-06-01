@@ -190,209 +190,219 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
   const hasAB = !!(campaign.subject_a && campaign.subject_b);
   const isPausedDailyLimit = campaign.status === 'paused_daily_limit';
 
+  const replyRate = campaign.total_sent > 0
+    ? Math.round((campaign.total_replied / campaign.total_sent) * 100)
+    : 0;
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">{campaign.name}</h2>
-          <p className="text-sm text-muted-foreground">
-            Шаблон: <span className="font-mono text-primary">{campaign.template_name}</span>
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Badge 
-            variant={isRunning ? "default" : "outline"} 
-            className={cn("flex items-center gap-1.5 px-3 py-1 text-sm", isRunning && "animate-pulse")}
-          >
-            {isRunning ? (
-              <><Play className="h-3 w-3" /> Запущена</>
-            ) : campaign.status === 'completed' ? (
-              <><CheckCircle2 className="h-3 w-3" /> Завершена</>
-            ) : (
-              <><Pause className="h-3 w-3" /> {isPausedDailyLimit ? 'Дневной лимит' : 'Пауза'}</>
-            )}
-          </Badge>
-          {hasAB && (
-            <Badge variant="outline" className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary border-primary/20">
-              <FlaskConical className="h-3 w-3" /> A/B тест
-            </Badge>
-          )}
-        </div>
-      </div>
-
-      {/* Validator warnings */}
-      {campaign.validator_warnings?.length > 0 && campaign.status === 'draft' && (
-        <div className="space-y-2">
-          {campaign.validator_warnings.map((w, i) => (
-            <div key={i} className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <p className="text-sm text-amber-800 dark:text-amber-200">{w}</p>
+    <div className="flex flex-col lg:flex-row gap-6 items-start">
+      {/* ===== LEFT PANEL ===== */}
+      <div className="flex-1 min-w-0 space-y-6">
+        {/* Header with progress bar */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">{campaign.name}</h2>
+              <p className="text-sm text-muted-foreground">
+                Шаблон: <span className="font-mono text-primary">{campaign.template_name}</span>
+              </p>
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* Причина паузы */}
-      {isPausedDailyLimit && (
-        <div className="flex items-center gap-2 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
-          <Clock className="h-5 w-5 text-amber-600" />
-          <div>
-            <p className="font-medium text-amber-800 dark:text-amber-200">Достигнут дневной лимит отправки</p>
-            <p className="text-sm text-amber-600 dark:text-amber-400">
-              Кампания приостановлена автоматически. Продолжите отправку завтра или измените EMAIL_DAILY_LIMIT.
-            </p>
+            <div className="flex items-center gap-3">
+              <Badge
+                variant={isRunning ? 'default' : 'outline'}
+                className={cn('flex items-center gap-1.5 px-3 py-1 text-sm', isRunning && 'animate-pulse')}
+              >
+                {isRunning ? (
+                  <><Play className="h-3 w-3" /> Запущена</>
+                ) : campaign.status === 'completed' ? (
+                  <><CheckCircle2 className="h-3 w-3" /> Завершена</>
+                ) : (
+                  <><Pause className="h-3 w-3" /> {isPausedDailyLimit ? 'Дневной лимит' : 'Пауза'}</>
+                )}
+              </Badge>
+              {hasAB && (
+                <Badge variant="outline" className="flex items-center gap-1.5 px-2 py-1 bg-primary/10 text-primary border-primary/20">
+                  <FlaskConical className="h-3 w-3" /> A/B тест
+                </Badge>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Прогресс */}
-      <Card className="border-border">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            {isRunning ? <Zap className="h-5 w-5 text-primary animate-pulse" /> : <Mail className="h-5 w-5" />}
-            Ход рассылки
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Прогресс</span>
-              <span className="font-bold text-foreground">{progress}%</span>
+          {/* Progress bar — moved from "Ход рассылки" card to header */}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <Progress value={progress} className="flex-1 h-2" />
+              <span className="font-bold text-sm text-foreground">{progress}%</span>
             </div>
-            <Progress value={progress} className="h-3" />
-            <div className="flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-[11px] text-muted-foreground">
               <span>Отправлено: {currentSent}</span>
               <span>Всего: {currentTotal}</span>
             </div>
           </div>
-
-          <div className="grid grid-cols-4 gap-4 pt-4 border-t">
-            <div className="text-center p-3 rounded-xl bg-muted">
-              <p className="text-2xl font-bold">{currentSent}</p>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground">Отправлено</p>
-            </div>
-            <div className="text-center p-3 rounded-xl bg-success/10">
-              <p className="text-2xl font-bold text-success">{campaign.total_opened}</p>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground">Открыто</p>
-            </div>
-            <div className="text-center p-3 rounded-xl bg-primary/10">
-              <p className="text-2xl font-bold text-primary">{campaign.total_replied}</p>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground">Ответов</p>
-            </div>
-            <div className="text-center p-3 rounded-xl bg-destructive/10">
-              <p className="text-2xl font-bold text-destructive">{currentErrors}</p>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground">Ошибок</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-            <div className="text-center p-3 rounded-xl bg-muted">
-              <p className="text-xl font-bold text-success">{campaign.open_rate}%</p>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground">Open Rate</p>
-            </div>
-            <div className="text-center p-3 rounded-xl bg-muted">
-              <p className="text-xl font-bold text-primary">
-                {campaign.total_sent > 0 ? Math.round((campaign.total_replied / campaign.total_sent) * 100) : 0}%
-              </p>
-              <p className="text-[10px] uppercase font-semibold text-muted-foreground">Reply Rate</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* A/B Сравнение */}
-      {hasAB && abStats && abStats.variants && Object.keys(abStats.variants).length > 0 && (
-        <Card className="border-primary/20">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <FlaskConical className="h-5 w-5 text-primary" />
-              A/B Сравнение
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(abStats.variants).map(([variant, variantData]) => (
-                <div key={variant} className={cn(
-                  "p-4 rounded-xl border-2",
-                  variant === 'A' ? 'border-blue-300 bg-blue-50 dark:bg-blue-950/20' : 'border-purple-300 bg-purple-50 dark:bg-purple-950/20'
-                )}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Badge variant="outline" className={cn(
-                      "text-sm px-2",
-                      variant === 'A' ? 'border-blue-400 text-blue-700' : 'border-purple-400 text-purple-700'
-                    )}>
-                      Вариант {variant}
-                    </Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{variantData.subject}</p>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div>
-                      <p className="text-lg font-bold">{variantData.sent}</p>
-                      <p className="text-[9px] uppercase text-muted-foreground">Отправлено</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-success">{variantData.opened}</p>
-                      <p className="text-[9px] uppercase text-muted-foreground">Открыто</p>
-                    </div>
-                    <div>
-                      <p className="text-lg font-bold text-primary">{variantData.replied}</p>
-                      <p className="text-[9px] uppercase text-muted-foreground">Ответов</p>
-                    </div>
-                  </div>
-                  <div className="mt-3 pt-3 border-t text-center">
-                    <p className="text-sm font-bold text-primary">{variantData.reply_rate}% Reply Rate</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {abStats.note && (
-              <p className="mt-3 text-xs text-muted-foreground text-center">{abStats.note}</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* P4R-M19: Ошибка загрузки A/B статистики */}
-      {hasAB && abStatsError && !abStats && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-          <AlertTriangle className="h-4 w-4 text-destructive" />
-          <p className="text-sm text-destructive">{abStatsError}</p>
         </div>
-      )}
 
-      {/* Фильтры кампании (только для filter-режима) */}
-      {campaign.recipient_mode === 'filter' && (
+        {/* Validator warnings */}
+        {campaign.validator_warnings?.length > 0 && campaign.status === 'draft' && (
+          <div className="space-y-2">
+            {campaign.validator_warnings.map((w, i) => (
+              <div key={i} className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <p className="text-sm text-amber-800 dark:text-amber-200">{w}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Причина паузы */}
+        {isPausedDailyLimit && (
+          <div className="flex items-center gap-2 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
+            <Clock className="h-5 w-5 text-amber-600" />
+            <div>
+              <p className="font-medium text-amber-800 dark:text-amber-200">Достигнут дневной лимит отправки</p>
+              <p className="text-sm text-amber-600 dark:text-amber-400">
+                Кампания приостановлена автоматически. Продолжите отправку завтра или измените EMAIL_DAILY_LIMIT.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* A/B Сравнение */}
+        {hasAB && abStats && abStats.variants && Object.keys(abStats.variants).length > 0 && (
+          <Card className="border-primary/20">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FlaskConical className="h-5 w-5 text-primary" />
+                A/B Сравнение
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(abStats.variants).map(([variant, variantData]) => (
+                  <div key={variant} className={cn(
+                    'p-4 rounded-xl border-2',
+                    variant === 'A' ? 'border-blue-300 bg-blue-50 dark:bg-blue-950/20' : 'border-purple-300 bg-purple-50 dark:bg-purple-950/20'
+                  )}>
+                    <div className="flex items-center gap-2 mb-3">
+                      <Badge variant="outline" className={cn(
+                        'text-sm px-2',
+                        variant === 'A' ? 'border-blue-400 text-blue-700' : 'border-purple-400 text-purple-700'
+                      )}>
+                        Вариант {variant}
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2 line-clamp-2">{variantData.subject}</p>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div>
+                        <p className="text-lg font-bold">{variantData.sent}</p>
+                        <p className="text-[9px] uppercase text-muted-foreground">Отправлено</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-success">{variantData.opened}</p>
+                        <p className="text-[9px] uppercase text-muted-foreground">Открыто</p>
+                      </div>
+                      <div>
+                        <p className="text-lg font-bold text-primary">{variantData.replied}</p>
+                        <p className="text-[9px] uppercase text-muted-foreground">Ответов</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t text-center">
+                      <p className="text-sm font-bold text-primary">{variantData.reply_rate}% Reply Rate</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {abStats.note && (
+                <p className="mt-3 text-xs text-muted-foreground text-center">{abStats.note}</p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* P4R-M19: Ошибка загрузки A/B статистики */}
+        {hasAB && abStatsError && !abStats && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+            <AlertTriangle className="h-4 w-4 text-destructive" />
+            <p className="text-sm text-destructive">{abStatsError}</p>
+          </div>
+        )}
+
+        {/* Фильтры кампании (только для filter-режима) */}
+        {campaign.recipient_mode === 'filter' && (
+          <Card className="border-border">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Фильтры
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 rounded-lg bg-muted">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Город</p>
+                  <p className="font-medium">{campaign.filters?.city || 'Все'}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Сегмент</p>
+                  <p className="font-medium">{campaign.filters?.segment || 'Все'}</p>
+                </div>
+                <div className="p-3 rounded-lg bg-muted">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Мин. скор</p>
+                  <p className="font-medium">{campaign.filters?.min_score || '0'}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Получатели (для manual-режима) — единственный скроллируемый блок */}
+        {campaign.recipient_mode === 'manual' && (
+          <div className="overflow-y-auto max-h-[calc(100vh-300px)]">
+            <CampaignRecipientsSection campaignId={campaignId} recipientCount={campaign.recipient_count ?? 0} />
+          </div>
+        )}
+      </div>
+
+      {/* ===== RIGHT PANEL (sticky, не прокручивается) ===== */}
+      <div className="w-64 shrink-0 sticky top-6">
         <Card className="border-border">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Фильтры
+              {isRunning ? <Zap className="h-5 w-5 text-primary animate-pulse" /> : <Mail className="h-5 w-5" />}
+              Ход рассылки
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 rounded-lg bg-muted">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Город</p>
-                <p className="font-medium">{campaign.filters?.city || 'Все'}</p>
+            <div className="space-y-5">
+              <div>
+                <p className="text-[11px] uppercase font-semibold text-muted-foreground">Отправлено</p>
+                <p className="text-2xl font-bold">{currentSent}</p>
               </div>
-              <div className="p-3 rounded-lg bg-muted">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Сегмент</p>
-                <p className="font-medium">{campaign.filters?.segment || 'Все'}</p>
+              <div>
+                <p className="text-[11px] uppercase font-semibold text-muted-foreground">Открыто</p>
+                <p className="text-2xl font-bold text-success">{campaign.total_opened}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{campaign.open_rate}% open rate</p>
               </div>
-              <div className="p-3 rounded-lg bg-muted">
-                <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Мин. скор</p>
-                <p className="font-medium">{campaign.filters?.min_score || '0'}</p>
+              <div>
+                <p className="text-[11px] uppercase font-semibold text-muted-foreground">Ответов</p>
+                <p className="text-2xl font-bold text-primary">{campaign.total_replied}</p>
+              </div>
+              <div>
+                <p className="text-[11px] uppercase font-semibold text-muted-foreground">Ошибок</p>
+                <p className="text-2xl font-bold text-destructive">{currentErrors}</p>
+              </div>
+              <div className="pt-4 border-t space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">Open Rate</span>
+                  <span className="text-sm font-bold text-success">{campaign.open_rate}%</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-muted-foreground">Reply Rate</span>
+                  <span className="text-sm font-bold text-primary">{replyRate}%</span>
+                </div>
               </div>
             </div>
           </CardContent>
         </Card>
-      )}
-
-      {/* Получатели (для manual-режима) */}
-      {campaign.recipient_mode === 'manual' && (
-        <CampaignRecipientsSection campaignId={campaignId} recipientCount={campaign.recipient_count ?? 0} />
-      )}
+      </div>
     </div>
   );
 }
