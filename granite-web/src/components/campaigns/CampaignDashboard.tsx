@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
 import { fetchCampaignDetail, fetchABStats, fetchRecipients, removeRecipients, type ABStats, type CampaignStatus, type RecipientItem } from '@/lib/api/campaigns';
 import { apiClient } from '@/lib/api/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -466,7 +467,7 @@ function CampaignRecipientsSection({ campaignId, recipientCount }: { campaignId:
               {items.map((item) => (
                 <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-muted/50 transition-colors">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{item.name}</p>
+                    <Link href={`/companies/${item.id}`} className="text-sm font-medium truncate text-primary hover:underline">{item.name}</Link>
                     <p className="text-xs text-muted-foreground">
                       {item.city}{item.segment ? ` · ${item.segment}` : ''}{item.crm_score ? ` · Score: ${item.crm_score}` : ''}
                     </p>
