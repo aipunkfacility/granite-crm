@@ -92,6 +92,7 @@ def list_companies(
     cms: Optional[str] = None,
     has_marquiz: Optional[int] = None,
     search: Optional[str] = None,
+    search_field: Annotated[Optional[str], Query(pattern="^(name|phone|email|domain)$")] = None,
     include_spam: int = Query(0, description="0=hide spam, 1=show all, 2=spam only"),
     include_deleted: int = Query(0, description="0=hide deleted, 1=show deleted (admin)"),
     tg_trust_min: Optional[int] = Query(None, ge=0, le=3),
@@ -291,17 +292,27 @@ def list_companies(
         )
 
     if search:
-        # FIX 3.7: Экранируем LIKE-спецсимволы (% и _) в пользовательском вводе
         escaped = search.replace("%", r"\%").replace("_", r"\_")
-        # Поиск по названию + по телефону (через json_each)
-        phone_clean = _re.sub(r"[\s\-\(\)\+]", "", search)
-        q = q.filter(
-            CompanyRow.name_best.ilike(f"%{escaped}%", escape="\\")
-            | sa_text(
-                "EXISTS (SELECT 1 FROM json_each(companies.phones) "
-                "WHERE replace(json_each.value, '+', '') LIKE :phone_pattern)"
-            ).bindparams(phone_pattern=f"%{phone_clean}%")
-        )
+        if search_field == "phone":
+            phone_clean = _re.sub(r"[\s\-\(\)\+]", "", search)
+            q = q.filter(
+                sa_text(
+                    "EXISTS (SELECT 1 FROM json_each(companies.phones) "
+                    "WHERE replace(json_each.value, '+', '') LIKE :phone_pattern)"
+                ).bindparams(phone_pattern=f"%{phone_clean}%")
+            )
+        elif search_field == "email":
+            q = q.filter(
+                sa_text(
+                    "EXISTS (SELECT 1 FROM json_each(companies.emails) "
+                    "WHERE json_each.value LIKE :email_pattern)"
+                ).bindparams(email_pattern=f"%{escaped}%")
+            )
+        elif search_field == "domain":
+            q = q.filter(CompanyRow.website.ilike(f"%{escaped}%", escape="\\"))
+        else:
+            # name (по умолчанию) — только название
+            q = q.filter(CompanyRow.name_best.ilike(f"%{escaped}%", escape="\\"))
 
     order_col = {
         "crm_score": EnrichedCompanyRow.crm_score,
