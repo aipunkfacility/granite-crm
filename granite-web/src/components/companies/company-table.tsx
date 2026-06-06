@@ -16,6 +16,7 @@ import { FUNNEL_STAGES, SEGMENT_CONFIG } from "@/constants/funnel";
 import { formatDistanceToNow } from "date-fns";
 import { ru } from "date-fns/locale";
 import { ExternalLink, MessageCircle, Phone, Shield, ShieldOff, ShieldAlert, ShieldCheck, Smartphone, ArrowUp, ArrowDown, ArrowUpDown, Columns3 } from "lucide-react";
+import { copyToClipboard } from "@/lib/utils";
 
 /* TG Trust badge — индикатор «живости» Telegram-аккаунта */
 function TgTrustBadge({ trust }: { trust: Record<string, any> }) {
@@ -332,9 +333,9 @@ export function CompanyTable({
                             </span>
                           )}
                           {company.phones.length > 0 && (
-                            <a href={`tel:${company.phones[0]}`} className="text-muted-foreground hover:text-foreground" onClick={e => e.stopPropagation()}>
+                            <span onClick={(e) => { e.stopPropagation(); copyToClipboard(company.phones[0], company.phones[0]); }} className="text-muted-foreground hover:text-foreground cursor-pointer">
                               <Phone className="h-4 w-4" />
-                            </a>
+                            </span>
                           )}
                           {company.website && (
                             <a href={company.website} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" onClick={e => e.stopPropagation()}>
