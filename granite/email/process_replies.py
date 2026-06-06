@@ -7,10 +7,8 @@
 - Обычный ответ → funnel_stage="replied", cancel_followup_tasks(),
   total_replied++, CrmTouchRow с текстом ответа
 - Автоответ (OOO) → игнорируется
-- «Это спам» → stop_automation=1
 - IMAP connection error → graceful, не крашится
 """
-import re
 from datetime import datetime, timezone
 
 from loguru import logger
@@ -22,12 +20,6 @@ from granite.email.imap_helpers import (
 )
 
 __all__ = ["process_replies"]
-
-# Паттерны для распознавания жалобы на спам
-_SPAM_PATTERNS = re.compile(
-    r"это\s+спам|рассылк[аи].*спам|отпиш|не\s+присылай|удалите|unsubscribe",
-    re.IGNORECASE,
-)
 
 
 def process_replies(db_session, messages: list | None = None) -> int:
@@ -96,29 +88,7 @@ def process_replies(db_session, messages: list | None = None) -> int:
             body = extract_body(msg)
             subject = msg.get("Subject", "") or ""
 
-            # Проверить на спам-жалобу
             contact = db_session.get(CrmContactRow, log.company_id)
-
-            if contact and _is_spam_complaint(body, subject):
-                contact.stop_automation = 1
-                # FIX P3-M3: немедленная отмена follow-up при спам-жалобе
-                cancel_followup_tasks(contact.company_id, "not_interested", db_session)
-                logger.info(
-                    f"company_id={contact.company_id}: stop_automation=1 "
-                    f"(spam complaint from {reply_email})"
-                )
-                # Также записать touch о спам-жалобе
-                db_session.add(CrmTouchRow(
-                    company_id=log.company_id,
-                    channel="email",
-                    direction="incoming",
-                    subject=subject,
-                    body=body[:2000] if body else "[spam complaint]",
-                    note="spam complaint → stop_automation",
-                ))
-                db_session.commit()
-                processed += 1
-                continue
 
             # Обычный ответ
             if log.status != "replied":
@@ -161,10 +131,4 @@ def process_replies(db_session, messages: list | None = None) -> int:
     return processed
 
 
-def _is_spam_complaint(body: str, subject: str) -> bool:
-    """Определить, является ли ответ жалобой на спам.
 
-    Проверяет текст тела и тему на ключевые паттерны.
-    """
-    text = f"{subject} {body}"
-    return bool(_SPAM_PATTERNS.search(text))
