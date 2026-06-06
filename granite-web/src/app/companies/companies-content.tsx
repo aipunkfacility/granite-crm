@@ -10,7 +10,7 @@ import { BatchActionsBar } from "@/components/companies/BatchActionsBar";
 import { BatchConfirmDialog, BatchAction } from "@/components/companies/BatchConfirmDialog";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Search, Plus } from "lucide-react";
+import { Search, Plus, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PresetManager } from "@/components/companies/PresetManager";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -236,10 +236,18 @@ export function CompaniesPageContent() {
                   email: 'Поиск по email...',
                   domain: 'Поиск по домену...',
                 } as Record<string, string>)[filters.searchField] || 'Поиск...'}
-                className="pl-10"
+                className="pl-10 pr-8"
                 value={filters.search}
                 onChange={(e) => setFilter('search', e.target.value)}
               />
+              {filters.search && (
+                <button
+                  onClick={() => setFilter('search', '')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>
