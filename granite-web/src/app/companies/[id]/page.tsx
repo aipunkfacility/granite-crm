@@ -29,6 +29,7 @@ import { useState, useEffect } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { CompanyEditDialog } from "@/components/companies/CompanyEditDialog";
 import { ReEnrichDialog } from "@/components/companies/ReEnrichDialog";
+import { copyToClipboard } from '@/lib/utils';
 
 export default function CompanyDetailPage() {
   const params = useParams();
@@ -139,13 +140,13 @@ export default function CompanyDetailPage() {
                     {company.phones.map(p => (
                       <div key={p} className="flex items-center text-sm group">
                         <Phone className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        <a href={`tel:${p}`} className="hover:text-primary font-medium">{p}</a>
+                        <span onClick={() => copyToClipboard(p, p)} className="hover:text-primary font-medium cursor-pointer">{p}</span>
                       </div>
                     ))}
                     {company.emails.map(e => (
                       <div key={e} className="flex items-center text-sm group">
                         <Mail className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                        <a href={`mailto:${e}`} className="hover:text-primary font-medium">{e}</a>
+                        <span onClick={() => copyToClipboard(e, e)} className="hover:text-primary font-medium cursor-pointer">{e}</span>
                       </div>
                     ))}
                     {company.website && (
