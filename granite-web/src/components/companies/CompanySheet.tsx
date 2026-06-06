@@ -44,6 +44,7 @@ import { ReEnrichDialog } from "@/components/companies/ReEnrichDialog";
 import { MarkSpamDialog } from "@/components/companies/MarkSpamDialog";
 import { MarkDuplicateDialog } from "@/components/companies/MarkDuplicateDialog";
 import { AddToCampaignDialog } from "@/components/companies/AddToCampaignDialog";
+import { copyToClipboard } from "@/lib/utils";
 
 /* V-01: Карточка компании — Sheet (side panel) вместо отдельной страницы */
 
@@ -341,13 +342,13 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                       {company.phones.map(p => (
                         <div key={p} className="flex items-center text-sm group">
                           <Phone className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                          <a href={`tel:${p}`} className="hover:text-primary font-medium">{p}</a>
+                          <span onClick={() => copyToClipboard(p, p)} className="hover:text-primary font-medium cursor-pointer">{p}</span>
                         </div>
                       ))}
                       {company.emails.map(e => (
                         <div key={e} className="flex items-center text-sm group">
                           <Mail className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                          <a href={`mailto:${e}`} className="hover:text-primary font-medium">{e}</a>
+                          <span onClick={() => copyToClipboard(e, e)} className="hover:text-primary font-medium cursor-pointer">{e}</span>
                         </div>
                       ))}
                       {company.website && (
