@@ -216,14 +216,31 @@ export function CompaniesPageContent() {
             <span className="hidden sm:inline">Добавить</span>
           </Button>
           <PresetManager filters={filters} onApplyPreset={applyPreset} />
-          <div className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Поиск по названию или телефону..."
-              className="pl-10"
-              value={filters.search}
-              onChange={(e) => setFilter('search', e.target.value)}
-            />
+          <div className="flex items-center gap-2 w-full max-w-md">
+            <select
+              className="h-9 rounded-md border border-border bg-card px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              value={filters.searchField}
+              onChange={(e) => setFilter('searchField', e.target.value)}
+            >
+              <option value="name">Название</option>
+              <option value="phone">Телефон</option>
+              <option value="email">Email</option>
+              <option value="domain">Домен сайта</option>
+            </select>
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={({
+                  name: 'Поиск по названию...',
+                  phone: 'Поиск по телефону...',
+                  email: 'Поиск по email...',
+                  domain: 'Поиск по домену...',
+                } as Record<string, string>)[filters.searchField] || 'Поиск...'}
+                className="pl-10"
+                value={filters.search}
+                onChange={(e) => setFilter('search', e.target.value)}
+              />
+            </div>
           </div>
         </div>
       </div>
