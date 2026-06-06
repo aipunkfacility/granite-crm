@@ -13,6 +13,7 @@ export interface CompanyFilters {
   min_score?: number;
   max_score?: number;                 // НОВОЕ
   search?: string;
+  search_field?: string;
   page?: number;
   per_page?: number;
   order_by?: string;
