@@ -576,6 +576,46 @@ class TestCreateCampaignWithManualMode:
 
         assert resp.status_code == 422
 
+    def test_create_manual_campaign_with_skipped_companies(self, db_session, client):
+        """Создание manual-кампании — skipped_details в ответе."""
+        valid = CompanyRow(name_best="Новая", city="москва", emails=["new@mail.ru"])
+        db_session.add(valid); db_session.flush()
+        db_session.add(CrmContactRow(company_id=valid.id)); db_session.flush()
+        skipped = CompanyRow(name_best="Старая", city="москва", emails=["old@mail.ru"])
+        db_session.add(skipped); db_session.flush()
+        db_session.add(CrmContactRow(company_id=skipped.id, email_sent_count=1)); db_session.commit()
+
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "Смешанная",
+            "template_name": "cold_email_v1",
+            "recipient_mode": "manual",
+            "company_ids": [valid.id, skipped.id],
+        })
+
+        assert resp.status_code == 201
+        assert resp.json()["added"] == 1
+        assert resp.json()["skipped"] == 1
+        details = resp.json()["skipped_details"]
+        assert len(details) == 1
+        assert details[0]["company_id"] == skipped.id
+
+    def test_create_manual_campaign_all_skipped(self, db_session, client):
+        """Все компании отфильтрованы — skipped = N, added = 0."""
+        company = CompanyRow(name_best="Старая", city="москва", emails=["old@mail.ru"])
+        db_session.add(company); db_session.flush()
+        db_session.add(CrmContactRow(company_id=company.id, email_sent_count=2)); db_session.commit()
+
+        resp = client.post("/api/v1/campaigns", json={
+            "name": "Все пропущены",
+            "template_name": "cold_email_v1",
+            "recipient_mode": "manual",
+            "company_ids": [company.id],
+        })
+
+        assert resp.status_code == 201
+        assert resp.json()["added"] == 0
+        assert resp.json()["skipped"] == 1
+
 
 class TestCampaignResponseFields:
     """Новые поля в ответе кампании."""

@@ -131,7 +131,7 @@ def preview_recipients(data: CampaignFilters, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/campaigns", response_model=OkWithIdResponse, status_code=201)
+@router.post("/campaigns", status_code=201)
 def create_campaign(data: CreateCampaignRequest, request: Request, db: Session = Depends(get_db)):
     """Создать кампанию. Body: {name, template_name, filters?, recipient_mode?, company_ids?}
 
@@ -167,10 +167,12 @@ def create_campaign(data: CreateCampaignRequest, request: Request, db: Session =
     db.flush()
 
     # Добавляем начальный список компаний для manual-режима
+    result = {"ok": True, "id": campaign.id}
     if data.recipient_mode == "manual" and data.company_ids:
-        _add_recipients_to_campaign(campaign, data.company_ids, db)
+        add_result = _add_recipients_to_campaign(campaign, data.company_ids, db)
+        result.update(add_result)
 
-    return OkWithIdResponse(ok=True, id=campaign.id)
+    return result
 
 
 @router.get("/campaigns", response_model=PaginatedResponse[CampaignResponse])
