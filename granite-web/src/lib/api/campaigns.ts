@@ -90,8 +90,10 @@ export const fetchCampaignDetail = async (campaignId: number): Promise<CampaignD
 };
 
 // P4R-M20: Типизируем возврат всех API-функций
-export const createCampaign = async (payload: CreateCampaignPayload): Promise<{ ok: boolean; id?: number }> => {
-  const { data } = await apiClient.post<{ ok: boolean; id?: number }>('campaigns', payload);
+export const createCampaign = async (
+  payload: CreateCampaignPayload
+): Promise<{ ok: boolean; id?: number; added?: number; skipped?: number; skipped_details?: SkippedDetail[] }> => {
+  const { data } = await apiClient.post<{ ok: boolean; id?: number; added?: number; skipped?: number; skipped_details?: SkippedDetail[] }>('campaigns', payload);
   return data;
 };
 
@@ -132,6 +134,11 @@ export const previewRecipients = async (filters: Record<string, any>): Promise<P
 // Manual campaign recipients API
 // ============================================================
 
+export interface SkippedDetail {
+  company_id: number;
+  reason: string;
+}
+
 export interface RecipientItem {
   id: number;
   name: string;
@@ -146,7 +153,7 @@ export const addRecipients = async (
   campaignId: number,
   companyIds: number[],
   force = false,
-): Promise<{ ok: boolean; added: number; skipped: number }> => {
+): Promise<{ ok: boolean; added: number; skipped: number; skipped_details: SkippedDetail[] }> => {
   const { data } = await apiClient.post(`campaigns/${campaignId}/recipients`, {
     company_ids: companyIds,
     force,
