@@ -98,6 +98,11 @@ export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyI
   // Состояние
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creationResult, setCreationResult] = useState<{
+    added: number;
+    skipped: number;
+    skipped_details: { company_id: number; reason: string }[];
+  } | null>(null);
 
   const { data: templates } = useCampaignTemplates();
   const emailTemplates = (templates || []).filter(t => t.channel === 'email');
@@ -189,7 +194,7 @@ export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyI
       if (filterSegment && filterSegment !== '__all__') filters.segment = filterSegment;
       if (filterMinScore) filters.min_score = parseInt(filterMinScore);
 
-      await createCampaign({
+      const campaignResp = await createCampaign({
         name: name.trim(),
         template_name: templateName,
         recipient_mode: recipientMode,
@@ -198,8 +203,17 @@ export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyI
         subject_a: subjectA || undefined,
         subject_b: showVariantB ? subjectB : undefined,
       });
-      onCreated();
-      handleResetAndClose();
+
+      if (campaignResp.skipped && campaignResp.skipped > 0) {
+        setCreationResult({
+          added: campaignResp.added || 0,
+          skipped: campaignResp.skipped,
+          skipped_details: campaignResp.skipped_details || [],
+        });
+      } else {
+        onCreated();
+        handleResetAndClose();
+      }
     } catch (e: any) {
       setError(e?.message || 'Ошибка создания');
     } finally {
@@ -591,6 +605,46 @@ export function CampaignWizard({ isOpen, onClose, onCreated, preselectedCompanyI
             </div>
           )}
         </div>
+
+        {/* Creation result (skipped companies) */}
+        {creationResult && (
+          <div className="px-6 py-4 border-t">
+            <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Кампания создана
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Добавлено: {creationResult.added}, пропущено: {creationResult.skipped}
+                  </p>
+                  {creationResult.skipped_details.length > 0 && (
+                    <ul className="mt-2 space-y-1">
+                      {creationResult.skipped_details.map((d, i) => (
+                        <li key={i} className="text-xs text-muted-foreground">
+                          Компания #{d.company_id} — {d.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setCreationResult(null);
+                    onCreated();
+                    handleResetAndClose();
+                  }}
+                >
+                  Понятно
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error */}
         {error && (
