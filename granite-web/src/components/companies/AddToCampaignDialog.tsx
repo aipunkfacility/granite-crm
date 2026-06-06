@@ -7,6 +7,7 @@ import {
   fetchCampaigns,
   addRecipients,
   type Campaign,
+  type SkippedDetail,
 } from "@/lib/api/campaigns";
 import { CampaignWizard } from "@/components/campaigns/CampaignWizard";
 import { toast } from "sonner";
@@ -35,6 +36,11 @@ export function AddToCampaignDialog({
   const [fetching, setFetching] = useState(false);
   const [confirmModeSwitch, setConfirmModeSwitch] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [result, setResult] = useState<{
+    added: number;
+    skipped: number;
+    skipped_details: SkippedDetail[];
+  } | null>(null);
 
   // Загрузить черновики при открытии
   useEffect(() => {
@@ -57,12 +63,20 @@ export function AddToCampaignDialog({
     if (!selectedId) return;
     setLoading(true);
     try {
-      const result = await addRecipients(selectedId, companyIds, force);
-      toast.success(`Добавлено: ${result.added}, пропущено: ${result.skipped}`);
-      onSuccess?.();
-      onOpenChange(false);
-      setSelectedId(null);
-      setConfirmModeSwitch(false);
+      const res = await addRecipients(selectedId, companyIds, force);
+      if (res.skipped === 0) {
+        toast.success(`Добавлено: ${res.added}`);
+        onSuccess?.();
+        onOpenChange(false);
+        setSelectedId(null);
+        setConfirmModeSwitch(false);
+      } else {
+        setResult({
+          added: res.added,
+          skipped: res.skipped,
+          skipped_details: res.skipped_details,
+        });
+      }
     } catch (err: any) {
       const detail = err?.response?.data?.detail || "Ошибка при добавлении";
       toast.error(detail);
@@ -213,7 +227,7 @@ export function AddToCampaignDialog({
             )}
 
             {/* Footer — кнопка «Добавить» только для manual-кампаний */}
-            {!confirmModeSwitch && selectedId && selectedCampaign?.recipient_mode === "manual" && (
+            {!confirmModeSwitch && !result && selectedId && selectedCampaign?.recipient_mode === "manual" && (
               <div className="mt-4 flex justify-end gap-2">
                 <Button
                   variant="outline"
@@ -225,6 +239,48 @@ export function AddToCampaignDialog({
                 <Button onClick={() => handleAdd(false)} disabled={loading}>
                   {loading ? "Добавление..." : "Добавить"}
                 </Button>
+              </div>
+            )}
+
+            {result && (
+              <div className="mt-4 space-y-3">
+                <div className="rounded-lg border border-green-400/30 bg-green-400/5 p-3">
+                  <p className="text-sm font-medium text-foreground">
+                    Добавлено: {result.added}
+                  </p>
+                </div>
+                {result.skipped > 0 && (
+                  <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0 text-amber-400" />
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-foreground">
+                          Пропущено: {result.skipped}
+                        </p>
+                        <ul className="space-y-1">
+                          {result.skipped_details.map((d, i) => (
+                            <li key={i} className="text-xs text-muted-foreground">
+                              Компания #{d.company_id} — {d.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setResult(null);
+                      onOpenChange(false);
+                      setSelectedId(null);
+                      setConfirmModeSwitch(false);
+                    }}
+                  >
+                    Понятно
+                  </Button>
+                </div>
               </div>
             )}
           </Dialog.Content>
