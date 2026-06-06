@@ -74,7 +74,7 @@ def process_bounces(db_session, messages: list | None = None) -> int:
     Returns:
         Количество обработанных bounce-уведомлений.
     """
-    from granite.database import CrmEmailLogRow, CrmContactRow
+    from granite.database import CrmEmailLogRow, CrmContactRow, CrmEmailCampaignRow
 
     if messages is None:
         try:
@@ -142,6 +142,12 @@ def process_bounces(db_session, messages: list | None = None) -> int:
             log.status = "bounced"
             log.bounced_at = now
             log.error_message = f"DSN {dsn_code}" if dsn_code else "Bounce"
+
+            # Инкремент счётчика ошибок кампании
+            if log.campaign_id:
+                campaign = db_session.get(CrmEmailCampaignRow, log.campaign_id)
+                if campaign:
+                    campaign.total_errors = (campaign.total_errors or 0) + 1
 
             # Обновить контакт
             contact = db_session.get(CrmContactRow, log.company_id)
