@@ -12,6 +12,7 @@ export interface FilterState {
   city: string[];
   region: string | undefined;
   search: string;
+  searchField: string;
   has_telegram: ToggleFilterValue;
   has_whatsapp: ToggleFilterValue;
   has_email: ToggleFilterValue;
@@ -41,6 +42,7 @@ const DEFAULTS: FilterState = {
   city: [],
   region: undefined,
   search: '',
+  searchField: 'name',
   has_telegram: undefined,
   has_whatsapp: undefined,
   has_email: undefined,
@@ -89,6 +91,7 @@ export function useCompanyFilters() {
       city: p.getAll('city').filter(Boolean),
       region: p.get('region') || undefined,
       search: p.get('search') || '',
+      searchField: p.get('search_field') || 'name',
       has_telegram: parseToggle(p.get('has_telegram')),
       has_whatsapp: parseToggle(p.get('has_whatsapp')),
       has_email: parseToggle(p.get('has_email')),
@@ -121,6 +124,7 @@ export function useCompanyFilters() {
       if (filters.city.length) filters.city.forEach(c => params.append('city', c));
       if (filters.region) params.set('region', filters.region);
       if (filters.search) params.set('search', filters.search);
+      if (filters.searchField && filters.searchField !== 'name') params.set('search_field', filters.searchField);
       TOGGLE_KEYS.forEach(key => {
         const v = filters[key as keyof FilterState] as ToggleFilterValue;
         if (v !== undefined) params.set(key, String(v));
@@ -181,6 +185,7 @@ export function useCompanyFilters() {
   const toApiParams = useCallback((): CompanyFilters => {
     const p: CompanyFilters = {};
     if (filters.search) p.search = filters.search;
+    if (filters.searchField && filters.searchField !== 'name') p.search_field = filters.searchField;
     if (filters.segment.length > 0) p.segment = filters.segment;
     if (filters.city.length > 0) p.city = filters.city;
     if (filters.funnel_stage) p.funnel_stage = filters.funnel_stage;
