@@ -972,14 +972,19 @@ def _add_recipients_to_campaign(
     company_ids: list[int],
     db: Session,
 ) -> dict:
-    """Добавить компании в кампанию. Возвращает {added, skipped}.
+    """Добавить компании в кампанию. Возвращает {added, skipped, skipped_details}.
 
-    Используется из create_campaign и add_recipients эндпоинта.
+    Проверки:
+    - Уже в кампании
+    - Компания существует и не deleted
+    - Есть email
+    - stop_automation
+    - email_sent_count > 0 (уже получал письмо)
+    - email уже есть в CrmEmailLogRow (от любой компании)
     """
     added = 0
-    skipped = 0
+    skipped_details: list[dict] = []
 
-    # Уже добавленные компании (для дедупа)
     existing_ids = {
         r[0] for r in
         db.query(CampaignRecipientRow.company_id)
@@ -987,26 +992,57 @@ def _add_recipients_to_campaign(
         .all()
     }
 
+    # Batch: email_sent_count для всех контактов
+    contact_rows = {
+        r.company_id: r.email_sent_count or 0
+        for r in db.query(CrmContactRow).filter(CrmContactRow.company_id.in_(company_ids)).all()
+    }
+
+    # Batch: email-адреса для всех компаний
+    company_emails: dict[int, str | None] = {}
+    companies_data = {}
+    for row in db.query(CompanyRow).filter(CompanyRow.id.in_(company_ids)).all():
+        companies_data[row.id] = row
+        if row.emails:
+            company_emails[row.id] = row.emails[0].lower().strip()
+        else:
+            company_emails[row.id] = None
+
+    # Batch: какие email-адреса уже получали письмо (любая кампания, любая компания)
+    all_emails = {e for e in company_emails.values() if e}
+    already_sent_emails: set[str] = set()
+    if all_emails:
+        log_rows = db.query(CrmEmailLogRow.email_to).filter(
+            CrmEmailLogRow.email_to.in_(list(all_emails)),
+            CrmEmailLogRow.status.in_(("sent", "opened", "replied", "bounced")),
+        ).all()
+        already_sent_emails = {row[0].lower() for row in log_rows}
+
     for cid in company_ids:
         if cid in existing_ids:
-            skipped += 1
+            skipped_details.append({"company_id": cid, "reason": "уже в кампании"})
             continue
 
-        # Проверяем компанию
-        company = db.get(CompanyRow, cid)
+        company = companies_data.get(cid)
         if not company or company.deleted_at:
-            skipped += 1
+            skipped_details.append({"company_id": cid, "reason": "компания не найдена или удалена"})
             continue
 
-        emails = company.emails or []
-        if not emails:
-            skipped += 1
+        email_to = company_emails.get(cid)
+        if not email_to:
+            skipped_details.append({"company_id": cid, "reason": "нет email"})
             continue
 
-        # Проверяем stop_automation
-        contact = db.get(CrmContactRow, cid)
-        if contact and contact.stop_automation:
-            skipped += 1
+        contact_sent = contact_rows.get(cid, 0)
+        if contact_sent > 0:
+            skipped_details.append({"company_id": cid, "reason": "уже получал письмо"})
+            continue
+
+        if email_to in already_sent_emails:
+            skipped_details.append({
+                "company_id": cid,
+                "reason": f"email {email_to} уже получал письмо от другой компании",
+            })
             continue
 
         db.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=cid))
@@ -1015,7 +1051,7 @@ def _add_recipients_to_campaign(
 
     campaign.total_recipients = len(existing_ids)
     db.flush()
-    return {"added": added, "skipped": skipped}
+    return {"added": added, "skipped": len(skipped_details), "skipped_details": skipped_details}
 
 
 @router.post("/campaigns/{campaign_id}/recipients")

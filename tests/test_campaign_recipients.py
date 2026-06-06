@@ -164,6 +164,85 @@ class TestAddRecipients:
         assert resp.json()["skipped"] == 1
         assert resp.json()["added"] == 0
 
+    def test_add_company_with_email_sent_count_skipped(self, db_session, client):
+        """Компания с email_sent_count > 0 — пропускается."""
+        company = CompanyRow(name_best="Уже писали", city="москва", emails=["sent@mail.ru"])
+        db_session.add(company); db_session.flush()
+        contact = CrmContactRow(company_id=company.id, email_sent_count=1)
+        db_session.add(contact); db_session.commit()
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                           json={"company_ids": [company.id]})
+
+        assert resp.json()["added"] == 0
+        assert resp.json()["skipped"] == 1
+        details = resp.json()["skipped_details"]
+        assert len(details) == 1
+        assert details[0]["company_id"] == company.id
+        assert "уже получал письмо" in details[0]["reason"].lower()
+
+    def test_add_company_with_email_already_in_log_skipped(self, db_session, client):
+        """Компания с email из CrmEmailLogRow (другая компания) — пропускается."""
+        company_a = CompanyRow(name_best="Отправили", city="москва", emails=["shared@mail.ru"])
+        db_session.add(company_a); db_session.flush()
+        contact_a = CrmContactRow(company_id=company_a.id)
+        db_session.add(contact_a); db_session.flush()
+        db_session.add(CrmEmailLogRow(
+            company_id=company_a.id, email_to="shared@mail.ru",
+            status="sent", campaign_id=None,
+        )); db_session.commit()
+
+        company_b = CompanyRow(name_best="Новая", city="москва", emails=["shared@mail.ru"])
+        db_session.add(company_b); db_session.flush()
+        contact_b = CrmContactRow(company_id=company_b.id)
+        db_session.add(contact_b); db_session.commit()
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                           json={"company_ids": [company_b.id]})
+
+        assert resp.json()["added"] == 0
+        assert resp.json()["skipped"] == 1
+        details = resp.json()["skipped_details"]
+        assert len(details) == 1
+        assert details[0]["company_id"] == company_b.id
+        assert "email" in details[0]["reason"].lower() and "уже получал" in details[0]["reason"].lower()
+
+    def test_add_mixed_companies_returns_detailed_skipped(self, db_session, client):
+        """Смесь валидных и отфильтрованных компаний — детализация в skipped_details."""
+        c1 = CompanyRow(name_best="Новая 1", city="москва", emails=["new1@mail.ru"])
+        db_session.add(c1); db_session.flush()
+        db_session.add(CrmContactRow(company_id=c1.id)); db_session.flush()
+        c2 = CompanyRow(name_best="Старая", city="москва", emails=["old@mail.ru"])
+        db_session.add(c2); db_session.flush()
+        db_session.add(CrmContactRow(company_id=c2.id, email_sent_count=3)); db_session.flush()
+        c3 = CompanyRow(name_best="Дубль email", city="москва", emails=["used@mail.ru"])
+        db_session.add(c3); db_session.flush()
+        db_session.add(CrmContactRow(company_id=c3.id)); db_session.flush()
+        # Другая компания уже отправляла письмо на тот же email
+        other = CompanyRow(name_best="Другая", city="москва", emails=["other@mail.ru"])
+        db_session.add(other); db_session.flush()
+        db_session.add(CrmContactRow(company_id=other.id)); db_session.flush()
+        db_session.add(CrmEmailLogRow(
+            company_id=other.id, email_to="used@mail.ru", status="sent",
+        )); db_session.commit()
+
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                           json={"company_ids": [c1.id, c2.id, c3.id]})
+
+        assert resp.json()["added"] == 1
+        assert resp.json()["skipped"] == 2
+        details = resp.json()["skipped_details"]
+        reasons = {d["company_id"]: d["reason"] for d in details}
+        assert c2.id in reasons
+        assert c3.id in reasons
+
 
 class TestRemoveRecipients:
     """POST /campaigns/{id}/recipients/remove — удаление компаний."""
