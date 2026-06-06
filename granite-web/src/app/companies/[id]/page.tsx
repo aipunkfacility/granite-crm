@@ -85,7 +85,7 @@ export default function CompanyDetailPage() {
           className="text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Назад к списку
+          Назад
         </Button>
         <Button
           variant="outline"
