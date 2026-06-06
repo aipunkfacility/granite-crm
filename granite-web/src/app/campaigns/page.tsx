@@ -4,23 +4,23 @@ import { useCampaigns } from '@/lib/hooks/use-campaigns';
 import { runCampaign, pauseCampaign, deleteCampaign } from '@/lib/api/campaigns';
 import { CampaignCard } from '@/components/campaigns/CampaignCard';
 import { CampaignWizard } from '@/components/campaigns/CampaignWizard';
-import { CampaignDashboard } from '@/components/campaigns/CampaignDashboard';
 import { Button } from '@/components/ui/button';
 import {
   Mail,
   Plus,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 export default function CampaignsPage() {
   const { data, isLoading } = useCampaigns();
   const campaigns = data?.items || [];
+  const router = useRouter();
   const [createOpen, setCreateOpen] = useState(false);
   const [runningId, setRunningId] = useState<number | null>(null);
   const [pausingId, setPausingId] = useState<number | null>(null);
-  const [dashboardId, setDashboardId] = useState<number | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const queryClient = useQueryClient();
 
@@ -60,15 +60,6 @@ export default function CampaignsPage() {
     }
   };
 
-  if (dashboardId !== null) {
-    return (
-      <CampaignDashboard
-        campaignId={dashboardId}
-        onClose={() => setDashboardId(null)}
-      />
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -100,7 +91,7 @@ export default function CampaignsPage() {
             <CampaignCard
               key={campaign.id}
               campaign={campaign}
-              onOpenDashboard={() => setDashboardId(campaign.id)}
+              onOpenDashboard={() => router.push(`/campaigns/${campaign.id}`)}
               onRun={() => handleRun(campaign.id)}
               onPause={() => handlePause(campaign.id)}
               onDelete={() => handleDelete(campaign.id)}
