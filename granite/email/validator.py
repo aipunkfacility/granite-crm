@@ -80,6 +80,20 @@ def validate_recipients(
                 f"Recipients on these domains will be filtered."
             )
 
+    # Cross-campaign safety net: batch query emails that already received mail
+    already_sent_emails: set[str] = set()
+    if db_session is not None:
+        all_recipient_emails = {
+            r[3].lower().strip() for r in recipients if r[3] and _EMAIL_RE.match(r[3])
+        }
+        if all_recipient_emails:
+            from granite.database import CrmEmailLogRow
+            log_rows = db_session.query(CrmEmailLogRow.email_to).filter(
+                CrmEmailLogRow.email_to.in_(list(all_recipient_emails)),
+                CrmEmailLogRow.status.in_(("sent", "opened", "replied", "bounced")),
+            ).all()
+            already_sent_emails = {row[0].lower() for row in log_rows}
+
     for company, enriched, contact, email_to in recipients:
         # Дедупликация email
         email_lower = email_to.lower().strip()
@@ -91,6 +105,23 @@ def validate_recipients(
             })
             continue
         seen_emails.add(email_lower)
+
+        if email_lower in already_sent_emails:
+            warnings.append({
+                "company_id": company.id,
+                "name": getattr(company, "name_best", ""),
+                "reason": f"email {email_lower} уже получал письмо",
+            })
+            continue
+
+        sent_count = getattr(contact, "email_sent_count", None)
+        if isinstance(sent_count, (int, float)) and sent_count > 0:
+            warnings.append({
+                "company_id": company.id,
+                "name": getattr(company, "name_best", ""),
+                "reason": "контакт уже получал письмо",
+            })
+            continue
 
         reason = _check_recipient(company, contact, email_to, blocked_domains, skip_session_gap=skip_session_gap)
         if reason:

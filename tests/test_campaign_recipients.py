@@ -492,6 +492,44 @@ class TestGetManualRecipients:
 
         assert recipients == []
 
+    def test_manual_skips_cross_campaign_email(self, db_session):
+        """Компания с email, уже получавшим письмо в другой кампании — пропускается."""
+        company_a = CompanyRow(name_best="A", city="москва", emails=["shared@mail.ru"])
+        db_session.add(company_a); db_session.flush()
+        db_session.add(CrmContactRow(company_id=company_a.id)); db_session.flush()
+        db_session.add(CrmEmailLogRow(
+            company_id=company_a.id, email_to="shared@mail.ru",
+            status="sent", campaign_id=None,
+        )); db_session.commit()
+
+        company_b = CompanyRow(name_best="Б", city="москва", emails=["shared@mail.ru"])
+        db_session.add(company_b); db_session.flush()
+        db_session.add(CrmContactRow(company_id=company_b.id)); db_session.flush()
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.flush()
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company_b.id))
+        db_session.commit()
+
+        from granite.api.campaigns import _get_campaign_recipients
+        recipients = _get_campaign_recipients(campaign, db_session)
+
+        assert len(recipients) == 0
+
+    def test_manual_skips_company_with_email_sent_count(self, db_session):
+        """Компания с email_sent_count > 0 — пропускается в send loop."""
+        company = CompanyRow(name_best="Старая", city="москва", emails=["old@mail.ru"])
+        db_session.add(company); db_session.flush()
+        db_session.add(CrmContactRow(company_id=company.id, email_sent_count=5)); db_session.flush()
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.flush()
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.commit()
+
+        from granite.api.campaigns import _get_campaign_recipients
+        recipients = _get_campaign_recipients(campaign, db_session)
+
+        assert len(recipients) == 0
+
 
 class TestCreateCampaignWithManualMode:
     """Создание кампании в manual-режиме."""
