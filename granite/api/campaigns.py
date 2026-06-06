@@ -567,12 +567,14 @@ def _run_campaign_send_loop(
         total = len(recipients)
         was_truncated = total > MAX_SENDS_PER_RUN
 
-        if was_truncated:
+        # Заморозка total_recipients: устанавливается только при первом старте
+        # (когда поле ещё 0). После первого запуска поле не меняется.
+        if not campaign.total_recipients:
             campaign.total_recipients = total
+
+        if was_truncated:
             recipients = recipients[:MAX_SENDS_PER_RUN]
             logger.warning(f"Campaign {campaign_id}: truncated to {MAX_SENDS_PER_RUN} (total: {total})")
-        else:
-            campaign.total_recipients = total
 
         campaign.started_at = datetime.now(timezone.utc)
         session.commit()
