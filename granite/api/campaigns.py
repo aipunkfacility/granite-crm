@@ -992,11 +992,13 @@ def _add_recipients_to_campaign(
         .all()
     }
 
-    # Batch: email_sent_count для всех контактов
-    contact_rows = {
-        r.company_id: r.email_sent_count or 0
-        for r in db.query(CrmContactRow).filter(CrmContactRow.company_id.in_(company_ids)).all()
-    }
+    # Batch: email_sent_count + stop_automation для всех контактов
+    contact_rows = {}
+    stop_automation_ids: set[int] = set()
+    for r in db.query(CrmContactRow).filter(CrmContactRow.company_id.in_(company_ids)).all():
+        contact_rows[r.company_id] = r.email_sent_count or 0
+        if r.stop_automation:
+            stop_automation_ids.add(r.company_id)
 
     # Batch: email-адреса для всех компаний
     company_emails: dict[int, str | None] = {}
@@ -1031,6 +1033,10 @@ def _add_recipients_to_campaign(
         email_to = company_emails.get(cid)
         if not email_to:
             skipped_details.append({"company_id": cid, "reason": "нет email"})
+            continue
+
+        if cid in stop_automation_ids:
+            skipped_details.append({"company_id": cid, "reason": "отписан"})
             continue
 
         contact_sent = contact_rows.get(cid, 0)
