@@ -90,39 +90,39 @@ def process_replies(db_session, messages: list | None = None) -> int:
 
             contact = db_session.get(CrmContactRow, log.company_id)
 
-            # Обычный ответ
+            # Обычный ответ (только один раз — повторные проходы игнорируются)
             if log.status != "replied":
                 log.status = "replied"
                 log.replied_at = datetime.now(timezone.utc)
 
-            if contact:
-                contact.funnel_stage = "replied"
-                contact.email_replied_count = (contact.email_replied_count or 0) + 1
+                if contact:
+                    contact.funnel_stage = "replied"
+                    contact.email_replied_count = (contact.email_replied_count or 0) + 1
 
-                # Отменить follow-up задачи
-                cancel_followup_tasks(contact.company_id, "replied", db_session)
+                    # Отменить follow-up задачи
+                    cancel_followup_tasks(contact.company_id, "replied", db_session)
 
-            # Инкремент total_replied для кампании
-            if log.campaign_id:
-                campaign = db_session.get(CrmEmailCampaignRow, log.campaign_id)
-                if campaign:
-                    campaign.total_replied = (campaign.total_replied or 0) + 1
+                # Инкремент total_replied для кампании
+                if log.campaign_id:
+                    campaign = db_session.get(CrmEmailCampaignRow, log.campaign_id)
+                    if campaign:
+                        campaign.total_replied = (campaign.total_replied or 0) + 1
 
-            # Записать входящий touch
-            db_session.add(CrmTouchRow(
-                company_id=log.company_id,
-                channel="email",
-                direction="incoming",
-                subject=subject,
-                body=body[:2000] if body else "",
-            ))
+                # Записать входящий touch
+                db_session.add(CrmTouchRow(
+                    company_id=log.company_id,
+                    channel="email",
+                    direction="incoming",
+                    subject=subject,
+                    body=body[:2000] if body else "",
+                ))
 
-            db_session.commit()
-            processed += 1
-            logger.info(
-                f"process_replies: {reply_email} → replied "
-                f"(company_id={log.company_id})"
-            )
+                db_session.commit()
+                processed += 1
+                logger.info(
+                    f"process_replies: {reply_email} → replied "
+                    f"(company_id={log.company_id})"
+                )
 
         except Exception as e:
             logger.error(f"process_replies: error processing message {mid}: {e}")
