@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchNetworkDetail, unmarkNetwork } from '@/lib/api/networks';
@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { CompanySheet } from '@/components/companies/CompanySheet';
 import { toast } from 'sonner';
+import { useAdmin } from '@/lib/admin-context';
+import { batchSpam } from '@/lib/api/admin';
+import { MarkSpamDialog } from '@/components/companies/MarkSpamDialog';
 
 const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
   franchise: { label: 'Франчайзинг', className: 'bg-[var(--network-franchise-bg)] text-[var(--network-franchise-text)] border-[var(--network-franchise-text)]/20' },
@@ -48,6 +51,9 @@ export default function NetworkDetailPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [spamDialogOpen, setSpamDialogOpen] = useState(false);
+  const [spamSaving, setSpamSaving] = useState(false);
+  const { token: adminToken, isActive: isAdmin } = useAdmin();
 
   // Escape key to close confirm dialog
   useEffect(() => {
@@ -75,6 +81,22 @@ export default function NetworkDetailPage() {
       toast.error(err instanceof Error ? err.message : 'Ошибка');
     }
   };
+
+  const handleNetworkSpam = useCallback(async (reason: string, _note?: string) => {
+    if (!adminToken || !net) return;
+    setSpamSaving(true);
+    try {
+      const ids = net.companies.map(c => c.id);
+      const result = await batchSpam(ids, reason, adminToken);
+      toast.success(`В спам: ${result.processed} из ${ids.length} филиалов`);
+      setSpamDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['network-detail', groupId] });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setSpamSaving(false);
+    }
+  }, [adminToken, net, queryClient, groupId]);
 
   if (isLoading) {
     return (
@@ -151,6 +173,16 @@ export default function NetworkDetailPage() {
             >
               Снять сеть
             </Button>
+            {isAdmin && net.companies.length > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setSpamDialogOpen(true)}
+              >
+                <AlertTriangle className="h-4 w-4 mr-1" />
+                В спам
+              </Button>
+            )}
           </div>
         </div>
 
@@ -283,6 +315,13 @@ export default function NetworkDetailPage() {
         companyId={selectedCompanyId}
         open={sheetOpen}
         onOpenChange={setSheetOpen}
+      />
+      <MarkSpamDialog
+        companyName={`сеть «${net?.signal_value ?? groupId}»`}
+        isOpen={spamDialogOpen}
+        onClose={() => setSpamDialogOpen(false)}
+        onConfirm={handleNetworkSpam}
+        isSaving={spamSaving}
       />
     </div>
   );
