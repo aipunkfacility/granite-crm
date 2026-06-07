@@ -12,6 +12,7 @@ from granite.exporters.markdown import MarkdownExporter
 from granite.config_validator import validate_config as _validate_config
 from granite.pipeline.status import print_status
 from granite.dedup.network_filter import detect_and_mark_aggregators
+from granite.cleanup_emails import cleanup_placeholder_emails
 
 app = typer.Typer(help="Granite Workshops DB - Сбор и обогащение базы ритуальных мастерских")
 
@@ -760,6 +761,30 @@ def repair_db(
                 print_status(f"Scoring: completed for {len(city_names)} cities", "success")
 
     print_status(f"F1: repair-db [{mode_label}] done.", "success")
+    db.engine.dispose()
+
+
+@app.command("cleanup-emails")
+def cleanup_emails(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview changes without modifying"),
+    limit: int = typer.Option(0, "--limit", help="Max rows to process per table (0=unlimited)"),
+):
+    """Remove placeholder emails (@email.com, @example.com) from all companies.
+
+    Iterates raw_companies, companies, and enriched_companies tables,
+    removing emails with @email.com or @example.com domains from the JSON array.
+    """
+    config = load_config()
+    setup_logging(config)
+    db = Database(config_path=_config_path)
+
+    stats = cleanup_placeholder_emails(db, dry_run=dry_run, limit=limit)
+    total = sum(stats.values())
+    mode = "DRY RUN" if dry_run else "APPLIED"
+    print_status(
+        f"cleanup-emails [{mode}]: {total} total rows affected ({stats})",
+        "info" if dry_run else "success",
+    )
     db.engine.dispose()
 
 

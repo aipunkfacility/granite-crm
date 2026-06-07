@@ -13,6 +13,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     event,
+    Engine,
 )
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 from datetime import datetime, timezone
@@ -553,7 +554,13 @@ class Database:
         db_path: str | None = None,
         config_path: str = "config.yaml",
         auto_migrate: bool = True,
+        engine: Engine | None = None,
     ):
+        if engine is not None:
+            self.engine = engine
+            self.SessionLocal = sessionmaker(bind=self.engine)
+            return
+
         if not db_path:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
