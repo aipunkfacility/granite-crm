@@ -8,6 +8,7 @@ from granite.api.deps import get_db
 from granite.api.schemas import (
     NetworkCandidatesResponse, NetworkCandidateGroup, OkResponse,
     ResolveNetworkGroupRequest,
+    NetworkListResponse, NetworkSummary, NetworkDetail,
 )
 from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from granite.enrichers.network_detector import NetworkDetector
@@ -131,3 +132,60 @@ def resolve_network_group(
             f"{body.target_id} (group={body.group_id})"
         )
         return {"ok": True, "message": f"Слито {merged_count} компаний в #{body.target_id}"}
+
+
+@router.get("/networks", response_model=NetworkListResponse)
+def list_networks(
+    db: Session = Depends(get_db),
+    signal_type: str | None = Query(None, pattern="^(website|phone|email_domain)$"),
+    min_companies: int = Query(2, ge=2, le=100),
+):
+    """Вернуть список всех обнаруженных сетей со статистикой."""
+    detector = NetworkDetector(Database())
+    groups = detector.list_networks(
+        db,
+        signal_type=signal_type,
+        min_company_count=min_companies,
+    )
+    return NetworkListResponse(
+        items=[NetworkSummary(**g) for g in groups],
+        total=len(groups),
+    )
+
+
+@router.get("/networks/{group_id:path}", response_model=NetworkDetail)
+def get_network_detail(
+    group_id: str,
+    db: Session = Depends(get_db),
+):
+    """Вернуть детальную информацию о сети со списком компаний."""
+    detector = NetworkDetector(Database())
+    detail = detector.get_network_detail(db, group_id)
+    if not detail:
+        raise HTTPException(404, f"Network {group_id} not found")
+    return NetworkDetail(**detail)
+
+
+@router.post("/networks/{group_id:path}/unmark", response_model=OkResponse)
+def unmark_network(
+    group_id: str,
+    db: Session = Depends(get_db),
+):
+    """Снять пометку is_network со всех компаний сети."""
+    detector = NetworkDetector(Database())
+    detail = detector.get_network_detail(db, group_id)
+    if not detail:
+        raise HTTPException(404, f"Network {group_id} not found")
+
+    company_ids = [c["id"] for c in detail["companies"]]
+    if not company_ids:
+        raise HTTPException(400, "Network has no companies")
+
+    updated = db.query(EnrichedCompanyRow).filter(
+        EnrichedCompanyRow.id.in_(company_ids)
+    ).update(
+        {EnrichedCompanyRow.is_network: False},
+        synchronize_session=False,
+    )
+    logger.info(f"networks unmark: {updated} companies unmarked (group={group_id})")
+    return {"ok": True, "message": f"Снята пометка сети с {updated} компаний"}

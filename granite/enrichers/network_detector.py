@@ -172,6 +172,194 @@ class NetworkDetector:
                 f"email-доменов: {len(network_email_domains)})."
             )
 
+    def list_networks(
+        self, session,
+        signal_type: str | None = None,
+        min_company_count: int = 2,
+    ) -> list[dict]:
+        rows = session.query(
+            EnrichedCompanyRow.id,
+            EnrichedCompanyRow.name,
+            EnrichedCompanyRow.city,
+            EnrichedCompanyRow.website,
+            EnrichedCompanyRow.phones,
+            EnrichedCompanyRow.emails,
+            EnrichedCompanyRow.crm_score,
+        ).filter(
+            EnrichedCompanyRow.is_network == True,
+        ).all()
+
+        from collections import Counter
+        from granite.constants import SPAM_DOMAINS, NON_NETWORK_DOMAINS
+
+        website_map: dict[str, set[int]] = {}
+        phone_map: dict[str, set[int]] = {}
+        email_domain_map: dict[str, set[int]] = {}
+        row_details: dict[int, dict] = {}
+
+        for row_id, name, city, website, phones, emails, score in rows:
+            row_details[row_id] = {
+                "id": row_id, "name": name, "city": city,
+                "website": website, "phones": phones or [],
+                "emails": emails or [], "score": score or 0.0,
+            }
+
+            if website:
+                domain = extract_domain(website)
+                if domain:
+                    website_map.setdefault(domain, set()).add(row_id)
+                base = extract_base_domain(website)
+                if base:
+                    website_map.setdefault(base, set()).add(row_id)
+
+            for p in (phones or []):
+                norm = normalize_phone(p)
+                if norm:
+                    phone_map.setdefault(norm, set()).add(row_id)
+
+            for email in (emails or []):
+                if isinstance(email, str) and '@' in email:
+                    domain = email.split('@', 1)[1].lower().strip()
+                    if domain and domain not in FREE_EMAIL_DOMAINS:
+                        email_domain_map.setdefault(domain, set()).add(row_id)
+
+        groups = []
+
+        if not signal_type or signal_type == "website":
+            for domain, ids in website_map.items():
+                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
+                    continue
+                if len(ids) < min_company_count:
+                    continue
+                cities = Counter(row_details[i]["city"] for i in ids)
+                scores = [row_details[i]["score"] for i in ids]
+                email_count = sum(1 for i in ids if row_details[i]["emails"])
+                phone_count = sum(1 for i in ids if row_details[i]["phones"])
+                groups.append({
+                    "group_id": f"website:{domain}",
+                    "signal_type": "website",
+                    "signal_value": domain,
+                    "company_count": len(ids),
+                    "city_count": len(cities),
+                    "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+                    "email_count": email_count,
+                    "phone_count": phone_count,
+                    "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
+                })
+
+        if not signal_type or signal_type == "phone":
+            for phone, ids in phone_map.items():
+                if len(ids) < min_company_count:
+                    continue
+                cities = Counter(row_details[i]["city"] for i in ids)
+                if len(cities) < 2:
+                    continue
+                scores = [row_details[i]["score"] for i in ids]
+                groups.append({
+                    "group_id": f"phone:{phone}",
+                    "signal_type": "phone",
+                    "signal_value": phone,
+                    "company_count": len(ids),
+                    "city_count": len(cities),
+                    "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+                    "email_count": sum(1 for i in ids if row_details[i]["emails"]),
+                    "phone_count": len(ids),
+                    "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
+                })
+
+        if not signal_type or signal_type == "email_domain":
+            for domain, ids in email_domain_map.items():
+                if len(ids) < min_company_count:
+                    continue
+                cities = Counter(row_details[i]["city"] for i in ids)
+                scores = [row_details[i]["score"] for i in ids]
+                groups.append({
+                    "group_id": f"email:{domain}",
+                    "signal_type": "email_domain",
+                    "signal_value": domain,
+                    "company_count": len(ids),
+                    "city_count": len(cities),
+                    "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
+                    "email_count": len(ids),
+                    "phone_count": sum(1 for i in ids if row_details[i]["phones"]),
+                    "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
+                })
+
+        return groups
+
+    def get_network_detail(
+        self, session,
+        group_id: str,
+    ) -> dict | None:
+        parts = group_id.split(":", 1)
+        if len(parts) != 2:
+            return None
+        prefix, signal_value = parts
+
+        SIGNAL_TYPE_MAP = {"website": "website", "phone": "phone", "email": "email_domain"}
+        signal_type = SIGNAL_TYPE_MAP.get(prefix)
+        if signal_type is None:
+            return None
+
+        all_networks = self.list_networks(session, signal_type=signal_type, min_company_count=1)
+        match = None
+        for n in all_networks:
+            if n["group_id"] == group_id:
+                match = n
+                break
+
+        if not match:
+            return None
+
+        rows = session.query(
+            EnrichedCompanyRow.id,
+            EnrichedCompanyRow.name,
+            EnrichedCompanyRow.city,
+            EnrichedCompanyRow.website,
+            EnrichedCompanyRow.phones,
+            EnrichedCompanyRow.emails,
+            EnrichedCompanyRow.crm_score,
+        ).filter(
+            EnrichedCompanyRow.is_network == True,
+        ).all()
+
+        query_val = signal_value.lower()
+        company_ids: set[int] = set()
+
+        for row_id, name, city, website, phones, emails, score in rows:
+            include = False
+            if signal_type == "website":
+                d = extract_domain(website)
+                b = extract_base_domain(website)
+                include = (d and d == query_val) or (b and b == query_val)
+            elif signal_type == "phone":
+                for p in (phones or []):
+                    norm = normalize_phone(p)
+                    if norm and norm == query_val:
+                        include = True
+                        break
+            elif signal_type == "email_domain":
+                for email in (emails or []):
+                    if isinstance(email, str) and '@' in email:
+                        domain = email.split('@', 1)[1].lower().strip()
+                        if domain == query_val:
+                            include = True
+                            break
+            if include:
+                company_ids.add(row_id)
+
+        match["companies"] = [{
+            "id": row_id,
+            "name": name,
+            "city": city,
+            "website": website,
+            "phones": phones or [],
+            "emails": emails or [],
+            "score": score or 0.0,
+        } for row_id, name, city, website, phones, emails, score in rows if row_id in company_ids]
+
+        return match
+
     def find_candidate_groups(
         self, session,
         threshold: int = 2,
@@ -203,6 +391,7 @@ class NetworkDetector:
             EnrichedCompanyRow.website,
             EnrichedCompanyRow.phones,
             EnrichedCompanyRow.emails,
+            EnrichedCompanyRow.is_network,
         ).all()
 
         email_domain_map: dict[str, set[int]] = {}
@@ -210,11 +399,12 @@ class NetworkDetector:
         phone_map: dict[str, set[int]] = {}
         row_details: dict[int, dict] = {}
 
-        for row_id, name, city, website, phones, emails in rows:
+        for row_id, name, city, website, phones, emails, is_network in rows:
             row_details[row_id] = {
                 "id": row_id, "name": name, "city": city,
                 "website": website, "phones": phones or [],
                 "emails": emails or [],
+                "is_network": is_network or False,
             }
 
             if website:
@@ -260,6 +450,7 @@ class NetworkDetector:
 
         if not signal_type or signal_type == "email_domain":
             for domain, ids in email_domain_map.items():
+                all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}
                 if len(ids) < threshold:
@@ -271,12 +462,14 @@ class NetworkDetector:
                     "company_count": len(ids),
                     "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
+                    "all_marked": all_marked,
                 })
 
         if not signal_type or signal_type == "website":
             for domain, ids in website_map.items():
                 if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
                     continue
+                all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}
                 cities = {row_details[i]["city"] for i in ids}
@@ -289,10 +482,12 @@ class NetworkDetector:
                     "company_count": len(ids),
                     "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
+                    "all_marked": all_marked,
                 })
 
         if not signal_type or signal_type == "phone":
             for phone, ids in phone_map.items():
+                all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}
                 cities = {row_details[i]["city"] for i in ids}
@@ -305,6 +500,7 @@ class NetworkDetector:
                     "company_count": len(ids),
                     "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
+                    "all_marked": all_marked,
                 })
 
         return groups
