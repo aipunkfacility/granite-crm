@@ -1,0 +1,230 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchNetworkDetail, unmarkNetwork } from '@/lib/api/networks';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import {
+  Loader2, AlertCircle, ArrowLeft,
+  RefreshCw, AlertTriangle,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+const SIGNAL_LABELS: Record<string, { label: string; className: string }> = {
+  website: { label: 'Сайт', className: 'bg-primary/10 text-primary border-primary/20' },
+  phone: { label: 'Телефон', className: 'bg-warning/10 text-warning border-warning/20' },
+  email_domain: { label: 'Email', className: 'bg-success/10 text-success border-success/20' },
+};
+
+export default function NetworkDetailPage() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const groupId = decodeURIComponent(params.id);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // Escape key to close confirm dialog
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showConfirm) setShowConfirm(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showConfirm]);
+
+  const { data: net, isLoading, error } = useQuery({
+    queryKey: ['network-detail', groupId],
+    queryFn: () => fetchNetworkDetail(groupId),
+    staleTime: 10_000,
+  });
+
+  const handleUnmark = async () => {
+    setShowConfirm(false);
+    try {
+      const result = await unmarkNetwork(groupId);
+      toast.success(result.message);
+      queryClient.invalidateQueries({ queryKey: ['network-detail', groupId] });
+      queryClient.invalidateQueries({ queryKey: ['networks'] });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+        <p className="text-muted-foreground animate-pulse">Загрузка сети...</p>
+      </div>
+    );
+  }
+
+  if (error || !net) {
+    return (
+      <div className="rounded-lg border border-destructive/50 bg-destructive/10 p-6 text-destructive">
+        <div className="flex items-center gap-2 mb-2">
+          <AlertCircle className="h-5 w-5" />
+          <h2 className="text-lg font-semibold">Ошибка загрузки</h2>
+        </div>
+        <p className="mb-4">{error instanceof Error ? error.message : 'Сеть не найдена'}</p>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => router.push('/networks')}>
+            <ArrowLeft className="mr-1 h-4 w-4" /> К списку сетей
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ['network-detail', groupId] })}>
+            <RefreshCw className="mr-1 h-4 w-4" /> Повторить
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const cfg = SIGNAL_LABELS[net.signal_type] ?? SIGNAL_LABELS.website;
+  const maxCount = net.top_cities[0]?.count ?? 1;
+
+  return (
+    <div className="space-y-6">
+      <Button variant="ghost" size="sm" onClick={() => router.push('/networks')} className="mb-2">
+        <ArrowLeft className="mr-1 h-4 w-4" /> К списку сетей
+      </Button>
+
+      <Card className="overflow-hidden border-border">
+        <div className="border-b bg-muted/50 py-4 px-6 flex items-stretch justify-between gap-6">
+          <div className="flex flex-col justify-center space-y-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-bold font-mono">{net.signal_value}</h2>
+              <Badge variant="outline" size="sm" className={cfg.className}>{cfg.label}</Badge>
+              <Badge variant="default" size="sm">Размечена</Badge>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Источник: <span className="font-mono text-primary">{net.signal_type}</span>
+            </p>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-destructive border-destructive/30 hover:bg-destructive/10"
+              onClick={() => setShowConfirm(true)}
+            >
+              Снять сеть
+            </Button>
+          </div>
+        </div>
+
+        {showConfirm && (
+          <div className="px-6 py-4 border-b border-border bg-destructive/5">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
+              <p className="text-sm flex-1">
+                Убрать пометку «сеть» с {net.company_count} {net.company_count === 1 ? 'компании' : 'компаний'}?
+                Это действие можно отменить повторным запуском детектора.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button variant="outline" size="sm" onClick={() => setShowConfirm(false)}>Отмена</Button>
+                <Button variant="default" size="sm" className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleUnmark}>
+                  Снять сеть
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="p-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-center">
+              <p className="text-2xl font-bold font-mono">{net.company_count}</p>
+              <p className="text-xs text-muted-foreground mt-1">Филиалов</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-center">
+              <p className="text-2xl font-bold font-mono">{net.city_count}</p>
+              <p className="text-xs text-muted-foreground mt-1">Городов</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-center">
+              <p className="text-2xl font-bold font-mono">{net.email_count}</p>
+              <p className="text-xs text-muted-foreground mt-1">С email</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-center">
+              <p className="text-2xl font-bold font-mono">{net.phone_count}</p>
+              <p className="text-xs text-muted-foreground mt-1">С телефоном</p>
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      <Card className="border-border p-6">
+        <h3 className="text-sm font-semibold mb-4">Города</h3>
+        {net.top_cities.length > 0 ? (
+          <div className="space-y-2">
+            {net.top_cities.map((c, i) => (
+              <div key={c.name} className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground w-24 text-right shrink-0 truncate">{c.name}</span>
+                <div className="flex-1 h-6 rounded-md bg-muted/50 overflow-hidden">
+                  <div
+                    className="h-full rounded-md flex items-center justify-end pr-2 text-xs font-medium text-white"
+                    style={{
+                      width: `${(c.count / maxCount) * 100}%`,
+                      background: 'var(--primary)',
+                      opacity: 1 - i * 0.08,
+                    }}
+                  >
+                    {c.count}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            Нет данных о распределении по городам
+          </p>
+        )}
+      </Card>
+
+      <Card className="border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Филиалы ({net.companies.length})</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-muted/20">
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">ID</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Название</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Город</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Телефон</th>
+                <th className="text-left px-4 py-2.5 text-xs font-medium text-muted-foreground">Email</th>
+                <th className="text-center px-4 py-2.5 text-xs font-medium text-muted-foreground">Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {net.companies.length === 0 ? (
+                <tr key="empty">
+                  <td colSpan={6} className="text-center py-8 text-muted-foreground text-sm">
+                    Нет данных о филиалах
+                  </td>
+                </tr>
+              ) : net.companies.map((c) => (
+                <tr key={c.id} className="border-b border-border/60 hover:bg-muted/20 transition-colors">
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{c.id}</td>
+                  <td className="px-4 py-2.5 font-medium truncate max-w-[200px]">{c.name}</td>
+                  <td className="px-4 py-2.5 text-muted-foreground">{c.city}</td>
+                  <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{c.phones[0] ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-xs text-muted-foreground truncate max-w-[160px]">{c.emails[0] ?? '—'}</td>
+                  <td className="px-4 py-2.5 text-center">
+                    <span className={`text-xs font-semibold font-mono ${c.score >= 4.5 ? 'text-success' : c.score >= 3 ? 'text-warning' : 'text-muted-foreground'}`}>
+                      {c.score.toFixed(1)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
