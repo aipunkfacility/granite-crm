@@ -132,6 +132,7 @@ export interface NetworkCandidateCompany {
   website: string | null;
   phones: string[];
   emails: string[];
+  is_network?: boolean;
 }
 
 export interface NetworkCandidateGroup {
@@ -140,6 +141,7 @@ export interface NetworkCandidateGroup {
   signal_value: string;
   company_count: number;
   companies: NetworkCandidateCompany[];
+  all_marked?: boolean;
 }
 
 export interface NetworkCandidatesResponse {
@@ -151,4 +153,41 @@ export interface ResolveNetworkGroupPayload {
   group_id: string;
   action: 'network' | 'duplicate';
   target_id?: number;
+}
+
+// Network list (redesign)
+export interface TopCity {
+  name: string;
+  count: number;
+}
+
+export interface NetworkSummary {
+  group_id: string;
+  signal_type: string;
+  signal_value: string;
+  company_count: number;
+  city_count: number;
+  avg_score: number;
+  email_count: number;
+  phone_count: number;
+  top_cities: TopCity[];
+}
+
+export interface NetworkListResponse {
+  items: NetworkSummary[];
+  total: number;
+}
+
+export interface NetworkDetailCompany {
+  id: number;
+  name: string;
+  city: string;
+  website: string | null;
+  phones: string[];
+  emails: string[];
+  score: number;
+}
+
+export interface NetworkDetail extends NetworkSummary {
+  companies: NetworkDetailCompany[];
 }

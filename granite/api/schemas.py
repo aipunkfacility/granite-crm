@@ -548,6 +548,46 @@ class PaginatedResponse(BaseModel, Generic[_T]):
 
 
 # ============================================================
+# Network list & detail (Networks page redesign)
+# ============================================================
+
+class TopCity(BaseModel):
+    """Город с количеством филиалов в сети."""
+    name: str
+    count: int
+
+class NetworkSummary(BaseModel):
+    """Краткая информация о сети для списка."""
+    group_id: str
+    signal_type: str
+    signal_value: str
+    company_count: int
+    city_count: int
+    avg_score: float = 0.0
+    email_count: int = 0
+    phone_count: int = 0
+    top_cities: list[TopCity] = []
+
+class NetworkListResponse(BaseModel):
+    """Ответ GET /networks."""
+    items: list[NetworkSummary]
+    total: int
+
+class NetworkDetailCompany(BaseModel):
+    """Компания в составе сети."""
+    id: int
+    name: str
+    city: str
+    website: Optional[str] = None
+    phones: list[str] = []
+    emails: list[str] = []
+    score: float = 0.0
+
+class NetworkDetail(NetworkSummary):
+    """Детальная информация о сети."""
+    companies: list[NetworkDetailCompany] = []
+
+# ============================================================
 # Network candidates (Tasks 3-5)
 # ============================================================
 
@@ -559,6 +599,7 @@ class NetworkCandidateCompany(BaseModel):
     website: Optional[str] = None
     phones: list[str] = []
     emails: list[str] = []
+    is_network: bool = False
 
 
 class NetworkCandidateGroup(BaseModel):
@@ -568,6 +609,7 @@ class NetworkCandidateGroup(BaseModel):
     signal_value: str
     company_count: int
     companies: list[NetworkCandidateCompany]
+    all_marked: bool = False
 
 
 class NetworkCandidatesResponse(BaseModel):
