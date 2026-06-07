@@ -302,6 +302,7 @@ class NetworkDetector:
                     sld_tld = ".".join(parts[-2:])
                     if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS:
                         continue
+                ids = {i for i in ids if row_details[i].get("segment") != "spam"}
                 if len(ids) < min_company_count:
                     continue
                 cities = Counter(row_details[i]["city"] for i in ids)
@@ -332,6 +333,7 @@ class NetworkDetector:
 
         if not signal_type or signal_type == "phone":
             for phone, ids in phone_map.items():
+                ids = {i for i in ids if row_details[i].get("segment") != "spam"}
                 if len(ids) < min_company_count:
                     continue
                 cities = Counter(row_details[i]["city"] for i in ids)
@@ -362,6 +364,7 @@ class NetworkDetector:
 
         if not signal_type or signal_type == "email_domain":
             for domain, ids in email_domain_map.items():
+                ids = {i for i in ids if row_details[i].get("segment") != "spam"}
                 if len(ids) < min_company_count:
                     continue
                 cities = Counter(row_details[i]["city"] for i in ids)
@@ -426,6 +429,7 @@ class NetworkDetector:
             EnrichedCompanyRow.phones,
             EnrichedCompanyRow.emails,
             EnrichedCompanyRow.crm_score,
+            EnrichedCompanyRow.segment,
         ).filter(
             EnrichedCompanyRow.is_network == True,
         ).all()
@@ -433,7 +437,9 @@ class NetworkDetector:
         query_val = signal_value.lower()
         company_ids: set[int] = set()
 
-        for row_id, name, city, website, phones, emails, score in rows:
+        for row_id, name, city, website, phones, emails, score, segment in rows:
+            if segment == "spam":
+                continue
             include = False
             if signal_type == "website":
                 d = extract_domain(website)
@@ -463,7 +469,7 @@ class NetworkDetector:
             "phones": phones or [],
             "emails": emails or [],
             "score": score or 0.0,
-        } for row_id, name, city, website, phones, emails, score in rows if row_id in company_ids]
+        } for row_id, name, city, website, phones, emails, score, segment in rows if row_id in company_ids]
 
         return match
 
