@@ -172,10 +172,42 @@ class NetworkDetector:
                 f"email-доменов: {len(network_email_domains)})."
             )
 
+    @staticmethod
+    def _classify_network_type(
+        companies: list[dict],
+        signal_type: str,
+        threshold: float = 0.7,
+    ) -> str:
+        if not companies:
+            return "regional"
+
+        cities = set(c["city"] for c in companies if c.get("city"))
+        if len(cities) <= 1:
+            return "local"
+
+        from collections import Counter
+        email_counter: Counter[str] = Counter()
+        for c in companies:
+            for e in (c.get("emails") or []):
+                if isinstance(e, str) and "@" in e:
+                    email_counter[e] += 1
+
+        if email_counter:
+            most_common_count = email_counter.most_common(1)[0][1]
+            if most_common_count >= len(companies) * threshold:
+                return "regional"
+
+        if signal_type in ("phone", "email_domain"):
+            return "aggregator"
+
+        return "franchise"
+
     def list_networks(
         self, session,
         signal_type: str | None = None,
         min_company_count: int = 2,
+        network_type: str | None = None,
+        contact_status: str | None = None,
     ) -> list[dict]:
         rows = session.query(
             EnrichedCompanyRow.id,
@@ -185,6 +217,7 @@ class NetworkDetector:
             EnrichedCompanyRow.phones,
             EnrichedCompanyRow.emails,
             EnrichedCompanyRow.crm_score,
+            EnrichedCompanyRow.segment,
         ).filter(
             EnrichedCompanyRow.is_network == True,
         ).all()
@@ -197,11 +230,12 @@ class NetworkDetector:
         email_domain_map: dict[str, set[int]] = {}
         row_details: dict[int, dict] = {}
 
-        for row_id, name, city, website, phones, emails, score in rows:
+        for row_id, name, city, website, phones, emails, score, segment in rows:
             row_details[row_id] = {
                 "id": row_id, "name": name, "city": city,
                 "website": website, "phones": phones or [],
                 "emails": emails or [], "score": score or 0.0,
+                "segment": segment or "D",
             }
 
             if website:
@@ -223,18 +257,61 @@ class NetworkDetector:
                     if domain and domain not in FREE_EMAIL_DOMAINS:
                         email_domain_map.setdefault(domain, set()).add(row_id)
 
+        from granite.database import CrmEmailLogRow
+
+        all_company_ids: set[int] = set()
+        if not signal_type or signal_type == "website":
+            for ids in website_map.values():
+                all_company_ids.update(ids)
+        if not signal_type or signal_type == "phone":
+            for ids in phone_map.values():
+                all_company_ids.update(ids)
+        if not signal_type or signal_type == "email_domain":
+            for ids in email_domain_map.values():
+                all_company_ids.update(ids)
+
+        contacted_company_ids: set[int] = set()
+        if all_company_ids:
+            logs = session.query(
+                CrmEmailLogRow.company_id,
+            ).filter(
+                CrmEmailLogRow.company_id.in_(list(all_company_ids)),
+            ).distinct().all()
+            contacted_company_ids = {cid for (cid,) in logs}
+
+        def _group_email_and_segment(ids_set: set[int]) -> tuple:
+            email_counter: Counter[str] = Counter()
+            segment_counter: Counter[str] = Counter()
+            for row_id in ids_set:
+                for e in (row_details[row_id].get("emails") or []):
+                    if isinstance(e, str) and "@" in e:
+                        email_counter[e] += 1
+                seg = row_details[row_id].get("segment", "D")
+                segment_counter[seg] += 1
+            primary_email = email_counter.most_common(1)[0][0] if email_counter else None
+            return primary_email, dict(segment_counter.most_common())
+
         groups = []
 
         if not signal_type or signal_type == "website":
             for domain, ids in website_map.items():
                 if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
                     continue
+                parts = domain.split(".")
+                if len(parts) >= 2:
+                    sld_tld = ".".join(parts[-2:])
+                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS:
+                        continue
                 if len(ids) < min_company_count:
                     continue
                 cities = Counter(row_details[i]["city"] for i in ids)
                 scores = [row_details[i]["score"] for i in ids]
+                companies_data = [row_details[i] for i in ids]
+                ntype = self._classify_network_type(companies_data, "website")
                 email_count = sum(1 for i in ids if row_details[i]["emails"])
                 phone_count = sum(1 for i in ids if row_details[i]["phones"])
+                primary_email, segment_dist = _group_email_and_segment(ids)
+                group_contacted = contacted_company_ids & ids
                 groups.append({
                     "group_id": f"website:{domain}",
                     "signal_type": "website",
@@ -245,6 +322,12 @@ class NetworkDetector:
                     "email_count": email_count,
                     "phone_count": phone_count,
                     "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
+                    "network_type": ntype,
+                    "primary_email": primary_email,
+                    "segment_dist": segment_dist,
+                    "contact_status": "sent" if group_contacted else "none",
+                    "sent_count": len(group_contacted),
+                    "total_count": len(ids),
                 })
 
         if not signal_type or signal_type == "phone":
@@ -255,6 +338,10 @@ class NetworkDetector:
                 if len(cities) < 2:
                     continue
                 scores = [row_details[i]["score"] for i in ids]
+                companies_data = [row_details[i] for i in ids]
+                ntype = self._classify_network_type(companies_data, "phone")
+                primary_email, segment_dist = _group_email_and_segment(ids)
+                group_contacted = contacted_company_ids & ids
                 groups.append({
                     "group_id": f"phone:{phone}",
                     "signal_type": "phone",
@@ -265,6 +352,12 @@ class NetworkDetector:
                     "email_count": sum(1 for i in ids if row_details[i]["emails"]),
                     "phone_count": len(ids),
                     "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
+                    "network_type": ntype,
+                    "primary_email": primary_email,
+                    "segment_dist": segment_dist,
+                    "contact_status": "sent" if group_contacted else "none",
+                    "sent_count": len(group_contacted),
+                    "total_count": len(ids),
                 })
 
         if not signal_type or signal_type == "email_domain":
@@ -273,6 +366,10 @@ class NetworkDetector:
                     continue
                 cities = Counter(row_details[i]["city"] for i in ids)
                 scores = [row_details[i]["score"] for i in ids]
+                companies_data = [row_details[i] for i in ids]
+                ntype = self._classify_network_type(companies_data, "email_domain")
+                primary_email, segment_dist = _group_email_and_segment(ids)
+                group_contacted = contacted_company_ids & ids
                 groups.append({
                     "group_id": f"email:{domain}",
                     "signal_type": "email_domain",
@@ -283,8 +380,18 @@ class NetworkDetector:
                     "email_count": len(ids),
                     "phone_count": sum(1 for i in ids if row_details[i]["phones"]),
                     "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
+                    "network_type": ntype,
+                    "primary_email": primary_email,
+                    "segment_dist": segment_dist,
+                    "contact_status": "sent" if group_contacted else "none",
+                    "sent_count": len(group_contacted),
+                    "total_count": len(ids),
                 })
 
+        if network_type:
+            groups = [g for g in groups if g.get("network_type") == network_type]
+        if contact_status:
+            groups = [g for g in groups if g.get("contact_status") == contact_status]
         return groups
 
     def get_network_detail(
@@ -469,6 +576,11 @@ class NetworkDetector:
             for domain, ids in website_map.items():
                 if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
                     continue
+                parts = domain.split(".")
+                if len(parts) >= 2:
+                    sld_tld = ".".join(parts[-2:])
+                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS:
+                        continue
                 all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}

@@ -568,6 +568,13 @@ class NetworkSummary(BaseModel):
     phone_count: int = 0
     top_cities: list[TopCity] = []
 
+    network_type: str = "franchise"
+    primary_email: str | None = None
+    segment_dist: dict[str, int] = Field(default_factory=dict)
+    contact_status: str = "none"
+    sent_count: int = 0
+    total_count: int = 0
+
 class NetworkListResponse(BaseModel):
     """Ответ GET /networks."""
     items: list[NetworkSummary]

@@ -9,9 +9,29 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import {
   Loader2, AlertCircle, ArrowLeft,
-  RefreshCw, AlertTriangle,
+  RefreshCw, AlertTriangle, CheckCircle2, Clock,
 } from 'lucide-react';
 import { toast } from 'sonner';
+
+const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
+  franchise: { label: 'Франчайзинг', className: 'bg-[var(--network-franchise-bg)] text-[var(--network-franchise-text)] border-[var(--network-franchise-text)]/20' },
+  aggregator: { label: 'Агрегатор', className: 'bg-[var(--network-aggregator-bg)] text-[var(--network-aggregator-text)] border-[var(--network-aggregator-text)]/20' },
+  regional: { label: 'Региональная', className: 'bg-[var(--network-regional-bg)] text-[var(--network-regional-text)] border-[var(--network-regional-text)]/20' },
+  local: { label: 'Локальная', className: 'bg-[var(--network-local-bg)] text-[var(--network-local-text)] border-[var(--network-local-text)]/20' },
+};
+
+const CONTACT_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  none: { label: 'Не отправлено', className: 'bg-[var(--contact-none-bg)] text-[var(--contact-none-text)]' },
+  sent: { label: 'Отправлено', className: 'bg-[var(--contact-sent-bg)] text-[var(--contact-sent-text)]' },
+};
+
+const SEGMENT_COLORS: Record<string, string> = {
+  A: 'bg-[var(--segment-a-bg)] text-white',
+  B: 'bg-[var(--segment-b-bg)] text-white',
+  C: 'bg-[var(--segment-c-bg)] text-white',
+  D: 'bg-[var(--segment-d-bg)] text-gray-600',
+  spam: 'bg-[var(--segment-spam-bg)] text-gray-400',
+};
 
 const SIGNAL_LABELS: Record<string, { label: string; className: string }> = {
   website: { label: 'Сайт', className: 'bg-primary/10 text-primary border-primary/20' },
@@ -102,6 +122,22 @@ export default function NetworkDetailPage() {
             <p className="text-xs text-muted-foreground">
               Источник: <span className="font-mono text-primary">{net.signal_type}</span>
             </p>
+            <div className="flex items-center gap-3 mt-1 flex-wrap">
+              {net.network_type && (
+                <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${NETWORK_TYPE_CONFIG[net.network_type]?.className ?? ''}`}>
+                  {NETWORK_TYPE_CONFIG[net.network_type]?.label ?? net.network_type}
+                </span>
+              )}
+              {net.primary_email && (
+                <span className="text-xs text-muted-foreground font-mono">
+                  {net.primary_email}
+                </span>
+              )}
+              <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CONTACT_STATUS_CONFIG[net.contact_status]?.className ?? ''}`}>
+                {net.contact_status === 'sent' ? <CheckCircle2 className="h-3 w-3 inline mr-0.5" /> : <Clock className="h-3 w-3 inline mr-0.5" />}
+                {CONTACT_STATUS_CONFIG[net.contact_status]?.label ?? net.contact_status}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <Button
@@ -151,7 +187,22 @@ export default function NetworkDetailPage() {
               <p className="text-2xl font-bold font-mono">{net.phone_count}</p>
               <p className="text-xs text-muted-foreground mt-1">С телефоном</p>
             </div>
+            {net.sent_count > 0 && (
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-4 text-center">
+                <p className="text-2xl font-bold font-mono text-[var(--contact-sent-text)]">{net.sent_count}/{net.total_count}</p>
+                <p className="text-xs text-muted-foreground mt-1">Отправлено</p>
+              </div>
+            )}
           </div>
+          {Object.keys(net.segment_dist ?? {}).length > 0 && (
+            <div className="flex items-center gap-1.5 mt-4 flex-wrap">
+              {Object.entries(net.segment_dist).sort((a, b) => b[1] - a[1]).map(([seg, count]) => (
+                <span key={seg} className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${SEGMENT_COLORS[seg] ?? SEGMENT_COLORS.D}`}>
+                  {seg} {count}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </Card>
 

@@ -139,6 +139,8 @@ def list_networks(
     db: Session = Depends(get_db),
     signal_type: str | None = Query(None, pattern="^(website|phone|email_domain)$"),
     min_companies: int = Query(2, ge=2, le=100),
+    network_type: str | None = Query(None, pattern="^(franchise|aggregator|regional|local)$"),
+    contact_status: str | None = Query(None, pattern="^(none|sent)$"),
 ):
     """Вернуть список всех обнаруженных сетей со статистикой."""
     detector = NetworkDetector(Database())
@@ -146,6 +148,8 @@ def list_networks(
         db,
         signal_type=signal_type,
         min_company_count=min_companies,
+        network_type=network_type,
+        contact_status=contact_status,
     )
     return NetworkListResponse(
         items=[NetworkSummary(**g) for g in groups],

@@ -25,6 +25,8 @@ export const resolveNetworkGroup = async (payload: ResolveNetworkGroupPayload): 
 export interface NetworksParams {
   signal_type?: string;
   min_companies?: number;
+  network_type?: string;
+  contact_status?: string;
 }
 
 export const fetchNetworks = async (

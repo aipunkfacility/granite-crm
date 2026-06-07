@@ -171,6 +171,12 @@ export interface NetworkSummary {
   email_count: number;
   phone_count: number;
   top_cities: TopCity[];
+  network_type: 'franchise' | 'aggregator' | 'regional' | 'local';
+  primary_email: string | null;
+  segment_dist: Record<string, number>;
+  contact_status: 'none' | 'sent';
+  sent_count: number;
+  total_count: number;
 }
 
 export interface NetworkListResponse {

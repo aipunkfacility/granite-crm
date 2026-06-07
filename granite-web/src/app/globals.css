@@ -118,6 +118,29 @@
   /* Radius — 8px B2B стандарт */
   --radius: 0.5rem;
 
+  /* Network type chip colors */
+  --network-franchise-bg: oklch(0.88 0.06 250);
+  --network-franchise-text: oklch(0.35 0.12 260);
+  --network-aggregator-bg: oklch(0.88 0.08 25);
+  --network-aggregator-text: oklch(0.45 0.15 20);
+  --network-regional-bg: oklch(0.88 0.08 150);
+  --network-regional-text: oklch(0.35 0.12 160);
+  --network-local-bg: oklch(0.88 0.06 300);
+  --network-local-text: oklch(0.40 0.10 310);
+
+  /* Segment colors */
+  --segment-a-bg: #22c55e;
+  --segment-b-bg: #f59e0b;
+  --segment-c-bg: #ef4444;
+  --segment-d-bg: oklch(0.85 0 0);
+  --segment-spam-bg: oklch(0.90 0 0);
+
+  /* Contact status */
+  --contact-none-bg: oklch(0.92 0 0);
+  --contact-none-text: oklch(0.55 0 0);
+  --contact-sent-bg: oklch(0.88 0.08 150);
+  --contact-sent-text: oklch(0.35 0.12 160);
+
   /* Shadows — камень */
   --shadow-sm: 0 1px 2px rgba(44, 41, 38, 0.06);
   --shadow-md: 0 4px 6px -1px rgba(44, 41, 38, 0.08), 0 2px 4px -2px rgba(44, 41, 38, 0.05);

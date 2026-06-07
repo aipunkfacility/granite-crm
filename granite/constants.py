@@ -55,6 +55,8 @@ NON_NETWORK_DOMAINS: frozenset[str] = frozenset({
     "yandex.ru", "google.com",
     "2gis.ru", "avito.ru",
     "instagram.com", "facebook.com",
+    "clients.site", "setup.ru", "wixsite.com",
+    "turbo.site", "business.site",
 })
 
 FREE_EMAIL_DOMAINS: frozenset[str] = frozenset({
