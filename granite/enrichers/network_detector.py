@@ -1,5 +1,5 @@
 # enrichers/network_detector.py
-from granite.database import Database, EnrichedCompanyRow
+from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
 from granite.constants import FREE_EMAIL_DOMAINS
@@ -257,6 +257,20 @@ class NetworkDetector:
                     if domain and domain not in FREE_EMAIL_DOMAINS:
                         email_domain_map.setdefault(domain, set()).add(row_id)
 
+        # Exclude soft-deleted and merged companies from all maps
+        dead_ids_result = session.query(CompanyRow.id).filter(
+            CompanyRow.id.in_(list(row_details.keys())),
+            (CompanyRow.deleted_at.isnot(None)) | (CompanyRow.merged_into.isnot(None)),
+        ).all()
+        dead_ids = {d_id for (d_id,) in dead_ids_result}
+        for dead_id in dead_ids:
+            row_details.pop(dead_id, None)
+        for m in (website_map, phone_map, email_domain_map):
+            for key in list(m.keys()):
+                m[key] -= dead_ids
+                if not m[key]:
+                    del m[key]
+
         from granite.database import CrmEmailLogRow
 
         all_company_ids: set[int] = set()
@@ -460,6 +474,14 @@ class NetworkDetector:
                             break
             if include:
                 company_ids.add(row_id)
+
+        # Exclude soft-deleted and merged companies
+        if company_ids:
+            dead_rows = session.query(CompanyRow.id).filter(
+                CompanyRow.id.in_(list(company_ids)),
+                (CompanyRow.deleted_at.isnot(None)) | (CompanyRow.merged_into.isnot(None)),
+            ).all()
+            company_ids -= {dead_id for (dead_id,) in dead_rows}
 
         match["companies"] = [{
             "id": row_id,
