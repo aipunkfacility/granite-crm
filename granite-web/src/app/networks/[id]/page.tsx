@@ -11,6 +11,7 @@ import {
   Loader2, AlertCircle, ArrowLeft,
   RefreshCw, AlertTriangle, CheckCircle2, Clock,
 } from 'lucide-react';
+import { CompanySheet } from '@/components/companies/CompanySheet';
 import { toast } from 'sonner';
 
 const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
@@ -45,6 +46,8 @@ export default function NetworkDetailPage() {
   const queryClient = useQueryClient();
   const groupId = decodeURIComponent(params.id);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // Escape key to close confirm dialog
   useEffect(() => {
@@ -259,7 +262,7 @@ export default function NetworkDetailPage() {
                   </td>
                 </tr>
               ) : net.companies.map((c) => (
-                <tr key={c.id} className="border-b border-border/60 hover:bg-muted/20 transition-colors">
+                <tr key={c.id} className="border-b border-border/60 hover:bg-muted/20 transition-colors cursor-pointer" onClick={() => { setSelectedCompanyId(c.id); setSheetOpen(true); }}>
                   <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{c.id}</td>
                   <td className="px-4 py-2.5 font-medium truncate max-w-[200px]">{c.name}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{c.city}</td>
@@ -276,6 +279,11 @@ export default function NetworkDetailPage() {
           </table>
         </div>
       </Card>
+      <CompanySheet
+        companyId={selectedCompanyId}
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+      />
     </div>
   );
 }
