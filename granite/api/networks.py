@@ -43,7 +43,7 @@ def resolve_network_group(
 ):
     """Разрешить группу кандидатов: пометить как сеть или как дубли."""
     detector = NetworkDetector(Database())
-    groups = detector.find_candidate_groups(db)
+    groups = detector.find_candidate_groups(db, include_resolved=True)
 
     target_group = None
     for g in groups:
