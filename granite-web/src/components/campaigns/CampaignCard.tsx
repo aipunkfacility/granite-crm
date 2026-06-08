@@ -70,32 +70,28 @@ export function CampaignCard({
 
   return (
     <Card className="overflow-hidden border-border hover:shadow-md transition-shadow">
-      <CardHeader className="border-b bg-muted/50 py-3 px-6 flex flex-row items-stretch justify-between space-y-0 gap-6">
-        <div className="flex flex-col justify-center space-y-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className="text-lg font-bold cursor-pointer hover:text-primary truncate"
-              onClick={onOpenDashboard}
-            >
-              {campaign.name}
-            </span>
-            <Badge variant={status.variant} className="flex items-center gap-1.5 px-2.5 py-0.5 shrink-0">
-              <status.icon className={cn('h-3 w-3', campaign.status === 'running' && 'animate-pulse')} />
-              {status.label}
+      <CardHeader className="border-b bg-muted/50 py-3 px-6 flex flex-col space-y-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 min-w-0">
+          <span
+            className="text-lg font-bold cursor-pointer hover:text-primary truncate"
+            onClick={onOpenDashboard}
+          >
+            {campaign.name}
+          </span>
+          <Badge variant={status.variant} className="flex items-center gap-1.5 px-2.5 py-0.5 shrink-0">
+            <status.icon className={cn('h-3 w-3', campaign.status === 'running' && 'animate-pulse')} />
+            {status.label}
+          </Badge>
+          <span className="text-xs text-muted-foreground">
+            Шаблон: <span className="font-mono text-primary">{campaign.template_name}</span>
+          </span>
+          {hasAB && (
+            <Badge variant="outline" size="sm" className="bg-primary/10 text-primary border-primary/20">
+              A/B тест
             </Badge>
-          </div>
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-muted-foreground">
-              Шаблон: <span className="font-mono text-primary">{campaign.template_name}</span>
-            </p>
-            {hasAB && (
-              <Badge variant="outline" size="sm" className="bg-primary/10 text-primary border-primary/20">
-                A/B тест
-              </Badge>
-            )}
-          </div>
+          )}
         </div>
-        <div className="flex items-center gap-3 text-sm shrink-0">
+        <div className="flex items-center gap-3 text-sm flex-wrap">
           <span className="text-foreground font-medium">Охват: {campaign.total_sent}</span>
           <span className="text-muted-foreground">·</span>
           <span className="text-success font-medium">Открыто: {campaign.total_opened} ({openRate}%)</span>
@@ -105,38 +101,40 @@ export function CampaignCard({
           <span className="text-destructive font-medium">Ошибок: {campaign.total_errors || 0}</span>
         </div>
       </CardHeader>
-      <CardContent className="p-6">
+      <CardContent className="py-2 px-4">
         <div className="flex items-center gap-3">
           {['draft', 'paused', 'paused_daily_limit', 'completed'].includes(campaign.status) ? (
             <Button
-              className="shrink-0 bg-success hover:bg-success/90 text-success-foreground h-9"
+              size="sm"
+              className="shrink-0 bg-success hover:bg-success/90 text-success-foreground h-7"
               onClick={onRun}
               disabled={isRunning}
             >
               {isRunning ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Запуск...</>
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Запуск...</>
               ) : (
-                <><Play className="mr-2 h-4 w-4 fill-current" /> Запустить</>
+                <><Play className="mr-1.5 h-3.5 w-3.5 fill-current" /> Запустить</>
               )}
             </Button>
           ) : campaign.status === 'running' ? (
             <Button
               variant="outline"
-              className="shrink-0 h-9"
+              size="sm"
+              className="shrink-0 h-7"
               onClick={onPause}
               disabled={isPausing}
             >
               {isPausing ? (
-                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Приостановка...</>
+                <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Приостановка...</>
               ) : (
-                <><Pause className="mr-2 h-4 w-4" /> Пауза</>
+                <><Pause className="mr-1.5 h-3.5 w-3.5" /> Пауза</>
               )}
             </Button>
           ) : null}
 
-          <div className="flex-1 space-y-1">
-            <Progress value={progress} className="h-2" />
-            <div className="flex justify-between text-[11px] text-muted-foreground">
+          <div className="flex-1 space-y-0.5">
+            <Progress value={progress} className="h-1.5" />
+            <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>Отправлено: {campaign.total_sent}</span>
               <span>Всего: {totalTargets}</span>
             </div>
@@ -149,7 +147,7 @@ export function CampaignCard({
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="h-9 text-xs"
+                    className="h-7 text-xs"
                     onClick={onDelete}
                   >
                     Да
@@ -157,7 +155,7 @@ export function CampaignCard({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-9 text-xs"
+                    className="h-7 text-xs"
                     onClick={onCancelDeleteConfirm}
                   >
                     Нет
@@ -167,11 +165,11 @@ export function CampaignCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
                   onClick={onRequestDeleteConfirm}
                   title="Удалить черновик"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               )}
             </>
