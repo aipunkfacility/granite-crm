@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import {
   Loader2, AlertCircle, ArrowLeft,
   RefreshCw, AlertTriangle, CheckCircle2, Clock,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { CompanySheet } from '@/components/companies/CompanySheet';
 import { toast } from 'sonner';
@@ -53,6 +54,7 @@ export default function NetworkDetailPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [spamDialogOpen, setSpamDialogOpen] = useState(false);
   const [spamSaving, setSpamSaving] = useState(false);
+  const [citiesOpen, setCitiesOpen] = useState(false);
   const { token: adminToken, isActive: isAdmin } = useAdmin();
 
   // Escape key to close confirm dialog
@@ -242,31 +244,46 @@ export default function NetworkDetailPage() {
       </Card>
 
       <Card className="border-border p-6">
-        <h3 className="text-sm font-semibold mb-4">Города</h3>
-        {net.top_cities.length > 0 ? (
-          <div className="space-y-2">
-            {net.top_cities.map((c, i) => (
-              <div key={c.name} className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground w-24 text-right shrink-0 truncate">{c.name}</span>
-                <div className="flex-1 h-6 rounded-md bg-muted/50 overflow-hidden">
-                  <div
-                    className="h-full rounded-md flex items-center justify-end pr-2 text-xs font-medium text-white"
-                    style={{
-                      width: `${(c.count / maxCount) * 100}%`,
-                      background: 'var(--primary)',
-                      opacity: 1 - i * 0.08,
-                    }}
-                  >
-                    {c.count}
+        <div
+          className="flex items-center justify-between cursor-pointer select-none"
+          onClick={() => setCitiesOpen(!citiesOpen)}
+        >
+          <h3 className="text-sm font-semibold">Города ({net.top_cities.length})</h3>
+          <button
+            className="text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={citiesOpen ? 'Свернуть' : 'Развернуть'}
+          >
+            {citiesOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+        {citiesOpen && (
+          <div className="mt-4">
+            {net.top_cities.length > 0 ? (
+              <div className="space-y-2">
+                {net.top_cities.map((c, i) => (
+                  <div key={c.name} className="flex items-center gap-3">
+                    <span className="text-sm text-muted-foreground w-24 text-right shrink-0 truncate">{c.name}</span>
+                    <div className="flex-1 h-6 rounded-md bg-muted/50 overflow-hidden">
+                      <div
+                        className="h-full rounded-md flex items-center justify-end pr-2 text-xs font-medium text-white"
+                        style={{
+                          width: `${(c.count / maxCount) * 100}%`,
+                          background: 'var(--primary)',
+                          opacity: 1 - i * 0.08,
+                        }}
+                      >
+                        {c.count}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Нет данных о распределении по городам
+              </p>
+            )}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-4">
-            Нет данных о распределении по городам
-          </p>
         )}
       </Card>
 
