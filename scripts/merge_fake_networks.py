@@ -48,6 +48,11 @@ def merge_companies(target: CompanyRow, sources: list[CompanyRow], db_session) -
                 target_emails.update(added)
                 target.emails = list(target_emails)
 
+        # 5. Clear network flag on target after merging all sources
+        target_enriched = db_session.get(EnrichedCompanyRow, target.id)
+        if target_enriched and target_enriched.is_network:
+            target_enriched.is_network = False
+
         merged_from = list(target.merged_from or [])
         if source.id not in merged_from:
             merged_from.append(source.id)
