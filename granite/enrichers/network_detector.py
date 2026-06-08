@@ -3,6 +3,7 @@ from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
 from granite.constants import FREE_EMAIL_DOMAINS
+from granite.scrapers.web_search import _MULTI_CITY_DOMAIN_CACHE
 
 
 class NetworkDetector:
@@ -193,8 +194,9 @@ class NetworkDetector:
                     email_counter[e] += 1
 
         if email_counter:
+            total_with_email = sum(email_counter.values())
             most_common_count = email_counter.most_common(1)[0][1]
-            if most_common_count >= len(companies) * threshold:
+            if total_with_email >= 2 and most_common_count >= total_with_email * threshold:
                 return "regional"
 
         if signal_type in ("phone", "email_domain"):
@@ -323,6 +325,14 @@ class NetworkDetector:
                 scores = [row_details[i]["score"] for i in ids]
                 companies_data = [row_details[i] for i in ids]
                 ntype = self._classify_network_type(companies_data, "website")
+                # Override: если домен (или его base) известен как агрегатор
+                if ntype != "aggregator":
+                    parts = domain.split(".")
+                    bare_base = ".".join(parts[-2:]) if len(parts) >= 2 else domain
+                    for cached_domain in _MULTI_CITY_DOMAIN_CACHE:
+                        if cached_domain == bare_base or cached_domain.endswith("." + bare_base):
+                            ntype = "aggregator"
+                            break
                 email_count = sum(1 for i in ids if row_details[i]["emails"])
                 phone_count = sum(1 for i in ids if row_details[i]["phones"])
                 primary_email, segment_dist = _group_email_and_segment(ids)
