@@ -1,16 +1,19 @@
 """API для ручной верификации сетей/дублей."""
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from loguru import logger
 
+from granite.api.admin import check_admin
 from granite.api.deps import get_db
 from granite.api.schemas import (
     NetworkCandidatesResponse, NetworkCandidateGroup, OkResponse,
+    OkProcessedResponse,
     ResolveNetworkGroupRequest,
     NetworkListResponse, NetworkSummary, NetworkDetail,
+    NetworkSpamRequest,
 )
-from granite.database import Database, EnrichedCompanyRow, CompanyRow
+from granite.database import Database, EnrichedCompanyRow, CompanyRow, CrmContactRow
 from granite.enrichers.network_detector import NetworkDetector
 
 router = APIRouter()
@@ -193,3 +196,60 @@ def unmark_network(
     )
     logger.info(f"networks unmark: {updated} companies unmarked (group={group_id})")
     return {"ok": True, "message": f"Снята пометка сети с {updated} компаний"}
+
+
+@router.post("/networks/{group_id:path}/spam", response_model=OkProcessedResponse)
+def spam_network(
+    group_id: str,
+    body: NetworkSpamRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Пометить все компании сети как спам."""
+    check_admin(request)
+
+    detector = NetworkDetector(Database())
+    detail = detector.get_network_detail(db, group_id)
+    if not detail:
+        raise HTTPException(404, f"Network {group_id} not found")
+
+    company_ids = [c["id"] for c in detail["companies"]]
+    if not company_ids:
+        raise HTTPException(400, "Network has no companies")
+
+    processed = 0
+    now = datetime.now(timezone.utc)
+    for cid in company_ids:
+        company = db.get(CompanyRow, cid)
+        if not company or company.deleted_at is not None:
+            continue
+        prev_segment = company.segment or "unknown"
+        company.segment = "spam"
+        company.status = "spam"
+        company.deleted_at = now
+        company.review_reason = f"mark-spam:{body.reason}:prev_segment={prev_segment}"
+        company.needs_review = False
+        company.updated_at = now
+
+        if body.note:
+            existing = company.notes or ""
+            note_line = f"[network-spam] {body.note}"
+            if existing:
+                company.notes = existing.rstrip() + "\n" + note_line
+            else:
+                company.notes = note_line
+
+        enriched = db.get(EnrichedCompanyRow, cid)
+        if enriched:
+            enriched.segment = "spam"
+
+        contact = db.get(CrmContactRow, cid)
+        if contact:
+            contact.stop_automation = 1
+            contact.updated_at = now
+
+        processed += 1
+
+    db.commit()
+    logger.info(f"network-spam: {processed}/{len(company_ids)} companies (group={group_id})")
+    return {"ok": True, "processed": processed}

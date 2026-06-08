@@ -1,18 +1,21 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchNetworks, NetworksParams } from '@/lib/api/networks';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { fetchNetworks, NetworksParams, spamNetwork } from '@/lib/api/networks';
 import { NetworkSummary } from '@/lib/types/api';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Loader2, AlertCircle, Globe, Phone, Mail,
   MapPin, Building2, Star, RefreshCw,
-  CheckCircle2, Clock, Network,
+  CheckCircle2, Clock, Network, AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useAdmin } from '@/lib/admin-context';
+import { toast } from 'sonner';
+import { MarkSpamDialog } from '@/components/companies/MarkSpamDialog';
 
 const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
   franchise: { label: 'Франчайзинг', className: 'bg-[var(--network-franchise-bg)] text-[var(--network-franchise-text)] border-[var(--network-franchise-text)]/20' },
@@ -54,6 +57,26 @@ function NetworkCard({ net }: { net: NetworkSummary }) {
   const signalCfg = SIGNAL_CONFIG[net.signal_type] ?? SIGNAL_CONFIG.website;
   const statusCfg = CONTACT_STATUS_CONFIG[net.contact_status] ?? CONTACT_STATUS_CONFIG.none;
   const SignalIcon = signalCfg.icon;
+  const { token: adminToken, isActive: isAdmin } = useAdmin();
+  const queryClient = useQueryClient();
+  const [spamDialogOpen, setSpamDialogOpen] = useState(false);
+  const [spamSaving, setSpamSaving] = useState(false);
+
+  const handleNetworkSpam = async (reason: string, note?: string) => {
+    if (!adminToken) return;
+    setSpamSaving(true);
+    try {
+      const result = await spamNetwork(net.group_id, reason, adminToken, note);
+      toast.success(`В спам: ${result.processed} филиалов`);
+      setSpamDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['networks'] });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setSpamSaving(false);
+    }
+  };
+
   const topCities = net.top_cities.slice(0, 4);
   const isFranchise = net.network_type === 'franchise';
   const hasContact = Boolean(net.primary_email);
@@ -133,6 +156,30 @@ function NetworkCard({ net }: { net: NetworkSummary }) {
           >
             {isFranchise ? 'Выбрать филиалы' : '+ В кампанию'}
           </Button>
+          {isAdmin && (
+            <>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="text-xs h-7"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSpamDialogOpen(true);
+                }}
+              >
+                <AlertTriangle className="h-3 w-3 mr-1" />
+                В спам
+              </Button>
+              <MarkSpamDialog
+                companyName={`сеть «${net.signal_value}»`}
+                isOpen={spamDialogOpen}
+                onClose={() => setSpamDialogOpen(false)}
+                onConfirm={handleNetworkSpam}
+                isSaving={spamSaving}
+              />
+            </>
+          )}
         </div>
       </div>
     </Link>

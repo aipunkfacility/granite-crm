@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from loguru import logger
 
 from granite.api.deps import get_db
-from granite.api.admin import _check_admin
+from granite.api.admin import check_admin
 
 __all__ = ["router"]
 
@@ -37,7 +37,7 @@ def debug_process_replies(
     from granite.email.imap_helpers import fetch_imap_messages
     from granite.email.process_replies import process_replies
 
-    _check_admin(request)
+    check_admin(request)
 
     # 1. Проверка кред
     imap_user = os.environ.get("SMTP_USER", "")
@@ -123,7 +123,7 @@ def debug_imap_inbox(
     """
     from granite.email.imap_helpers import fetch_imap_messages
 
-    _check_admin(request)
+    check_admin(request)
 
     imap_user = os.environ.get("SMTP_USER", "")
     imap_pass = os.environ.get("IMAP_PASS", os.environ.get("SMTP_PASS", ""))

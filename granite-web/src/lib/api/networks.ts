@@ -51,3 +51,17 @@ export const unmarkNetwork = async (
   );
   return data;
 };
+
+export const spamNetwork = async (
+  groupId: string,
+  reason: string,
+  adminToken: string,
+  note?: string,
+): Promise<{ ok: boolean; processed: number }> => {
+  const { data } = await apiClient.post<{ ok: boolean; processed: number }>(
+    `networks/${encodeURIComponent(groupId)}/spam`,
+    { reason, note: note ?? '' },
+    { headers: { 'X-Admin-Token': adminToken } },
+  );
+  return data;
+};

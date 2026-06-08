@@ -124,6 +124,21 @@ class MarkSpamRequest(BaseModel):
     )
 
 
+class NetworkSpamRequest(BaseModel):
+    """Запрос на пометку сети как спам."""
+    reason: str = Field(
+        ...,
+        min_length=1,
+        pattern="^(aggregator|duplicate|duplicate_contact|foreign_city|not_target|wrong_category|closed|other|spam_complaint)$",
+        description="Причина пометки",
+    )
+    note: str = Field(
+        "",
+        max_length=500,
+        description="Примечание (из MarkSpamDialog)",
+    )
+
+
 class MarkDuplicateRequest(BaseModel):
     """Запрос на пометку компании как дубликат."""
     target_id: int = Field(..., description="ID компании-оригинала")
@@ -215,6 +230,12 @@ class OkResponse(BaseModel):
     ok: bool = True
     warnings: Optional[List[str]] = None
     message: Optional[str] = None
+
+
+class OkProcessedResponse(BaseModel):
+    """Ответ с количеством обработанных записей."""
+    ok: bool
+    processed: int
 
 
 class OkWithIdResponse(BaseModel):

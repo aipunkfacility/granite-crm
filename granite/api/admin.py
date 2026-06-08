@@ -16,7 +16,7 @@ from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmTouchRow,
 )
 
-__all__ = ["router"]
+__all__ = ["router", "check_admin"]
 
 router = APIRouter()
 
@@ -61,7 +61,7 @@ def _verify_token(token: str, password: str) -> bool:
         return False
 
 
-def _check_admin(request: Request) -> None:
+def check_admin(request: Request) -> None:
     """Проверить X-Admin-Token из заголовка запроса."""
     admin_password = os.environ.get("GRANITE_ADMIN_PASSWORD", "")
     if not admin_password:
@@ -90,7 +90,7 @@ def batch_approve(
     db: Session = Depends(get_db),
 ):
     """Batch-approve: очистить needs_review для списка компаний."""
-    _check_admin(request)
+    check_admin(request)
 
     processed = 0
     for cid in body.company_ids:
@@ -114,7 +114,7 @@ def batch_spam(
     db: Session = Depends(get_db),
 ):
     """Batch-spam: пометить список компаний как спам."""
-    _check_admin(request)
+    check_admin(request)
 
     processed = 0
     for cid in body.company_ids:
