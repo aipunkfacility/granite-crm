@@ -2,7 +2,7 @@
 from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
-from granite.constants import FREE_EMAIL_DOMAINS
+from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMAINS
 from granite.scrapers.web_search import _MULTI_CITY_DOMAIN_CACHE
 
 
@@ -75,13 +75,13 @@ class NetworkDetector:
                 # Domain counting
                 domain = extract_domain(website)
                 cached_domains[row_id] = domain
-                if domain:
+                if domain and domain not in SPAM_DOMAINS and domain not in NON_NETWORK_DOMAINS:
                     domain_count[domain] = domain_count.get(domain, 0) + 1
 
                 # Base domain counting (для субдоменных сетей типа *.danila-master.ru)
                 base = extract_base_domain(website)
                 cached_base_domains[row_id] = base
-                if base:
+                if base and base not in SPAM_DOMAINS and base not in NON_NETWORK_DOMAINS:
                     base_domain_count[base] = base_domain_count.get(base, 0) + 1
 
                 # Phone counting with normalization cache
