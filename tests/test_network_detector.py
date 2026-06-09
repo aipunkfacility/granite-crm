@@ -33,6 +33,30 @@ def test_scan_filters_non_network_domains():
     assert update_called, "Network should be detected via phone signal"
 
 
+def test_scan_filters_tilda_constructor():
+    """Tilda subdomains should not trigger network via base_domain."""
+    db = MagicMock()
+    session = MagicMock()
+    db.session_scope.return_value.__enter__.return_value = session
+
+    mock_rows = [
+        (1, "https://bel.oblaka.tilda.ws/", ["79001112233"], []),
+        (2, "https://ritual-angel.tilda.ws/", ["79004445566"], []),
+        (3, "https://ritualtitov.tilda.ws/", ["79007778899"], []),
+    ]
+
+    Q = session.query
+    Q.return_value.all.return_value = mock_rows
+    Q.return_value.filter.return_value.all.return_value = mock_rows
+
+    detector = NetworkDetector(db, {"enrichment": {"network_threshold": 2}})
+    detector.scan_for_networks()
+
+    # All different phones, all on tilda.ws — should NOT trigger network
+    update_called = Q.return_value.filter.return_value.update.called
+    assert not update_called, "tilda.ws should not trigger network via base_domain"
+
+
 def test_scan_filters_spam_domains():
     """SPAM_DOMAINS should not be counted as network signals."""
     db = MagicMock()
