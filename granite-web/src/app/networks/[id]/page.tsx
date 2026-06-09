@@ -40,7 +40,6 @@ const SEGMENT_COLORS: Record<string, string> = {
 
 const SIGNAL_LABELS: Record<string, { label: string; className: string }> = {
   website: { label: 'Сайт', className: 'bg-primary/10 text-primary border-primary/20' },
-  phone: { label: 'Телефон', className: 'bg-warning/10 text-warning border-warning/20' },
   email_domain: { label: 'Email', className: 'bg-success/10 text-success border-success/20' },
 };
 

@@ -24,10 +24,9 @@ import { useRouter } from 'next/navigation';
 const SECTION_LABELS: Record<string, { label: string; icon: React.ElementType; color: string }> = {
   email_domain: { label: 'Email-домен', icon: Mail, color: 'bg-success/10 text-success' },
   website: { label: 'Сайт', icon: Globe, color: 'bg-primary/10 text-primary' },
-  phone: { label: 'Телефон', icon: Phone, color: 'bg-warning/10 text-warning' },
 };
 
-type SignalType = '' | 'email_domain' | 'website' | 'phone';
+type SignalType = '' | 'email_domain' | 'website';
 
 export default function NetworkCandidatesPage() {
   const router = useRouter();
@@ -35,7 +34,7 @@ export default function NetworkCandidatesPage() {
 
   const [signalFilter, setSignalFilter] = useState<SignalType>('');
   const [minCompanies, setMinCompanies] = useState(3);
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['email_domain', 'website', 'phone']));
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['email_domain', 'website']));
 
   const params: NetworkCandidatesParams = { include_resolved: true };
   if (signalFilter) params.signal_type = signalFilter;
@@ -129,7 +128,6 @@ export default function NetworkCandidatesPage() {
           <option value="">Все типы</option>
           <option value="email_domain">Email-домен</option>
           <option value="website">Сайт</option>
-          <option value="phone">Телефон</option>
         </select>
 
         <div className="flex items-center gap-2">
@@ -170,7 +168,7 @@ export default function NetworkCandidatesPage() {
         </div>
       ) : (
         <div className="space-y-6">
-          {['email_domain', 'website', 'phone'].map((st) => {
+          {['email_domain', 'website'].map((st) => {
             const sectionGroups = groupedWaiting.get(st) ?? [];
             const sectionResolved = groupedResolved.get(st) ?? [];
             if (sectionGroups.length === 0 && sectionResolved.length === 0) return null;

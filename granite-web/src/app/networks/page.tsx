@@ -43,7 +43,7 @@ export default function NetworksPage() {
             {total > 0 && <Badge variant="default" className="text-sm">{total}</Badge>}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Компании, объединённые общим сайтом, телефоном или email-доменом.
+            Компании, объединённые общим сайтом или email-доменом.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={() => router.push('/networks/candidates')}>
@@ -72,7 +72,6 @@ export default function NetworksPage() {
         >
           <option value="">Любой сигнал</option>
           <option value="website">Сайт</option>
-          <option value="phone">Телефон</option>
           <option value="email_domain">Email-домен</option>
         </select>
         <select

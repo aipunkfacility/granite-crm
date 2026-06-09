@@ -25,7 +25,6 @@ interface NetworkGroupCardProps {
 const SIGNAL_CONFIG = {
   email_domain: { label: 'Домен email', icon: Mail, variant: 'default' as const },
   website: { label: 'Сайт', icon: Globe, variant: 'secondary' as const },
-  phone: { label: 'Телефон', icon: Phone, variant: 'outline' as const },
 };
 
 export function NetworkGroupCard({ group, onResolved }: NetworkGroupCardProps) {

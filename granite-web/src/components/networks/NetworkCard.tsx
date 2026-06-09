@@ -26,7 +26,6 @@ const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> 
 
 const SIGNAL_CONFIG: Record<string, { label: string; icon: React.ElementType; className: string }> = {
   website: { label: 'сайт', icon: Globe, className: 'bg-primary/10 text-primary' },
-  phone: { label: 'тел', icon: Phone, className: 'bg-amber-100 text-amber-700' },
   email_domain: { label: 'email', icon: Mail, className: 'bg-emerald-100 text-emerald-700' },
 };
 

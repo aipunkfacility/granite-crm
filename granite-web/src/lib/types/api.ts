@@ -137,7 +137,7 @@ export interface NetworkCandidateCompany {
 
 export interface NetworkCandidateGroup {
   group_id: string;
-  signal_type: 'email_domain' | 'website' | 'phone';
+  signal_type: 'email_domain' | 'website';
   signal_value: string;
   company_count: number;
   companies: NetworkCandidateCompany[];
