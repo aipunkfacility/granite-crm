@@ -130,6 +130,140 @@ def test_scan_keeps_real_base_domain_network():
     assert update_called, "Base domain network should be caught"
 
 
+def test_list_networks_skips_subdomain_of_major_network():
+    """Subdomain groups (ntagil.danila-master.ru) should be merged into the
+    parent base_domain group when the base already forms a major network."""
+    from unittest.mock import MagicMock
+
+    db = MagicMock()
+    session = MagicMock()
+
+    # Companies: 4 on danila-master.ru (4 cities), 2 on ntagil.danila-master.ru
+    mock_rows = [
+        (1, "Данила-Мастер Москва", "Москва", "https://danila-master.ru/",
+         ["79001112233"], [], 30.0, "A"),
+        (2, "Данила-Мастер СПб", "Санкт-Петербург", "https://danila-master.ru/",
+         ["79004445566"], [], 30.0, "A"),
+        (3, "Данила-Мастер Казань", "Казань", "https://danila-master.ru/",
+         ["79007778899"], [], 30.0, "A"),
+        (4, "Данила-Мастер НН", "Нижний Новгород", "https://danila-master.ru/",
+         ["79009990011"], [], 30.0, "A"),
+        (5, "Ритуал НТагил", "Нижний Тагил", "https://ntagil.danila-master.ru/",
+         ["79001113344"], [], 20.0, "B"),
+        (6, "Ритуал НТагил 2", "Нижний Тагил", "https://ntagil.danila-master.ru/",
+         ["79001115566"], [], 20.0, "B"),
+        (7, "Independent A", "Тверь", "https://independent.ru/",
+         ["79009991234"], [], 15.0, "C"),
+        (8, "Independent B", "Рязань", "https://independent.ru/",
+         ["79009995678"], [], 15.0, "C"),
+    ]
+
+    # session.query(...).filter(...).all() returns mock_rows
+    # session.query(...).filter(...).all() on second call returns []
+    # session.query(...).filter(...).distinct().all() returns []
+    query_mock = MagicMock()
+    query_mock.all.side_effect = [
+        mock_rows,  # EnrichedCompanyRow query
+        [],  # dead_ids query
+    ]
+    query_mock.distinct.return_value.all.return_value = []  # CrmEmailLog query
+    session.query.return_value.filter.return_value = query_mock
+
+    detector = NetworkDetector(db, {"enrichment": {"network_threshold": 2}})
+    groups = detector.list_networks(session)
+
+    # Should have 2 groups: danila-master.ru and independent.ru
+    website_groups = [g for g in groups if g["signal_type"] == "website"]
+    group_ids = {g["group_id"] for g in website_groups}
+
+    assert "website:danila-master.ru" in group_ids, (
+        "danila-master.ru should be a network group"
+    )
+    assert "website:ntagil.danila-master.ru" not in group_ids, (
+        "ntagil.danila-master.ru should NOT be a separate group"
+    )
+    assert "website:independent.ru" in group_ids, (
+        "independent.ru should be a separate group"
+    )
+
+    # danila-master.ru group should contain all 6 companies
+    dm_group = next(g for g in website_groups if g["group_id"] == "website:danila-master.ru")
+    assert dm_group["company_count"] == 6, (
+        f"Expected 6 companies in danila-master.ru group, got {dm_group['company_count']}"
+    )
+
+
+def test_list_networks_does_not_skip_standalone_subdomain():
+    """Subdomain groups without a major parent network should remain separate."""
+    from unittest.mock import MagicMock
+
+    db = MagicMock()
+    session = MagicMock()
+
+    # Two unrelated companies on the same subdomain, same phone = network
+    mock_rows = [
+        (1, "Comp A", "City1", "https://unique.petshop.ru/",
+         ["79001112233"], [], 25.0, "A"),
+        (2, "Comp B", "City2", "https://unique.petshop.ru/",
+         ["79001112233"], [], 25.0, "A"),
+    ]
+
+    query_mock = MagicMock()
+    query_mock.all.side_effect = [
+        mock_rows,
+        [],
+    ]
+    query_mock.distinct.return_value.all.return_value = []
+    session.query.return_value.filter.return_value = query_mock
+
+    detector = NetworkDetector(db, {"enrichment": {"network_threshold": 2}})
+    groups = detector.list_networks(session)
+
+    website_groups = [g for g in groups if g["signal_type"] == "website"]
+    group_ids = {g["group_id"] for g in website_groups}
+
+    assert "website:unique.petshop.ru" in group_ids, (
+        "Standalone subdomain network should still appear"
+    )
+
+
+def test_list_networks_keeps_base_domain_with_few_cities():
+    """Subdomains of base domains with <3 cities should NOT be skipped."""
+    from unittest.mock import MagicMock
+
+    db = MagicMock()
+    session = MagicMock()
+
+    mock_rows = [
+        # Base domain with 2 companies at the SAME city (1 city total for base)
+        (1, "Unique A", "City1", "https://base.ru/", ["79001112233"], [], 20.0, "A"),
+        (2, "Unique B", "City1", "https://base.ru/", ["79004445566"], [], 20.0, "A"),
+        # Subdomain with 2 companies in another city = should be its own group
+        (3, "Sub A", "City2", "https://sub.base.ru/", ["79007778899"], [], 20.0, "B"),
+        (4, "Sub B", "City2", "https://sub.base.ru/", ["79009990011"], [], 20.0, "B"),
+    ]
+
+    query_mock = MagicMock()
+    query_mock.all.side_effect = [
+        mock_rows,
+        [],
+    ]
+    query_mock.distinct.return_value.all.return_value = []
+    session.query.return_value.filter.return_value = query_mock
+
+    detector = NetworkDetector(db, {"enrichment": {"network_threshold": 2}})
+    groups = detector.list_networks(session)
+
+    website_groups = [g for g in groups if g["signal_type"] == "website"]
+    group_ids = {g["group_id"] for g in website_groups}
+
+    # base.ru has only 2 companies in 2 cities → NOT a major network
+    # sub.base.ru has 2 companies in 1 city → should be its own group
+    assert "website:sub.base.ru" in group_ids, (
+        "sub.base.ru should be its own group when base.ru has <3 cities"
+    )
+
+
 def test_scan_filters_spravka_subdomains():
     """City subdomains on spravka.ru should not trigger network via base_domain."""
     db = MagicMock()

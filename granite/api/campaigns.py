@@ -1024,6 +1024,8 @@ def _add_recipients_to_campaign(
         ).all()
         already_sent_emails = {row[0].lower() for row in log_rows}
 
+    seen_emails: set[str] = set()
+
     for cid in company_ids:
         if cid in existing_ids:
             skipped_details.append({"company_id": cid, "reason": "уже в кампании"})
@@ -1038,6 +1040,11 @@ def _add_recipients_to_campaign(
         if not email_to:
             skipped_details.append({"company_id": cid, "reason": "нет email"})
             continue
+
+        if email_to in seen_emails:
+            skipped_details.append({"company_id": cid, "reason": f"дубль email ({email_to})"})
+            continue
+        seen_emails.add(email_to)
 
         if cid in stop_automation_ids:
             skipped_details.append({"company_id": cid, "reason": "отписан"})

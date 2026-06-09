@@ -5,25 +5,32 @@ from unittest.mock import MagicMock
 from granite.dedup.network_filter import detect_and_mark_aggregators
 
 
-def test_a6_filters_non_network_domains():
-    """NON_NETWORK_DOMAINS in 3+ cities should NOT trigger network."""
+def _make_db(mock_records, mock_company):
+    """Helper to set up mocked DB with side-effect for two .all() calls."""
     db = MagicMock()
     session = MagicMock()
     db.session_scope.return_value.__enter__.return_value = session
+    session.query.return_value.filter.return_value.all.side_effect = [
+        mock_records,
+        [],  # email query returns nothing
+    ]
+    session.query.return_value.get.return_value = mock_company
+    return db
 
+
+def test_a6_filters_non_network_domains():
+    """NON_NETWORK_DOMAINS in 3+ cities should NOT trigger network."""
     mock_records = [
         (1, "https://clients.site/company1", "City1"),
         (2, "https://clients.site/company2", "City2"),
         (3, "https://clients.site/company3", "City3"),
     ]
-    session.query.return_value.filter.return_value.all.return_value = mock_records
-
     mock_company = MagicMock()
     mock_company.id = 1
     mock_company.needs_review = False
     mock_company.review_reason = ""
-    session.query.return_value.get.return_value = mock_company
 
+    db = _make_db(mock_records, mock_company)
     result = detect_and_mark_aggregators(db)
 
     assert result == 0, "NON_NETWORK_DOMAINS should not trigger A-6"
@@ -32,23 +39,17 @@ def test_a6_filters_non_network_domains():
 
 def test_a6_still_catches_real_networks():
     """Real networks in 3+ cities should still be caught."""
-    db = MagicMock()
-    session = MagicMock()
-    db.session_scope.return_value.__enter__.return_value = session
-
     mock_records = [
         (1, "https://vmkros.ru/", "Москва"),
         (2, "https://vmkros.ru/", "СПб"),
         (3, "https://vmkros.ru/", "Казань"),
     ]
-    session.query.return_value.filter.return_value.all.return_value = mock_records
-
     mock_company = MagicMock()
     mock_company.id = 1
     mock_company.needs_review = False
     mock_company.review_reason = ""
-    session.query.return_value.get.return_value = mock_company
 
+    db = _make_db(mock_records, mock_company)
     result = detect_and_mark_aggregators(db)
 
     assert result > 0, "Real network should still be detected"
@@ -57,24 +58,18 @@ def test_a6_still_catches_real_networks():
 
 def test_a6_spam_domains_become_spam():
     """SPAM_DOMAINS in 3+ cities should become segment=spam."""
-    db = MagicMock()
-    session = MagicMock()
-    db.session_scope.return_value.__enter__.return_value = session
-
     mock_records = [
         (1, "https://www.zoon.ru/company1/", "City1"),
         (2, "https://www.zoon.ru/company2/", "City2"),
         (3, "https://www.zoon.ru/company3/", "City3"),
     ]
-    session.query.return_value.filter.return_value.all.return_value = mock_records
-
     mock_company = MagicMock()
     mock_company.id = 1
     mock_company.needs_review = False
     mock_company.review_reason = ""
     mock_company.segment = "A"
-    session.query.return_value.get.return_value = mock_company
 
+    db = _make_db(mock_records, mock_company)
     result = detect_and_mark_aggregators(db)
 
     assert result > 0, "SPAM_DOMAINS should still be marked"

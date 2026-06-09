@@ -6,6 +6,11 @@ from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMA
 from granite.scrapers.web_search import _MULTI_CITY_DOMAIN_CACHE
 
 
+def _is_ua_region(dom: str | None) -> bool:
+    """Проверяет, относится ли домен к украинской зоне (.ua / .укр)."""
+    return bool(dom and (dom.endswith('.ua') or dom.endswith('.xn--j1amh')))
+
+
 class NetworkDetector:
     """Выявляет сети (филиалы одного бизнеса).
 
@@ -71,17 +76,20 @@ class NetworkDetector:
             email_domain_count: dict[str, int] = {}
             cached_email_domains: dict[int, list[str]] = {}
 
+            def _is_spam(dom: str | None) -> bool:
+                return bool(dom and (dom in SPAM_DOMAINS or dom in NON_NETWORK_DOMAINS or _is_ua_region(dom)))
+
             for row_id, website, phones, emails in rows:
                 # Domain counting
                 domain = extract_domain(website)
                 cached_domains[row_id] = domain
-                if domain and domain not in SPAM_DOMAINS and domain not in NON_NETWORK_DOMAINS:
+                if domain and not _is_spam(domain):
                     domain_count[domain] = domain_count.get(domain, 0) + 1
 
                 # Base domain counting (для субдоменных сетей типа *.danila-master.ru)
                 base = extract_base_domain(website)
                 cached_base_domains[row_id] = base
-                if base and base not in SPAM_DOMAINS and base not in NON_NETWORK_DOMAINS:
+                if base and not _is_spam(base):
                     base_domain_count[base] = base_domain_count.get(base, 0) + 1
 
                 # Phone counting with normalization cache
@@ -98,7 +106,7 @@ class NetworkDetector:
                 for email in (emails or []):
                     if isinstance(email, str) and '@' in email:
                         domain = email.split('@', 1)[1].lower().strip()
-                        if domain and domain not in FREE_EMAIL_DOMAINS:
+                        if domain and domain not in FREE_EMAIL_DOMAINS and not _is_ua_region(domain):
                             email_domains.append(domain)
                             email_domain_count[domain] = email_domain_count.get(domain, 0) + 1
                 cached_email_domains[row_id] = email_domains
@@ -132,10 +140,10 @@ class NetworkDetector:
                 domain = cached_domains[row_id]
                 base = cached_base_domains.get(row_id)
 
-                # Пропускаем компании на заведомо не-сетевых доменах (директории, хостинги)
-                if domain and (domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS):
+                # Пропускаем компании на заведомо не-сетевых доменах (директории, хостинги, .ua)
+                if domain and _is_spam(domain):
                     continue
-                if base and (base in SPAM_DOMAINS or base in NON_NETWORK_DOMAINS):
+                if base and _is_spam(base):
                     continue
 
                 is_net = domain in network_domains
@@ -317,14 +325,33 @@ class NetworkDetector:
         groups = []
 
         if not signal_type or signal_type == "website":
+            # Pre-compute which base_domains are already known major networks (3+ cities)
+            # to avoid duplicating subdomains as separate groups (e.g. ntagil.danila-master.ru)
+            base_network_cities: dict[str, set[str]] = {}
+            for domain_key, ids_set in website_map.items():
+                pk = domain_key.split(".")
+                if len(pk) < 3:
+                    continue  # not a subdomain, skip
+                base = ".".join(pk[-2:])
+                base_ids = {i for i in website_map.get(base, set())
+                            if row_details[i].get("segment") != "spam"}
+                if len(base_ids) < 3:
+                    continue
+                base_cities = {row_details[i]["city"] for i in base_ids}
+                if len(base_cities) >= 3:
+                    base_network_cities[domain_key] = base_cities
+
             for domain, ids in website_map.items():
-                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
+                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS or _is_ua_region(domain):
                     continue
                 parts = domain.split(".")
                 if len(parts) >= 2:
                     sld_tld = ".".join(parts[-2:])
-                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS:
+                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS or _is_ua_region(sld_tld):
                         continue
+                # Skip subdomains of known major networks (Данила-Мастер и т.п.)
+                if domain in base_network_cities:
+                    continue
                 ids = {i for i in ids if row_details[i].get("segment") != "spam"}
                 if len(ids) < min_company_count:
                     continue
@@ -364,6 +391,8 @@ class NetworkDetector:
 
         if not signal_type or signal_type == "email_domain":
             for domain, ids in email_domain_map.items():
+                if _is_ua_region(domain):
+                    continue
                 ids = {i for i in ids if row_details[i].get("segment") != "spam"}
                 if len(ids) < min_company_count:
                     continue
@@ -571,6 +600,8 @@ class NetworkDetector:
 
         if not signal_type or signal_type == "email_domain":
             for domain, ids in email_domain_map.items():
+                if _is_ua_region(domain):
+                    continue
                 all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}
@@ -587,14 +618,31 @@ class NetworkDetector:
                 })
 
         if not signal_type or signal_type == "website":
+            # Pre-compute which base_domains are already known major networks
+            base_network_cities: dict[str, set[str]] = {}
+            for domain_key, ids_set in website_map.items():
+                pk = domain_key.split(".")
+                if len(pk) < 3:
+                    continue
+                base = ".".join(pk[-2:])
+                base_ids = {i for i in website_map.get(base, set())
+                            if row_details[i].get("segment") != "spam"}
+                if len(base_ids) < 3:
+                    continue
+                base_cities = {row_details[i]["city"] for i in base_ids}
+                if len(base_cities) >= 3:
+                    base_network_cities[domain_key] = base_cities
+
             for domain, ids in website_map.items():
-                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS:
+                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS or _is_ua_region(domain):
                     continue
                 parts = domain.split(".")
                 if len(parts) >= 2:
                     sld_tld = ".".join(parts[-2:])
-                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS:
+                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS or _is_ua_region(sld_tld):
                         continue
+                if domain in base_network_cities:
+                    continue
                 all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}

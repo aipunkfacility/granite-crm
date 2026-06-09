@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchNetworks, NetworksParams } from '@/lib/api/networks';
 import { Badge } from '@/components/ui/badge';
@@ -8,24 +8,38 @@ import { Button } from '@/components/ui/button';
 import {
   Loader2, AlertCircle, RefreshCw, Network,
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { NetworkCard } from '@/components/networks/NetworkCard';
 
-export default function NetworksPage() {
+function NetworksPageContent() {
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const [typeFilter, setTypeFilter] = useState<string>('');
-  const [signalFilter, setSignalFilter] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [minCompanies, setMinCompanies] = useState(2);
-  const params: NetworksParams = {};
-  if (typeFilter) params.network_type = typeFilter;
-  if (signalFilter) params.signal_type = signalFilter;
-  if (statusFilter) params.contact_status = statusFilter;
-  if (minCompanies > 2) params.min_companies = minCompanies;
+  const pathname = usePathname();
+
+  const [typeFilter, setTypeFilter] = useState<string>(() => searchParams.get('type') || '');
+  const [signalFilter, setSignalFilter] = useState<string>(() => searchParams.get('signal') || '');
+  const [statusFilter, setStatusFilter] = useState<string>(() => searchParams.get('status') || '');
+  const [minCompanies, setMinCompanies] = useState<number>(() => Number(searchParams.get('min')) || 2);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (typeFilter) params.set('type', typeFilter);
+    if (signalFilter) params.set('signal', signalFilter);
+    if (statusFilter) params.set('status', statusFilter);
+    if (minCompanies > 2) params.set('min', String(minCompanies));
+    const qs = params.toString();
+    router.replace(pathname + (qs ? `?${qs}` : ''), { scroll: false });
+  }, [typeFilter, signalFilter, statusFilter, minCompanies, router, pathname]);
+
+  const apiParams: NetworksParams = {};
+  if (typeFilter) apiParams.network_type = typeFilter;
+  if (signalFilter) apiParams.signal_type = signalFilter;
+  if (statusFilter) apiParams.contact_status = statusFilter;
+  if (minCompanies > 2) apiParams.min_companies = minCompanies;
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['networks', params],
-    queryFn: () => fetchNetworks(params),
+    queryKey: ['networks', apiParams],
+    queryFn: () => fetchNetworks(apiParams),
     staleTime: 10_000,
   });
 
@@ -160,5 +174,27 @@ export default function NetworksPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function NetworksPage() {
+  return (
+    <Suspense fallback={
+      <div className="space-y-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground flex items-center gap-3">
+              <Network className="h-8 w-8 text-primary" />
+              Сети
+            </h1>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 text-primary animate-spin" />
+        </div>
+      </div>
+    }>
+      <NetworksPageContent />
+    </Suspense>
   );
 }

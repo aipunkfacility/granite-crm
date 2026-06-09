@@ -11,10 +11,13 @@ NON_NETWORK_DOMAINS или SPAM_DOMAINS, при условии что у них 
 import sys
 sys.path.insert(0, '.')
 
-from granite.database import Database
+from datetime import datetime, timezone
+from granite.database import Database, CompanyRow, EnrichedCompanyRow
 from granite.enrichers.network_detector import NetworkDetector
 from granite.dedup.network_filter import detect_and_mark_aggregators
 from granite.constants import NON_NETWORK_DOMAINS, SPAM_DOMAINS
+from scripts.delete_spam_domains import SPAM_DOMAINS_TO_DELETE
+from sqlalchemy import or_
 
 
 def main():
@@ -22,9 +25,6 @@ def main():
 
     print("Step 1: Removing is_network from NON_NETWORK_DOMAINS websites...")
     with db.session_scope() as session:
-        from granite.database import EnrichedCompanyRow
-        from sqlalchemy import or_
-
         patterns = []
         for domain in NON_NETWORK_DOMAINS:
             patterns.append(EnrichedCompanyRow.website.like(f"%{domain}%"))
@@ -44,6 +44,21 @@ def main():
                 synchronize_session=False,
             )
             session.flush()
+
+        # Step 1.5 inside the same session
+        spam_patterns_c = [
+            CompanyRow.website.like(f"%{d}%")
+            for d in SPAM_DOMAINS_TO_DELETE
+        ]
+        spam_companies = session.query(CompanyRow).filter(or_(*spam_patterns_c)).all()
+        now = datetime.now(timezone.utc)
+        for comp in spam_companies:
+            comp.deleted_at = now
+            comp.needs_review = True
+            comp.review_reason = (comp.review_reason + " spam_domain_cleanup").strip()
+            comp.segment = "spam"
+        if spam_companies:
+            print(f"  Soft-deleted {len(spam_companies)} companies")
 
     print("Step 2: Re-running scan_for_networks with fixed filtering...")
     import yaml

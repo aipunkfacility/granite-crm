@@ -81,8 +81,21 @@ SPAM_DOMAINS: frozenset[str] = frozenset({
     "portaluslug.ru", "firmlist.ru", "pulscen.ru",
     "netoteka.ru", "regionz.ru", "uslugika.ru", "orgzz.ru",
     "openagent.ru", "travelask.ru",
-    "mnogonado.net", "gos-cps.ru", "companies.rbc.ru",
+    "mnogonado.net", "companies.rbc.ru",
     "vkvideo.ru",
+    # SEO-агрегаторы / конструкторы с несвязанными компаниями
+    "profi.ru", "youla.ru", "boarderz.ru", "pophouse.ru",
+    "300online.ru", "nts-stroy.ru", "spetsstroy.ru",
+    "vestiyuga.ru", "dplike.ru", "sculpture-decor.ru",
+    "masterskay31.ru", "spgranit.ru", "stella-z.ru",
+    "m-stone.su", "maryinaroshcha.ru",
+    "заказ-памятников.рф", "ритуал50.рф", "похороны63.рф",
+    "icomms.ru",
+    # Спам-домены подтверждённые
+    "resrex.ru", "adaware.ru", "smz.ooo",
+    # .ua домены (нецелевой регион)
+    "elibra.mk.ua", "granite.ua",
+    "ritual-monuments.com.ua", "ritual-stone.com.ua",
     # Confirmed spam domains — to be deleted
     "acbank.ru", "mvd-kbr.ru", "lotgame.ru", "stroinas.ru",
     "online-obuchenie.ru", "rosbaltnord.ru", "energogazeta.ru",

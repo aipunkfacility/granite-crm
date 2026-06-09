@@ -10,13 +10,14 @@ import { Card } from '@/components/ui/card';
 import {
   Loader2, AlertCircle, ArrowLeft,
   RefreshCw, AlertTriangle, CheckCircle2, Clock,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, MailPlus,
 } from 'lucide-react';
 import { CompanySheet } from '@/components/companies/CompanySheet';
 import { toast } from 'sonner';
 import { useAdmin } from '@/lib/admin-context';
 import { batchSpam } from '@/lib/api/admin';
 import { MarkSpamDialog } from '@/components/companies/MarkSpamDialog';
+import { AddToCampaignDialog } from '@/components/companies/AddToCampaignDialog';
 
 const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
   franchise: { label: 'Франчайзинг', className: 'bg-[var(--network-franchise-bg)] text-[var(--network-franchise-text)] border-[var(--network-franchise-text)]/20' },
@@ -53,6 +54,7 @@ export default function NetworkDetailPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [spamDialogOpen, setSpamDialogOpen] = useState(false);
   const [spamSaving, setSpamSaving] = useState(false);
+  const [campDialogOpen, setCampDialogOpen] = useState(false);
   const [citiesOpen, setCitiesOpen] = useState(false);
   const { token: adminToken, isActive: isAdmin } = useAdmin();
 
@@ -166,6 +168,14 @@ export default function NetworkDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-3 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCampDialogOpen(true)}
+            >
+              <MailPlus className="h-4 w-4 mr-1" />
+              В кампанию
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -327,6 +337,15 @@ export default function NetworkDetailPage() {
           </table>
         </div>
       </Card>
+      <AddToCampaignDialog
+        open={campDialogOpen}
+        onOpenChange={setCampDialogOpen}
+        companyIds={net.companies.map(c => c.id)}
+        count={net.companies.length}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['network-detail', groupId] });
+        }}
+      />
       <CompanySheet
         companyId={selectedCompanyId}
         open={sheetOpen}
