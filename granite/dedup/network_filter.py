@@ -6,7 +6,7 @@ from granite.utils import extract_domain
 
 # Домены, которые мы считаем 100% спам-агрегаторами (даже если они в 2 городах)
 # Единый источник — granite/constants.py
-from granite.constants import SPAM_DOMAINS as KNOW_SPAM_DOMAINS
+from granite.constants import SPAM_DOMAINS as KNOW_SPAM_DOMAINS, NON_NETWORK_DOMAINS
 
 def detect_and_mark_aggregators(db: Database) -> int:
     """A-6: Глобальный сканер для обнаружения сетей и агрегаторов.
@@ -46,7 +46,10 @@ def detect_and_mark_aggregators(db: Database) -> int:
             domain_to_cities[domain].add(city.lower())
         
         # 2. Определяем список доменов-сетей (3+ города)
-        network_domains = {d for d, cities in domain_to_cities.items() if len(cities) >= 3}
+        network_domains = {
+            d for d, cities in domain_to_cities.items()
+            if len(cities) >= 3 and d not in NON_NETWORK_DOMAINS
+        }
         logger.info(f"Найдено {len(network_domains)} доменов-сетей (3+ города)")
         
         if not network_domains:
