@@ -384,7 +384,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_get_cors_origins(),
     allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS", "HEAD"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Key", "Accept"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Admin-Token", "Accept"],
     allow_credentials=True,
 )
 
