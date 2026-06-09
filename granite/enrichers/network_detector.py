@@ -355,10 +355,21 @@ class NetworkDetector:
                     "total_count": len(ids),
                 })
 
+        # Build combined website+email company IDs to filter out
+        # phone groups that are fully covered by website/email groups.
+        website_email_company_ids: set[int] = set()
+        for ids in website_map.values():
+            website_email_company_ids.update(ids)
+        for ids in email_domain_map.values():
+            website_email_company_ids.update(ids)
+
         if not signal_type or signal_type == "phone":
             for phone, ids in phone_map.items():
                 ids = {i for i in ids if row_details[i].get("segment") != "spam"}
                 if len(ids) < min_company_count:
+                    continue
+                # Skip phone groups fully covered by website/email groups
+                if website_email_company_ids and ids.issubset(website_email_company_ids):
                     continue
                 cities = Counter(row_details[i]["city"] for i in ids)
                 if len(cities) < 2:
@@ -635,11 +646,22 @@ class NetworkDetector:
                     "all_marked": all_marked,
                 })
 
+        # Build combined website+email company IDs to filter out
+        # phone candidate groups fully covered by website/email groups.
+        website_email_company_ids: set[int] = set()
+        for ids in website_map.values():
+            website_email_company_ids.update(ids)
+        for ids in email_domain_map.values():
+            website_email_company_ids.update(ids)
+
         if not signal_type or signal_type == "phone":
             for phone, ids in phone_map.items():
                 all_marked = all(row_details[i]["is_network"] for i in ids)
                 if not include_resolved:
                     ids = {i for i in ids if i not in existing_network}
+                # Skip phone groups fully covered by website/email groups
+                if website_email_company_ids and ids.issubset(website_email_company_ids):
+                    continue
                 cities = {row_details[i]["city"] for i in ids}
                 if len(cities) < threshold or len(ids) < threshold:
                     continue
