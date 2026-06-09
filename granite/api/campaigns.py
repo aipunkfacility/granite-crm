@@ -1024,7 +1024,17 @@ def _add_recipients_to_campaign(
         ).all()
         already_sent_emails = {row[0].lower() for row in log_rows}
 
+    # seen_emails: дедуп email-адресов в рамках одной кампании (НЕ company_id).
+    # Предзаполняем из компаний, уже добавленных в кампанию — чтобы при
+    # повторном вызове не добавлять компании с уже имеющимся email.
     seen_emails: set[str] = set()
+    if existing_ids:
+        existing_email_rows = db.query(CompanyRow).filter(
+            CompanyRow.id.in_(list(existing_ids))
+        ).all()
+        for row in existing_email_rows:
+            if row.emails:
+                seen_emails.add(row.emails[0].lower().strip())
 
     for cid in company_ids:
         if cid in existing_ids:

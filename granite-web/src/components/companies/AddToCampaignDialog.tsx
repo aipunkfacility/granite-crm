@@ -257,7 +257,7 @@ export function AddToCampaignDialog({
                         <p className="text-sm font-medium text-foreground">
                           Пропущено: {result.skipped}
                         </p>
-                        <ul className="space-y-1">
+                        <ul className="max-h-40 overflow-y-auto space-y-1">
                           {result.skipped_details.map((d, i) => (
                             <li key={i} className="text-xs text-muted-foreground">
                               Компания #{d.company_id} — {d.reason}
