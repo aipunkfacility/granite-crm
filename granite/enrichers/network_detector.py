@@ -130,11 +130,18 @@ class NetworkDetector:
             network_ids: list[int] = []
             for row_id, website, phones, emails in rows:
                 domain = cached_domains[row_id]
+                base = cached_base_domains.get(row_id)
+
+                # Пропускаем компании на заведомо не-сетевых доменах (директории, хостинги)
+                if domain and (domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS):
+                    continue
+                if base and (base in SPAM_DOMAINS or base in NON_NETWORK_DOMAINS):
+                    continue
+
                 is_net = domain in network_domains
 
                 # Проверяем base domain если полный домен не попал
                 if not is_net:
-                    base = cached_base_domains.get(row_id)
                     if base and base in network_base_domains:
                         is_net = True
 
@@ -346,48 +353,6 @@ class NetworkDetector:
                     "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
                     "email_count": email_count,
                     "phone_count": phone_count,
-                    "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
-                    "network_type": ntype,
-                    "primary_email": primary_email,
-                    "segment_dist": segment_dist,
-                    "contact_status": "sent" if group_contacted else "none",
-                    "sent_count": len(group_contacted),
-                    "total_count": len(ids),
-                })
-
-        # Build combined website+email company IDs to filter out
-        # phone groups that are fully covered by website/email groups.
-        website_email_company_ids: set[int] = set()
-        for ids in website_map.values():
-            website_email_company_ids.update(ids)
-        for ids in email_domain_map.values():
-            website_email_company_ids.update(ids)
-
-        if not signal_type or signal_type == "phone":
-            for phone, ids in phone_map.items():
-                ids = {i for i in ids if row_details[i].get("segment") != "spam"}
-                if len(ids) < min_company_count:
-                    continue
-                # Skip phone groups fully covered by website/email groups
-                if website_email_company_ids and ids.issubset(website_email_company_ids):
-                    continue
-                cities = Counter(row_details[i]["city"] for i in ids)
-                if len(cities) < 2:
-                    continue
-                scores = [row_details[i]["score"] for i in ids]
-                companies_data = [row_details[i] for i in ids]
-                ntype = self._classify_network_type(companies_data, "phone")
-                primary_email, segment_dist = _group_email_and_segment(ids)
-                group_contacted = contacted_company_ids & ids
-                groups.append({
-                    "group_id": f"phone:{phone}",
-                    "signal_type": "phone",
-                    "signal_value": phone,
-                    "company_count": len(ids),
-                    "city_count": len(cities),
-                    "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
-                    "email_count": sum(1 for i in ids if row_details[i]["emails"]),
-                    "phone_count": len(ids),
                     "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
                     "network_type": ntype,
                     "primary_email": primary_email,
@@ -640,35 +605,6 @@ class NetworkDetector:
                     "group_id": f"website:{domain}",
                     "signal_type": "website",
                     "signal_value": domain,
-                    "company_count": len(ids),
-                    "company_ids": list(ids),
-                    "companies": [row_details[i] for i in ids],
-                    "all_marked": all_marked,
-                })
-
-        # Build combined website+email company IDs to filter out
-        # phone candidate groups fully covered by website/email groups.
-        website_email_company_ids: set[int] = set()
-        for ids in website_map.values():
-            website_email_company_ids.update(ids)
-        for ids in email_domain_map.values():
-            website_email_company_ids.update(ids)
-
-        if not signal_type or signal_type == "phone":
-            for phone, ids in phone_map.items():
-                all_marked = all(row_details[i]["is_network"] for i in ids)
-                if not include_resolved:
-                    ids = {i for i in ids if i not in existing_network}
-                # Skip phone groups fully covered by website/email groups
-                if website_email_company_ids and ids.issubset(website_email_company_ids):
-                    continue
-                cities = {row_details[i]["city"] for i in ids}
-                if len(cities) < threshold or len(ids) < threshold:
-                    continue
-                groups.append({
-                    "group_id": f"phone:{phone}",
-                    "signal_type": "phone",
-                    "signal_value": phone,
                     "company_count": len(ids),
                     "company_ids": list(ids),
                     "companies": [row_details[i] for i in ids],
