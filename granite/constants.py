@@ -74,4 +74,17 @@ SPAM_DOMAINS: frozenset[str] = frozenset({
     "vmkros.ru", "exkluziv-granit.ru", "gravestone.ru",
     "katangranit.ru", "grandmonument.ru", "rting.ru",
     "altai-offroad.ru", "nikapamyatniki.ru", "памятники-цены.рф",
+    # Directories / aggregator sites
+    "spravka.ru", "moyaspravka.ru", "ritualspravka.ru",
+    "damspravku.ru", "spravka-region.ru", "reginforms.ru",
+    "blizko.ru", "2gis.biz",
+    "portaluslug.ru", "firmlist.ru", "pulscen.ru",
+    "netoteka.ru", "regionz.ru", "uslugika.ru", "orgzz.ru",
+    "openagent.ru", "travelask.ru",
+    "mnogonado.net", "gos-cps.ru", "companies.rbc.ru",
+    "vkvideo.ru",
+    # Confirmed spam domains — to be deleted
+    "acbank.ru", "mvd-kbr.ru", "lotgame.ru", "stroinas.ru",
+    "online-obuchenie.ru", "rosbaltnord.ru", "energogazeta.ru",
+    "help-tel.ru", "2sp.me",
 })

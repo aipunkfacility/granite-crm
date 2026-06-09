@@ -128,3 +128,27 @@ def test_scan_keeps_real_base_domain_network():
     # Base domain danila-master.ru appears 3 times = network
     update_called = Q.return_value.filter.return_value.update.called
     assert update_called, "Base domain network should be caught"
+
+
+def test_scan_filters_spravka_subdomains():
+    """City subdomains on spravka.ru should not trigger network via base_domain."""
+    db = MagicMock()
+    session = MagicMock()
+    db.session_scope.return_value.__enter__.return_value = session
+
+    mock_rows = [
+        (1, "https://vyazma.spravka.ru/", ["79001112233"], []),
+        (2, "https://tumen.moyaspravka.ru/", ["79004445566"], []),
+        (3, "https://astrahan.ritualspravka.ru/", ["79007778899"], []),
+    ]
+
+    Q = session.query
+    Q.return_value.all.return_value = mock_rows
+    Q.return_value.filter.return_value.all.return_value = mock_rows
+
+    detector = NetworkDetector(db, {"enrichment": {"network_threshold": 2}})
+    detector.scan_for_networks()
+
+    # All different phones, all on spravka.ru-family base domains
+    update_called = Q.return_value.filter.return_value.update.called
+    assert not update_called, "spravka.ru subdomains should not trigger network"
