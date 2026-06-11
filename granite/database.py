@@ -12,6 +12,7 @@ from sqlalchemy import (
     JSON,
     ForeignKey,
     Index,
+    UniqueConstraint,
     event,
     Engine,
 )
@@ -317,6 +318,45 @@ class CrmTemplateRow(Base):
         return f"<CrmTemplateRow(name={self.name!r}, channel={self.channel!r}, body_type={self.body_type!r})>"
 
 
+class CompanyEmailRow(Base):
+    """Нормализованный email компании с активным/неактивным статусом.
+
+    При отправке письма email деактивируется (is_active=False).
+    Если у компании остались другие активные адреса — они подхватываются
+    при следующем запуске кампании.
+    """
+    __tablename__ = "company_emails"
+    __table_args__ = (
+        UniqueConstraint('company_id', 'email', name='uq_company_email'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(
+        Integer, ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    email = Column(String, nullable=False, index=True)
+
+    is_active = Column(Boolean, default=True, server_default="1", nullable=False)
+    is_primary = Column(Boolean, default=False, server_default="0", nullable=False)
+
+    sent_count = Column(Integer, default=0, server_default="0")
+    last_sent_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return (
+            f"<CompanyEmailRow(id={self.id}, company_id={self.company_id}, "
+            f"email={self.email!r}, active={self.is_active}, primary={self.is_primary})>"
+        )
+
+
 class CrmEmailLogRow(Base):
     """Запись об отправленном письме с UUID для tracking pixel."""
     __tablename__ = "crm_email_logs"
@@ -438,6 +478,7 @@ __all__ = [
     "CrmContactRow", "CrmTouchRow", "CrmTemplateRow",
     "CrmEmailLogRow", "CrmTaskRow", "CrmEmailCampaignRow",
     "CampaignRecipientRow",
+    "CompanyEmailRow",
     "VALID_STAGES",
 ]
 
