@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import String, text as sa_text, func, case
+from sqlalchemy import or_, String, text as sa_text, func, case
 
 from granite.api.deps import get_db
 from granite.api.schemas import (
@@ -19,10 +19,25 @@ from granite.api.schemas import (
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow,
     CrmEmailLogRow, CrmEmailCampaignRow, CampaignRecipientRow,
+    CompanyEmailRow,
 )
 from loguru import logger
 
 __all__ = ["router"]
+
+def _get_active_email(company_id: int, db: Session) -> str | None:
+    """Get the first active email for a company (primary first, then oldest)."""
+    row = (
+        db.query(CompanyEmailRow.email)
+        .filter(
+            CompanyEmailRow.company_id == company_id,
+            CompanyEmailRow.is_active == True,
+        )
+        .order_by(CompanyEmailRow.is_primary.desc(), CompanyEmailRow.id)
+        .first()
+    )
+    return row[0].lower().strip() if row else None
+
 
 router = APIRouter()
 
@@ -65,11 +80,18 @@ def _build_recipients_query(filters: dict, db: Session):
         db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
         .outerjoin(EnrichedCompanyRow, CompanyRow.id == EnrichedCompanyRow.id)
         .outerjoin(CrmContactRow, CompanyRow.id == CrmContactRow.company_id)
-        .filter(
-            CompanyRow.emails.isnot(None),
-            CompanyRow.emails.cast(String) != "[]",
-            CompanyRow.emails.cast(String) != "",
-            CompanyRow.deleted_at.is_(None),
+        .filter(CompanyRow.deleted_at.is_(None))
+    )
+    q = q.filter(
+        or_(
+            db.query(CompanyEmailRow.id)
+            .filter(
+                CompanyEmailRow.company_id == CompanyRow.id,
+                CompanyEmailRow.is_active == True,
+            )
+            .exists(),
+            (CompanyRow.emails.isnot(None))
+            & (CompanyRow.emails.cast(String) != "[]"),
         )
     )
 
@@ -261,10 +283,9 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
             continue
         if contact and contact.stop_automation:
             continue
-        emails = company.emails or []
-        if not emails:
+        email_to = _get_active_email(company.id, db)
+        if not email_to:
             continue
-        email_to = emails[0].lower().strip()
         if email_to in seen_emails:
             continue
         seen_emails.add(email_to)
@@ -335,10 +356,9 @@ def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
             continue
         if contact and contact.stop_automation:
             continue
-        emails = company.emails or []
-        if not emails:
+        email_to = _get_active_email(company.id, db)
+        if not email_to:
             continue
-        email_to = emails[0].lower().strip()
         if email_to in seen_emails:
             continue
         seen_emails.add(email_to)
@@ -521,7 +541,7 @@ def _run_campaign_send_loop(
     В finally — освобождает lock.
     """
     import time as _time
-    from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTouchRow
+    from granite.database import CrmEmailLogRow, CrmEmailCampaignRow, CrmTouchRow, CompanyEmailRow
     from granite.email.sender import EmailSender
 
     _email_cfg = config.get("email", {})
@@ -668,6 +688,63 @@ def _run_campaign_send_loop(
                 ))
                 from granite.api.stage_transitions import apply_outgoing_touch
                 apply_outgoing_touch(contact, "email")
+
+                # Deactivate the sent email address for this company
+                sent_email_row = (
+                    session.query(CompanyEmailRow)
+                    .filter(
+                        CompanyEmailRow.company_id == company.id,
+                        CompanyEmailRow.email == email_to,
+                        CompanyEmailRow.is_active == True,
+                    )
+                    .first()
+                )
+                if sent_email_row:
+                    sent_email_row.is_active = False
+                    sent_email_row.sent_count = (sent_email_row.sent_count or 0) + 1
+                    sent_email_row.last_sent_at = datetime.now(timezone.utc)
+                    if sent_email_row.is_primary:
+                        sent_email_row.is_primary = False
+                        next_active = (
+                            session.query(CompanyEmailRow)
+                            .filter(
+                                CompanyEmailRow.company_id == company.id,
+                                CompanyEmailRow.is_active == True,
+                                CompanyEmailRow.id != sent_email_row.id,
+                            )
+                            .order_by(CompanyEmailRow.id)
+                            .first()
+                        )
+                        if next_active:
+                            next_active.is_primary = True
+
+                # Cross-company deactivation: same email at other companies
+                other_emails = (
+                    session.query(CompanyEmailRow)
+                    .filter(
+                        CompanyEmailRow.email == email_to,
+                        CompanyEmailRow.company_id != company.id,
+                        CompanyEmailRow.is_active == True,
+                    )
+                    .all()
+                )
+                for oe in other_emails:
+                    oe.is_active = False
+                    if oe.is_primary:
+                        oe.is_primary = False
+                        next_active = (
+                            session.query(CompanyEmailRow)
+                            .filter(
+                                CompanyEmailRow.company_id == oe.company_id,
+                                CompanyEmailRow.is_active == True,
+                                CompanyEmailRow.id != oe.id,
+                            )
+                            .order_by(CompanyEmailRow.id)
+                            .first()
+                        )
+                        if next_active:
+                            next_active.is_primary = True
+
                 campaign.updated_at = datetime.now(timezone.utc)
                 session.commit()
             else:
@@ -1009,10 +1086,7 @@ def _add_recipients_to_campaign(
     companies_data = {}
     for row in db.query(CompanyRow).filter(CompanyRow.id.in_(company_ids)).all():
         companies_data[row.id] = row
-        if row.emails:
-            company_emails[row.id] = row.emails[0].lower().strip()
-        else:
-            company_emails[row.id] = None
+        company_emails[row.id] = _get_active_email(row.id, db)
 
     # Batch: какие email-адреса уже получали письмо (любая кампания, любая компания)
     all_emails = {e for e in company_emails.values() if e}
@@ -1033,8 +1107,9 @@ def _add_recipients_to_campaign(
             CompanyRow.id.in_(list(existing_ids))
         ).all()
         for row in existing_email_rows:
-            if row.emails:
-                seen_emails.add(row.emails[0].lower().strip())
+            active = _get_active_email(row.id, db)
+            if active:
+                seen_emails.add(active)
 
     for cid in company_ids:
         if cid in existing_ids:
