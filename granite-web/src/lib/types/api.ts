@@ -11,6 +11,16 @@ export type FunnelStage =
 
 export type Segment = 'A' | 'B' | 'C' | 'D' | 'spam';
 
+export interface CompanyEmail {
+  id: number;
+  company_id: number;
+  email: string;
+  is_active: boolean;
+  is_primary: boolean;
+  sent_count: number;
+  last_sent_at: string | null;
+}
+
 export interface Company {
   id: number;
   name: string;
@@ -18,6 +28,7 @@ export interface Company {
   website: string | null;
   address: string | null;
   emails: string[];
+  company_emails: CompanyEmail[];
   city: string;
   region: string;
   messengers: Record<string, string>;

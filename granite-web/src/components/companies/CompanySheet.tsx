@@ -45,6 +45,7 @@ import { MarkSpamDialog } from "@/components/companies/MarkSpamDialog";
 import { MarkDuplicateDialog } from "@/components/companies/MarkDuplicateDialog";
 import { AddToCampaignDialog } from "@/components/companies/AddToCampaignDialog";
 import { copyToClipboard } from "@/lib/utils";
+import { useAdmin } from "@/lib/admin-context";
 
 /* V-01: Карточка компании — Sheet (side panel) вместо отдельной страницы */
 
@@ -112,6 +113,8 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
   useEffect(() => {
     if (company) setNotes(company.notes || "");
   }, [company]);
+
+  const { isActive: isAdmin } = useAdmin();
 
   const debouncedSaveNotes = useDebouncedCallback((value: string) => {
     updateMutation.mutate({ notes: value });
@@ -345,12 +348,53 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                           <span onClick={() => copyToClipboard(p, p)} className="hover:text-primary font-medium cursor-pointer">{p}</span>
                         </div>
                       ))}
-                      {company.emails.map(e => (
-                        <div key={e} className="flex items-center text-sm group">
-                          <Mail className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                          <span onClick={() => copyToClipboard(e, e)} className="hover:text-primary font-medium cursor-pointer">{e}</span>
-                        </div>
-                      ))}
+                      {company.company_emails && company.company_emails.length > 0 ? (
+                        company.company_emails.map(ce => {
+                          const isActive = ce.is_active;
+                          return (
+                            <div key={ce.id} className="flex items-center text-sm group gap-1.5">
+                              <Mail className={`h-4 w-4 shrink-0 transition-colors ${isActive ? 'text-muted-foreground group-hover:text-primary' : 'text-muted-foreground/40'}`} />
+                              <span
+                                onClick={() => copyToClipboard(ce.email, ce.email)}
+                                className={`cursor-pointer transition-colors ${isActive ? 'hover:text-primary font-medium' : 'text-muted-foreground line-through'}`}
+                              >
+                                {ce.email}
+                              </span>
+                              {isActive && ce.is_primary && (
+                                <Badge variant="default" className="text-[10px] h-5 px-1.5 font-normal">primary</Badge>
+                              )}
+                              {!isActive && (
+                                <Badge variant="default" className="text-[10px] h-5 px-1.5 font-normal">отправлен</Badge>
+                              )}
+                              {isAdmin && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (confirm(`Удалить ${ce.email}?`)) {
+                                      updateMutation.mutate({
+                                        emails: company.company_emails
+                                          ?.filter(em => em.email !== ce.email)
+                                          .map(em => em.email) ?? []
+                                      });
+                                    }
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive/80 ml-auto shrink-0"
+                                  title="Удалить адрес"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })
+                      ) : (
+                        company.emails.map(e => (
+                          <div key={e} className="flex items-center text-sm group">
+                            <Mail className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                            <span onClick={() => copyToClipboard(e, e)} className="hover:text-primary font-medium cursor-pointer">{e}</span>
+                          </div>
+                        ))
+                      )}
                       {company.website && (
                         <div className="flex items-center text-sm group">
                           <Globe className="mr-2 h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
