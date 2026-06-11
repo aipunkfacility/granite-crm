@@ -50,6 +50,18 @@ class UpdateCompanyRequest(BaseModel):
     stop_automation: Optional[bool] = None
 
 
+class CompanyEmailResponse(BaseModel):
+    id: int
+    company_id: int
+    email: str
+    is_active: bool
+    is_primary: bool
+    sent_count: int = 0
+    last_sent_at: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class CreateCompanyRequest(BaseModel):
     name: str = Field(..., min_length=1, description="Название компании")
     city: str = Field(..., min_length=1, description="Город")
@@ -264,6 +276,7 @@ class CompanyResponse(BaseModel):
     website: Optional[str] = None
     address: Optional[str] = None
     emails: list[str] = []
+    company_emails: list[CompanyEmailResponse] = []
     city: str
     region: str = ""
     messengers: dict = {}

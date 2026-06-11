@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import String, text as sa_text
+from sqlalchemy import or_, String, text as sa_text
 from sqlalchemy.orm import Session
 
 from granite.api.deps import get_db
@@ -17,7 +17,7 @@ from granite.api.schemas import (
 )
 from granite.pipeline.region_resolver import lookup_region
 from granite.database import (
-    CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
+    CompanyRow, CompanyEmailRow, EnrichedCompanyRow, CrmContactRow, CrmEmailLogRow,
     CrmTouchRow, CityRefRow,
 )
 from granite.utils import (
@@ -33,16 +33,21 @@ router = APIRouter()
 
 
 def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | None,
-                            contact: CrmContactRow | None) -> dict:
+                            contact: CrmContactRow | None,
+                            company_emails: list | None = None) -> dict:
     """Собрать полный ответ по компании."""
+    if company_emails is None:
+        company_emails = []
+
+    active_emails = [e.email for e in company_emails if e.is_active]
     messengers = enriched.messengers or {} if enriched else {}
-    return {
+    response_dict = {
         "id": company.id,
         "name": company.name_best,
         "phones": company.phones or [],
         "website": company.website,
         "address": company.address or None,
-        "emails": company.emails or [],
+        "emails": active_emails,
         "city": company.city,
         "region": getattr(company, "region", ""),
         "messengers": messengers,
@@ -69,6 +74,19 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
         "updated_at": company.updated_at.isoformat() if company.updated_at else None,
         "sources": company.sources or [],
     }
+    response_dict["company_emails"] = [
+        {
+            "id": e.id,
+            "company_id": e.company_id,
+            "email": e.email,
+            "is_active": e.is_active,
+            "is_primary": e.is_primary,
+            "sent_count": e.sent_count or 0,
+            "last_sent_at": e.last_sent_at.isoformat() if e.last_sent_at else None,
+        }
+        for e in company_emails
+    ]
+    return response_dict
 
 
 @router.get("/companies", response_model=PaginatedResponse[CompanyResponse])
@@ -204,12 +222,31 @@ def list_companies(
 
     if has_email == 1:
         q = q.filter(
-            CompanyRow.emails.isnot(None),
-            CompanyRow.emails.cast(String) != "[]",
+            or_(
+                (CompanyRow.emails.isnot(None))
+                & (CompanyRow.emails.cast(String) != "[]"),
+                db.query(CompanyEmailRow.id)
+                .filter(
+                    CompanyEmailRow.company_id == CompanyRow.id,
+                    CompanyEmailRow.is_active == True,
+                )
+                .exists(),
+            )
         )
-    if has_email == 0:
+    elif has_email == 0:
         q = q.filter(
-            CompanyRow.emails.is_(None) | (CompanyRow.emails.cast(String) == "[]")
+            (
+                (CompanyRow.emails.is_(None))
+                | (CompanyRow.emails.cast(String) == "[]")
+            )
+            & (
+                ~db.query(CompanyEmailRow.id)
+                .filter(
+                    CompanyEmailRow.company_id == CompanyRow.id,
+                    CompanyEmailRow.is_active == True,
+                )
+                .exists()
+            )
         )
 
     # --- is_network (ORM) ---
@@ -303,10 +340,18 @@ def list_companies(
             )
         elif search_field == "email":
             q = q.filter(
-                sa_text(
-                    "EXISTS (SELECT 1 FROM json_each(companies.emails) "
-                    "WHERE json_each.value LIKE :email_pattern)"
-                ).bindparams(email_pattern=f"%{escaped}%")
+                or_(
+                    sa_text(
+                        "EXISTS (SELECT 1 FROM json_each(companies.emails) "
+                        "WHERE json_each.value LIKE :email_pattern)"
+                    ).bindparams(email_pattern=f"%{escaped}%"),
+                    db.query(CompanyEmailRow.id)
+                    .filter(
+                        CompanyEmailRow.company_id == CompanyRow.id,
+                        CompanyEmailRow.email.like(f"%{escaped}%")
+                    )
+                    .exists()
+                )
             )
         elif search_field == "domain":
             q = q.filter(CompanyRow.website.ilike(f"%{escaped}%", escape="\\"))
@@ -332,7 +377,23 @@ def list_companies(
     total = q.count()
     rows = q.offset((page - 1) * per_page).limit(per_page).all()
 
-    items = [_build_company_response(c, e, crm) for c, e, crm in rows]
+    from collections import defaultdict
+
+    company_ids = [c.id for c, _, _ in rows]
+    all_company_emails = (
+        db.query(CompanyEmailRow)
+        .filter(CompanyEmailRow.company_id.in_(company_ids))
+        .order_by(CompanyEmailRow.is_primary.desc(), CompanyEmailRow.id)
+        .all()
+    ) if company_ids else []
+    emails_by_company = defaultdict(list)
+    for e in all_company_emails:
+        emails_by_company[e.company_id].append(e)
+
+    items = [
+        _build_company_response(c, e, crm, emails_by_company.get(c.id, []))
+        for c, e, crm in rows
+    ]
     return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
@@ -344,7 +405,13 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, "Company not found")
     enriched = db.get(EnrichedCompanyRow, company_id)
     contact = db.get(CrmContactRow, company_id)
-    return _build_company_response(company, enriched, contact)
+    company_emails = (
+        db.query(CompanyEmailRow)
+        .filter(CompanyEmailRow.company_id == company_id)
+        .order_by(CompanyEmailRow.is_primary.desc(), CompanyEmailRow.id)
+        .all()
+    )
+    return _build_company_response(company, enriched, contact, company_emails)
 
 
 @router.post("/companies", response_model=OkWithIdResponse)
@@ -364,6 +431,11 @@ def create_company(data: CreateCompanyRequest, db: Session = Depends(get_db)):
     )
     db.add(company)
     db.flush()
+
+    # Sync company_emails
+    if data.emails:
+        from granite.email.sync import sync_company_emails
+        sync_company_emails(db, company.id, data.emails)
 
     contact = CrmContactRow(company_id=company.id)
     db.add(contact)
@@ -433,6 +505,11 @@ def update_company(company_id: int, data: UpdateCompanyRequest, db: Session = De
                 if enriched_row:
                     enriched_row.city = value
                     enriched_row.region = new_region
+    
+    # Diff-based sync of company_emails when emails field changes
+    if "emails" in company_updates:
+        from granite.email.sync import sync_company_emails
+        sync_company_emails(db, company_id, company_updates.get("emails") or [])
     
     # 1.1 Обновляем messengers (EnrichedCompanyRow)
     if data.messengers is not None:
@@ -716,6 +793,25 @@ def merge_companies(
             if added_emails:
                 target_emails.update(added_emails)
                 target.emails = list(target_emails)
+
+        # 3b. Transfer company_emails from source to target
+        source_email_rows = (
+            db.query(CompanyEmailRow)
+            .filter(CompanyEmailRow.company_id == source_id)
+            .all()
+        )
+        for ce in source_email_rows:
+            existing = db.query(CompanyEmailRow.id).filter(
+                CompanyEmailRow.company_id == company_id,
+                CompanyEmailRow.email == ce.email,
+            ).first()
+            if existing:
+                target_ce = db.get(CompanyEmailRow, existing[0])
+                target_ce.sent_count = (target_ce.sent_count or 0) + (ce.sent_count or 0)
+                target_ce.is_active = target_ce.is_active or ce.is_active
+                db.delete(ce)
+            else:
+                ce.company_id = company_id
 
         # 4. Добавляем merged_from в target
         merged_from = list(target.merged_from or [])
