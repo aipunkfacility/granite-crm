@@ -8,6 +8,7 @@
 from typing import Any
 
 from granite.database import Database, RawCompanyRow, CompanyRow, CrmContactRow
+from granite.email.sync import sync_company_emails
 from loguru import logger
 from granite.pipeline.status import print_status
 from granite.pipeline.region_resolver import lookup_region
@@ -166,6 +167,7 @@ class DedupPhase:
                     funnel_stage="new"
                 )
                 session.add(contact)
+                sync_company_emails(session, row.id, row.emails or [])
 
                 # FIX: Обновление merged_into в исходных raw_companies
                 raw_ids = merged.get("merged_from", [])

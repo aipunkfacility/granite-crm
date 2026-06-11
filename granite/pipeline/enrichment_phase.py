@@ -14,6 +14,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from loguru import logger
 from granite.database import Database, CompanyRow, EnrichedCompanyRow
+from granite.email.sync import sync_company_emails
 from granite.pipeline.status import print_status
 from granite.pipeline.web_client import WebClient
 from granite.pipeline.region_resolver import RegionResolver
@@ -960,6 +961,7 @@ class EnrichmentPhase:
                 erow.emails = list(existing)
                 if c:
                     c.emails = list(existing)
+                    sync_company_emails(session, c.id, c.emails or [])
                 if "email" not in updated:
                     updated.append("email")
 
