@@ -313,6 +313,9 @@ export function CompanyTable({
                     {isVisible('funnel_stage') && (
                       <TableCell>
                         <Badge variant={stage.variant} className="whitespace-nowrap">{stage.label}</Badge>
+                        {stage.label === "Новый" && company.company_emails?.some(e => !e.is_active) && (
+                          <Badge variant="default" className="ml-1 text-[10px]">отправлен</Badge>
+                        )}
                       </TableCell>
                     )}
                     {/* Контакт */}
