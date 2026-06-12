@@ -192,6 +192,10 @@ class PipelineManager:
             print_status("Проверка филиальных сетей (глобально)...", "info")
             self._run_phase("сетей", lambda: self.network_detector.scan_for_networks(threshold=2, city=None))
 
+            # Propagate shared emails within detected networks
+            self._run_phase("пропагация email в сетях",
+                          lambda: self.network_detector.propagate_shared_contacts())
+
             # Пересчет скоринга (т.к. мы обновили is_network)
             self._run_phase("скоринг", lambda: self.scoring.run(city))
 
