@@ -824,3 +824,126 @@ class TestManualCampaignFullFlow:
         # Режим переключился
         resp = client.get(f"/api/v1/campaigns/{campaign_id}")
         assert resp.json()["recipient_mode"] == "manual"
+
+
+class TestNetworkEmailFallback:
+    """Network email fallback: peer's email used when company has none."""
+
+    def test_network_company_uses_peer_email(self, db_session, client):
+        """Company in a network without email falls back to peer's email."""
+        c1 = CompanyRow(name_best="C1", city="москва",
+                        website="https://guravli.agency/msk",
+                        emails=["info@guravli.agency"])
+        c2 = CompanyRow(name_best="C2", city="спб",
+                        website="https://guravli.agency/spb",
+                        emails=[])
+        db_session.add_all([c1, c2]); db_session.flush()
+
+        sync_company_emails(db_session, c1.id, c1.emails)
+        sync_company_emails(db_session, c2.id, c2.emails)
+
+        db_session.add(EnrichedCompanyRow(id=c1.id, name=c1.name_best,
+                      city=c1.city, website=c1.website, emails=c1.emails,
+                      is_network=True))
+        db_session.add(EnrichedCompanyRow(id=c2.id, name=c2.name_best,
+                      city=c2.city, website=c2.website, emails=c2.emails,
+                      is_network=True))
+
+        contact = CrmContactRow(company_id=c1.id)
+        db_session.add(contact)
+        contact2 = CrmContactRow(company_id=c2.id)
+        db_session.add(contact2)
+        db_session.commit()
+
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1",
+                                       recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                          json={"company_ids": [c1.id, c2.id]})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # C2 gets same email as C1 via fallback, dedup reduces to 1
+        assert data["added"] == 1, (
+            f"Expected 1 added (dedup of same peer email), "
+            f"got {data['added']}: {data.get('skipped_details')}"
+        )
+
+    def test_network_fallback_only_for_network_companies(self, db_session, client):
+        """Non-network company without email should still be skipped."""
+        c1 = CompanyRow(name_best="C1", city="москва",
+                        website="https://example.ru",
+                        emails=["info@example.ru"])
+        c2 = CompanyRow(name_best="C2", city="спб",
+                        website="https://standalone.ru",
+                        emails=[])
+        db_session.add_all([c1, c2]); db_session.flush()
+
+        sync_company_emails(db_session, c1.id, c1.emails)
+
+        db_session.add(EnrichedCompanyRow(id=c1.id, name=c1.name_best,
+                      city=c1.city, website=c1.website, emails=c1.emails,
+                      is_network=True))
+        db_session.add(EnrichedCompanyRow(id=c2.id, name=c2.name_best,
+                      city=c2.city, website=c2.website, emails=c2.emails,
+                      is_network=False))
+
+        contact = CrmContactRow(company_id=c1.id)
+        db_session.add(contact)
+        contact2 = CrmContactRow(company_id=c2.id)
+        db_session.add(contact2)
+        db_session.commit()
+
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1",
+                                       recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                          json={"company_ids": [c1.id, c2.id]})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["added"] == 1, (
+            f"Expected 1 added (only c1 via direct email), "
+            f"got {data['added']}: {data.get('skipped_details')}"
+        )
+
+    def test_network_fallback_different_domain_no_fallback(self, db_session, client):
+        """Network company with different domain than the email-source gets no fallback."""
+        c1 = CompanyRow(name_best="C1", city="москва",
+                        website="https://guravli.agency/msk",
+                        emails=["info@guravli.agency"])
+        c2 = CompanyRow(name_best="C2", city="спб",
+                        website="https://other-domain.ru",
+                        emails=[])
+        db_session.add_all([c1, c2]); db_session.flush()
+
+        sync_company_emails(db_session, c1.id, c1.emails)
+
+        db_session.add(EnrichedCompanyRow(id=c1.id, name=c1.name_best,
+                      city=c1.city, website=c1.website, emails=c1.emails,
+                      is_network=True))
+        db_session.add(EnrichedCompanyRow(id=c2.id, name=c2.name_best,
+                      city=c2.city, website=c2.website, emails=c2.emails,
+                      is_network=True))
+
+        contact = CrmContactRow(company_id=c1.id)
+        db_session.add(contact)
+        contact2 = CrmContactRow(company_id=c2.id)
+        db_session.add(contact2)
+        db_session.commit()
+
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1",
+                                       recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                          json={"company_ids": [c1.id, c2.id]})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["added"] == 1, (
+            f"Expected 1 (c1 only), got {data['added']}: "
+            f"{data.get('skipped_details')}"
+        )
