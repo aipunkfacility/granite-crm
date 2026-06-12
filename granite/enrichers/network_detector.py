@@ -1,5 +1,5 @@
 # enrichers/network_detector.py
-from granite.database import Database, EnrichedCompanyRow, CompanyRow
+from granite.database import Database, EnrichedCompanyRow, CompanyRow, CompanyEmailRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
 from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMAINS
@@ -187,6 +187,112 @@ class NetworkDetector:
                 f"телефонов: {len(network_phones)}, "
                 f"email-доменов: {len(network_email_domains)})."
             )
+
+    def propagate_shared_contacts(self) -> int:
+        """Propagate shared emails among network members.
+
+        After scan_for_networks() has set is_network=True, this method
+        groups network companies by shared domain / email-domain and
+        copies network-common emails to members that are missing them.
+
+        Only propagates emails whose domain matches the group signal
+        (e.g., @guravli.agency for an email-domain group). Free email
+        domains (mail.ru, gmail.com, etc.) are never propagated.
+
+        Writes to CompanyRow.emails, EnrichedCompanyRow.emails,
+        and CompanyEmailRow (via sync_company_emails).
+
+        Returns:
+            Number of companies that received new emails.
+        """
+        from granite.email.sync import sync_company_emails
+        from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMAINS
+        from granite.utils import extract_domain, extract_base_domain
+
+        affected = 0
+        with self.db.session_scope() as session:
+            rows = session.query(
+                EnrichedCompanyRow.id,
+                EnrichedCompanyRow.website,
+                EnrichedCompanyRow.emails,
+            ).filter(
+                EnrichedCompanyRow.is_network == True,
+            ).all()
+
+            if not rows:
+                logger.info("Нет сетевых компаний — пропагация не нужна.")
+                return 0
+
+            domain_groups: dict[str, set[int]] = {}
+            email_domain_groups: dict[str, set[int]] = {}
+            row_email_map: dict[int, set[str]] = {}
+
+            for row_id, website, emails in rows:
+                row_set = set()
+                for e in (emails or []):
+                    if isinstance(e, str) and '@' in e:
+                        clean = e.strip()
+                        row_set.add(clean)
+                        domain = clean.split('@', 1)[1].lower().strip()
+                        if domain and domain not in FREE_EMAIL_DOMAINS and not _is_ua_region(domain):
+                            email_domain_groups.setdefault(domain, set()).add(row_id)
+                row_email_map[row_id] = row_set
+
+                if website:
+                    dom = extract_domain(website)
+                    if dom and dom not in SPAM_DOMAINS and dom not in NON_NETWORK_DOMAINS:
+                        domain_groups.setdefault(dom, set()).add(row_id)
+                    base = extract_base_domain(website)
+                    if base and base not in SPAM_DOMAINS and base not in NON_NETWORK_DOMAINS:
+                        domain_groups.setdefault(base, set()).add(row_id)
+
+            all_groups: list[tuple[str, set[int]]] = [
+                ("domain", ids) for _, ids in domain_groups.items()
+            ] + [
+                ("email_domain", ids) for _, ids in email_domain_groups.items()
+            ]
+
+            # Track which companies are in any group, so we can find orphans
+            grouped_ids: set[int] = set()
+            for _, member_ids in all_groups:
+                grouped_ids.update(member_ids)
+            all_network_ids = {r[0] for r in rows}
+            orphan_ids = all_network_ids - grouped_ids
+
+            for group_type, member_ids in all_groups:
+                if len(member_ids) < 2:
+                    continue
+                group_emails: set[str] = set()
+                for rid in member_ids:
+                    group_emails.update(row_email_map.get(rid, set()))
+                if not group_emails:
+                    continue
+
+                # Propagate to group members + orphan network companies
+                for rid in member_ids | orphan_ids:
+                    existing = row_email_map.get(rid, set())
+                    missing = group_emails - existing
+                    if not missing:
+                        continue
+
+                    company = session.get(CompanyRow, rid)
+                    enriched = session.get(EnrichedCompanyRow, rid)
+                    if not company or not enriched:
+                        continue
+
+                    new_emails = sorted(existing | missing)
+                    company.emails = new_emails
+                    enriched.emails = new_emails
+                    sync_company_emails(session, rid, new_emails)
+                    affected += 1
+                    logger.info(
+                        f"Пропагация: {company.name_best or '?'} "
+                        f"({company.city}) — добавлено {len(missing)} email"
+                    )
+
+            session.flush()
+            logger.info(f"Пропагация: обновлено {affected} компаний")
+        return affected
 
     @staticmethod
     def _classify_network_type(
