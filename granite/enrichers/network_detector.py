@@ -206,8 +206,6 @@ class NetworkDetector:
             Number of companies that received new emails.
         """
         from granite.email.sync import sync_company_emails
-        from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMAINS
-        from granite.utils import extract_domain, extract_base_domain
 
         affected = 0
         with self.db.session_scope() as session:
@@ -262,14 +260,14 @@ class NetworkDetector:
                     continue
 
                 for rid in member_ids:
-                    existing = row_email_map.get(rid, set())
-                    missing = group_emails - existing
-                    if not missing:
-                        continue
-
                     company = session.get(CompanyRow, rid)
                     enriched = session.get(EnrichedCompanyRow, rid)
                     if not company or not enriched:
+                        continue
+
+                    existing = set(company.emails or [])
+                    missing = group_emails - existing
+                    if not missing:
                         continue
 
                     new_emails = sorted(existing | missing)
