@@ -95,12 +95,10 @@ export function CompaniesPageContent() {
   });
 
   // Сброс пагинации при изменении фильтров
-  const prevFilterHash = useState(() => JSON.stringify(apiParams));
-  const currentHash = JSON.stringify(apiParams);
-  if (currentHash !== prevFilterHash[0]) {
-    prevFilterHash[0] = currentHash;
-    setTimeout(() => setPage(1), 0);
-  }
+  const apiParamsKey = JSON.stringify(apiParams, Object.keys(apiParams).sort());
+  useEffect(() => {
+    setPage(1);
+  }, [apiParamsKey]);
 
   const handleSelectCompany = (companyId: number) => {
     setSelectedCompanyId(companyId);
