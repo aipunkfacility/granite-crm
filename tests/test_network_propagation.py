@@ -37,13 +37,16 @@ class TestPropagateSharedContacts:
 
     def test_propagates_emails_by_email_domain(self, db_session):
         """Companies sharing an email domain get emails propagated."""
-        c1 = CompanyRow(name_best="C1", city="москва", emails=["info@guravli.agency"])
-        c2 = CompanyRow(name_best="C2", city="спб", emails=["support@guravli.agency"])
-        c3 = CompanyRow(name_best="C3", city="крд", emails=[])
+        c1 = CompanyRow(name_best="C1", city="москва", website="https://guravli.agency/msk",
+                        emails=["info@guravli.agency"])
+        c2 = CompanyRow(name_best="C2", city="спб", website="https://guravli.agency/spb",
+                        emails=["support@guravli.agency"])
+        c3 = CompanyRow(name_best="C3", city="крд", website="https://guravli.agency/krd",
+                        emails=[])
         db_session.add_all([c1, c2, c3]); db_session.flush()
         for c in [c1, c2, c3]:
             db_session.add(EnrichedCompanyRow(id=c.id, name=c.name_best, city=c.city,
-                                              emails=c.emails, is_network=True))
+                                              website=c.website, emails=c.emails, is_network=True))
             sync_company_emails(db_session, c.id, c.emails)
         db_session.commit()
 

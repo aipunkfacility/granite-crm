@@ -252,13 +252,6 @@ class NetworkDetector:
                 ("email_domain", ids) for _, ids in email_domain_groups.items()
             ]
 
-            # Track which companies are in any group, so we can find orphans
-            grouped_ids: set[int] = set()
-            for _, member_ids in all_groups:
-                grouped_ids.update(member_ids)
-            all_network_ids = {r[0] for r in rows}
-            orphan_ids = all_network_ids - grouped_ids
-
             for group_type, member_ids in all_groups:
                 if len(member_ids) < 2:
                     continue
@@ -268,8 +261,7 @@ class NetworkDetector:
                 if not group_emails:
                     continue
 
-                # Propagate to group members + orphan network companies
-                for rid in member_ids | orphan_ids:
+                for rid in member_ids:
                     existing = row_email_map.get(rid, set())
                     missing = group_emails - existing
                     if not missing:
