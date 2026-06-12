@@ -201,6 +201,15 @@ class EnrichmentPhase:
                     continue
                 erow = item
                 session.merge(erow)
+                # NEW: sync website-found emails (async path)
+                if erow.emails:
+                    cr = session.get(CompanyRow, erow.id)
+                    if cr:
+                        existing = set(cr.emails or [])
+                        merged = set(erow.emails)
+                        if merged - existing:
+                            cr.emails = list(merged)
+                            sync_company_emails(session, cr.id, list(merged))
                 if count % batch_flush == batch_flush - 1:
                     session.flush()
                 count += 1
@@ -530,6 +539,13 @@ class EnrichmentPhase:
             try:
                 erow = self._enrich_one_company(c, scanner, tech_ext)
                 session.merge(erow)
+                # NEW: sync website-found emails to CompanyRow + CompanyEmailRow
+                if erow.emails:
+                    existing = set(c.emails or [])
+                    merged = set(erow.emails)
+                    if merged - existing:
+                        c.emails = list(merged)
+                        sync_company_emails(session, c.id, list(merged))
                 if count % batch_flush == batch_flush - 1:
                     session.flush()
                     # FIX 1.4: освобождаем identity map после батча.
@@ -576,6 +592,15 @@ class EnrichmentPhase:
                 try:
                     erow = future.result()
                     session.merge(erow)
+                    # NEW: sync website-found emails (parallel path)
+                    if erow.emails:
+                        cr = session.get(CompanyRow, c.id)
+                        if cr:
+                            existing = set(cr.emails or [])
+                            merged = set(erow.emails)
+                            if merged - existing:
+                                cr.emails = list(merged)
+                                sync_company_emails(session, cr.id, list(merged))
                     if count % batch_flush == batch_flush - 1:
                         session.flush()
                     count += 1
