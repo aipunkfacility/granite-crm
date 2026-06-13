@@ -80,13 +80,6 @@ def _resolve_network_fallback_emails(
     ).all()
     peer_email_map: dict[int, str] = {cid: email for cid, email in peer_active}
 
-    # Fallback: if CompanyEmailRow is empty (data never synced), use EnrichedRow.emails
-    for rid, website, enriched_emails in all_network_rows:
-        if rid in peer_email_map or not enriched_emails:
-            continue
-        first = enriched_emails[0] if isinstance(enriched_emails, list) else str(enriched_emails)
-        peer_email_map[rid] = first.strip().lower()
-
     from granite.utils import extract_domain
     from granite.constants import SPAM_DOMAINS, NON_NETWORK_DOMAINS
 
