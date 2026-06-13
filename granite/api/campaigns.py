@@ -39,77 +39,6 @@ def _get_active_email(company_id: int, db: Session) -> str | None:
     return row[0].lower().strip() if row else None
 
 
-def _resolve_network_fallback_emails(
-    db: Session,
-    company_emails: dict[int, str | None],
-) -> None:
-    """Resolve peer emails for network companies without direct email.
-
-    When a company in a network has no active email in CompanyEmailRow,
-    this function looks for active emails from other companies sharing
-    the same website domain. Mutates company_emails in-place.
-
-    This is a read-only fallback — no DB writes, no data persistence.
-    """
-    no_email_ids = {cid for cid, email in company_emails.items() if not email}
-    if not no_email_ids:
-        return
-
-    network_no_email_ids = {
-        r[0] for r in db.query(EnrichedCompanyRow.id)
-        .filter(
-            EnrichedCompanyRow.id.in_(list(no_email_ids)),
-            EnrichedCompanyRow.is_network == True,
-        ).all()
-    }
-    if not network_no_email_ids:
-        return
-
-    all_network_rows = db.query(
-        EnrichedCompanyRow.id, EnrichedCompanyRow.website, EnrichedCompanyRow.emails,
-    ).filter(
-        EnrichedCompanyRow.is_network == True,
-    ).all()
-
-    all_network_ids = [r.id for r, _, _ in all_network_rows]
-    peer_active = db.query(
-        CompanyEmailRow.company_id, CompanyEmailRow.email,
-    ).filter(
-        CompanyEmailRow.company_id.in_(all_network_ids),
-        CompanyEmailRow.is_active == True,
-    ).all()
-    peer_email_map: dict[int, str] = {cid: email for cid, email in peer_active}
-
-    from granite.utils import extract_domain
-    from granite.constants import SPAM_DOMAINS, NON_NETWORK_DOMAINS
-
-    domain_emails: dict[str, set[str]] = {}
-    for rid, website, _ in all_network_rows:
-        if not website:
-            continue
-        email = peer_email_map.get(rid)
-        if not email:
-            continue
-        dom = extract_domain(website)
-        if not dom or dom in SPAM_DOMAINS or dom in NON_NETWORK_DOMAINS:
-            continue
-        domain_emails.setdefault(dom, set()).add(email.strip().lower())
-
-    if not domain_emails:
-        return
-
-    for rid, website, _ in all_network_rows:
-        if rid not in network_no_email_ids or not website:
-            continue
-        dom = extract_domain(website)
-        if not dom or dom not in domain_emails:
-            continue
-        for email in domain_emails[dom]:
-            if email != company_emails.get(rid):
-                company_emails[rid] = email
-                break
-
-
 router = APIRouter()
 
 # FIX BUG-3: Потокобезопасное управление блокировками кампаний.
@@ -1158,9 +1087,6 @@ def _add_recipients_to_campaign(
     for row in db.query(CompanyRow).filter(CompanyRow.id.in_(company_ids)).all():
         companies_data[row.id] = row
         company_emails[row.id] = _get_active_email(row.id, db)
-
-    # Network fallback: companies in a network can use a peer's email
-    _resolve_network_fallback_emails(db, company_emails)
 
     # Batch: какие email-адреса уже получали письмо (любая кампания, любая компания)
     all_emails = {e for e in company_emails.values() if e}
