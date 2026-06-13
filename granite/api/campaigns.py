@@ -71,11 +71,11 @@ def _resolve_network_fallback_emails(
         EnrichedCompanyRow.is_network == True,
     ).all()
 
-    all_network_ids_list = [r[0] for r in all_network_rows]
+    all_network_ids = [r.id for r, _, _ in all_network_rows]
     peer_active = db.query(
         CompanyEmailRow.company_id, CompanyEmailRow.email,
     ).filter(
-        CompanyEmailRow.company_id.in_(all_network_ids_list),
+        CompanyEmailRow.company_id.in_(all_network_ids),
         CompanyEmailRow.is_active == True,
     ).all()
     peer_email_map: dict[int, str] = {cid: email for cid, email in peer_active}
