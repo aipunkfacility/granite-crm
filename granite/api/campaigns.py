@@ -188,9 +188,14 @@ def create_campaign(data: CreateCampaignRequest, request: Request, db: Session =
     db.add(campaign)
     db.flush()
 
-    # Добавляем начальный список компаний для manual-режима
     result = {"ok": True, "id": campaign.id}
-    if data.recipient_mode == "manual" and data.company_ids:
+    if data.recipient_mode == "filter":
+        filters = data.filters.model_dump(exclude_none=True)
+        q = _build_recipients_query(filters, db)
+        company_ids = [row[0] for row in q.with_entities(CompanyRow.id).all()]
+        if company_ids:
+            result.update(_add_recipients_to_campaign(campaign, company_ids, db))
+    elif data.recipient_mode == "manual" and data.company_ids:
         add_result = _add_recipients_to_campaign(campaign, data.company_ids, db)
         result.update(add_result)
 
