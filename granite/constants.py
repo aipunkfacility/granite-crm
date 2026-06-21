@@ -60,6 +60,7 @@ NON_NETWORK_DOMAINS: frozenset[str] = frozenset({
     # Free hosting / constructor platforms
     "tilda.ws", "ucoz.ru", "1c-umi.ru", "narod.ru",
     "tb.ru", "orgs.biz", "jcbbscn.com", "taplink.cc",
+    "bitrix24site.ru", "pamyatnik-granit.site", "tssshop.ru",
 })
 
 FREE_EMAIL_DOMAINS: frozenset[str] = frozenset({
