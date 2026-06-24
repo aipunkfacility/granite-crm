@@ -312,31 +312,40 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
 def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
     """Получатели из campaign_recipients (manual mode).
 
-    Использует один JOIN-запрос вместо N+1 (аудит, п.1).
+    Берёт email напрямую из CampaignRecipientRow, не вызывает _get_active_email().
     SESSION_GAP пропускается для manual-режима (аудит, п.4).
     Агрегаторы и Gmail-блок остаются (техническая защита).
     """
-    # 1. Получить company_ids из junction-таблицы
+    # 1. Получить (company_id, email) пары из junction-таблицы
     recipient_rows = (
-        db.query(CampaignRecipientRow.company_id)
+        db.query(
+            CampaignRecipientRow.company_id,
+            CampaignRecipientRow.email,
+        )
         .filter(CampaignRecipientRow.campaign_id == campaign.id)
         .all()
     )
-    company_ids = [r[0] for r in recipient_rows]
 
-    if not company_ids:
+    if not recipient_rows:
         return []
 
-    # 2. Один JOIN-запрос вместо N+1 (аудит, п.1)
+    # 2. Группируем email'ы по company_id
+    company_emails: dict[int, list[str]] = {}
+    for company_id, email in recipient_rows:
+        company_emails.setdefault(company_id, []).append(email)
+
+    company_ids = list(company_emails.keys())
+
+    # 3. Один JOIN-запрос вместо N+1
     q = (
         db.query(CompanyRow, EnrichedCompanyRow, CrmContactRow)
         .outerjoin(EnrichedCompanyRow, EnrichedCompanyRow.id == CompanyRow.id)
         .outerjoin(CrmContactRow, CrmContactRow.company_id == CompanyRow.id)
         .filter(CompanyRow.id.in_(company_ids))
-        .filter(CompanyRow.deleted_at.is_(None))  # аудит, мелочь: soft-delete
+        .filter(CompanyRow.deleted_at.is_(None))
     )
 
-    # Batch iteration (как в filter-режиме)
+    # Batch iteration
     from sqlalchemy.exc import StatementError
     try:
         rows_iter = q.yield_per(100).execution_options(stream_results=True)
@@ -346,10 +355,10 @@ def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
         except StatementError:
             rows_iter = q.all()
 
-    # 3. Дедуп по уже отправленным
-    sent_company_ids = {
-        row[0] for row in
-        db.query(CrmEmailLogRow.company_id)
+    # 4. Дедуп по уже отправленным — per-email (не per-company)
+    sent_emails_in_campaign = {
+        row[0].lower() for row in
+        db.query(CrmEmailLogRow.email_to)
         .filter(CrmEmailLogRow.campaign_id == campaign.id)
         .all()
     }
@@ -357,19 +366,21 @@ def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
     raw_recipients = []
     seen_emails = set()
     for company, enriched, contact in rows_iter:
-        if company.id in sent_company_ids:
-            continue
         if contact and contact.stop_automation:
             continue
-        email_to = _get_active_email(company.id, db)
-        if not email_to:
-            continue
-        if email_to in seen_emails:
-            continue
-        seen_emails.add(email_to)
-        raw_recipients.append((company, enriched, contact, email_to))
+        emails = company_emails.get(company.id, [])
+        for email_to in emails:
+            email_clean = email_to.lower().strip()
+            if not email_clean:
+                continue
+            if email_clean in sent_emails_in_campaign:
+                continue
+            if email_clean in seen_emails:
+                continue
+            seen_emails.add(email_clean)
+            raw_recipients.append((company, enriched, contact, email_clean))
 
-    # 4. Валидация: агрегаторы + Gmail-блок, БЕЗ SESSION_GAP (аудит, п.4)
+    # 5. Валидация: агрегаторы + Gmail-блок, БЕЗ SESSION_GAP
     from granite.email.validator import validate_recipients
     valid, warnings = validate_recipients(
         raw_recipients,
