@@ -20,3 +20,4 @@ requirements.txt
 docs/superpowers/
 .opencode
 .superpowers
+.worktrees/
