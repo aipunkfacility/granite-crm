@@ -473,7 +473,7 @@ function CampaignRecipientsSection({ campaignId, recipientCount }: { campaignId:
                     </p>
                   </div>
                   <div className="text-xs text-muted-foreground truncate max-w-[180px]">
-                    {item.emails?.[0] || '—'}
+                    {item.email || '—'}
                   </div>
                   {(() => {
                     const cfg = item.send_status ? statusConfig[item.send_status] : undefined;
