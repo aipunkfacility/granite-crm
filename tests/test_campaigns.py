@@ -11,6 +11,7 @@ from granite.database import (
     Base, CompanyRow, EnrichedCompanyRow, CrmContactRow,
     CrmEmailLogRow, CrmEmailCampaignRow, CrmTemplateRow, CrmTouchRow,
 )
+from granite.email.sync import sync_company_emails
 
 
 # ── Фикстуры ─────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ def _make_company(db, id_=None, name="Тест Мастерская", city="Мо
     )
     db.add(company)
     db.flush()
+    sync_company_emails(db, company.id, company.emails)
     return company
 
 
