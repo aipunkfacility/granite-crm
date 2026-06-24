@@ -32,50 +32,75 @@ class NetworkDetector:
         return self.config.get("enrichment", {}).get("network_threshold", 2)
 
     def scan_for_networks(self, threshold: int | None = None, city: str | None = None) -> None:
-        """Пересчитывает флаг is_network. Если передан city — только для этой области."""
+        """Пересчитывает флаги is_network, network_id и создаёт/обновляет записи в networks."""
+        from collections import Counter
+        from granite.database import NetworkRow, CompanyRow
+
         if threshold is None:
             threshold = self._get_threshold()
 
         with self.db.session_scope() as session:
-            # Сбрасываем флаги для целевой области (или всех)
-            base_q = session.query(EnrichedCompanyRow)
+            # ── 1. Сброс is_network + network_id для целевой области ──
+            reset_filter = []
             if city:
-                base_q = base_q.filter_by(city=city)
-            reset_count = base_q.update(
-                {EnrichedCompanyRow.is_network: False}, synchronize_session=False
+                reset_filter.append(EnrichedCompanyRow.city == city)
+            session.query(EnrichedCompanyRow).filter(*reset_filter).update(
+                {
+                    EnrichedCompanyRow.is_network: False,
+                    EnrichedCompanyRow.network_id: None,
+                },
+                synchronize_session=False,
             )
             session.flush()
 
-            # Загружаем только (id, website) — лёгкие tuple без ORM-объектов
-            rows_q = session.query(
+            # ── 2. Загрузка лёгких tuples + исключение soft-deleted/merged ──
+            base_q = session.query(
                 EnrichedCompanyRow.id,
                 EnrichedCompanyRow.website,
+                EnrichedCompanyRow.emails,
+                EnrichedCompanyRow.phones,
+                EnrichedCompanyRow.name,
+                EnrichedCompanyRow.city,
+                EnrichedCompanyRow.crm_score,
+                EnrichedCompanyRow.segment,
             )
             if city:
-                rows_q = rows_q.filter_by(city=city)
+                base_q = base_q.filter(EnrichedCompanyRow.city == city)
 
-            rows = rows_q.all()
+            rows = base_q.all()
             if not rows:
                 logger.info("Нет компаний для анализа сетей.")
                 return
 
-            # ── Единый проход: подсчёт доменов и кэши нормализации ──
+            all_ids = [r[0] for r in rows]
+            dead_ids: set[int] = set()
+            if all_ids:
+                dead_q = session.query(CompanyRow.id).filter(
+                    CompanyRow.id.in_(all_ids),
+                    (CompanyRow.deleted_at.isnot(None)) | (CompanyRow.merged_into.isnot(None)),
+                )
+                dead_ids = {did for (did,) in dead_q.all()}
+
+            rows = [r for r in rows if r[0] not in dead_ids]
+            if not rows:
+                logger.info("Нет живых компаний для анализа сетей.")
+                return
+
+            # ── 3. Единый проход: подсчёт доменов + кэши ──
+            def _is_spam(dom: str | None) -> bool:
+                return bool(dom and (dom in SPAM_DOMAINS or dom in NON_NETWORK_DOMAINS or _is_ua_region(dom)))
+
             domain_count: dict[str, int] = {}
             base_domain_count: dict[str, int] = {}
             cached_domains: dict[int, str | None] = {}
             cached_base_domains: dict[int, str | None] = {}
 
-            def _is_spam(dom: str | None) -> bool:
-                return bool(dom and (dom in SPAM_DOMAINS or dom in NON_NETWORK_DOMAINS or _is_ua_region(dom)))
-
-            for row_id, website in rows:
-                # Domain counting
+            for row_id, website, *_ in rows:
                 domain = extract_domain(website)
                 cached_domains[row_id] = domain
                 if domain and not _is_spam(domain):
                     domain_count[domain] = domain_count.get(domain, 0) + 1
 
-                # Base domain counting (для субдоменных сетей типа *.danila-master.ru)
                 base = extract_base_domain(website)
                 cached_base_domains[row_id] = base
                 if base and not _is_spam(base):
@@ -84,55 +109,121 @@ class NetworkDetector:
             network_domains = {d for d, cnt in domain_count.items() if cnt >= threshold}
             network_base_domains = {d for d, cnt in base_domain_count.items() if cnt >= threshold}
 
-            if network_domains:
-                for d in sorted(network_domains):
-                    logger.debug(f"  Сеть по домену: {d} ({domain_count[d]} компаний)")
-            if network_base_domains:
-                for d in sorted(network_base_domains):
-                    logger.debug(f"  Сеть по base-домену: {d} ({base_domain_count[d]} компаний)")
-
             if not network_domains and not network_base_domains:
                 logger.info("Сетей не обнаружено.")
                 return
 
-            # ── Применяем флаги — используем кэш вместо повторного вызова ──
-            network_ids: list[int] = []
-            for row_id, website in rows:
-                domain = cached_domains[row_id]
+            for d in sorted(network_domains):
+                logger.debug(f"  Сеть по домену: {d} ({domain_count[d]} компаний)")
+            for d in sorted(network_base_domains):
+                logger.debug(f"  Сеть по base-домену: {d} ({base_domain_count[d]} компаний)")
+
+            # ── 4. Группировка компаний по base_domain ──
+            # row_data: id -> (website, emails, phones, name, city, score, segment)
+            row_data: dict[int, tuple] = {r[0]: r[1:] for r in rows}
+
+            # base_domain -> set of company ids
+            groups: dict[str, set[int]] = {}
+            for row_id in row_data:
                 base = cached_base_domains.get(row_id)
+                if base and not _is_spam(base) and base in network_base_domains:
+                    groups.setdefault(base, set()).add(row_id)
 
-                # Пропускаем компании на заведомо не-сетевых доменах (директории, хостинги, .ua)
-                if domain and _is_spam(domain):
+            # ── 5. UPSERT в networks + SET network_id ──
+            network_count = 0
+            member_count = 0
+
+            for base_domain, member_ids in groups.items():
+                if len(member_ids) < threshold:
                     continue
-                if base and _is_spam(base):
-                    continue
 
-                is_net = domain in network_domains
+                companies_data = [row_data[mid] for mid in member_ids]
+                emails_all: set[str] = set()
+                phones_all: set[str] = set()
+                subdomains: set[str] = set()
+                cities: set[str] = set()
+                names: list[str] = []
+                segments: list[str] = []
+                scores: list[float] = []
 
-                # Проверяем base domain если полный домен не попал
-                if not is_net:
-                    if base and base in network_base_domains:
-                        is_net = True
+                for mid in member_ids:
+                    website, emails, phones, name, city_name, score, segment = row_data[mid]
+                    dom = extract_domain(website)
+                    if dom:
+                        subdomains.add(dom)
+                    for e in (emails or []):
+                        if isinstance(e, str) and "@" in e:
+                            emails_all.add(e)
+                    for p in (phones or []):
+                        norm = normalize_phone(p)
+                        if norm:
+                            phones_all.add(norm)
+                    cities.add(city_name)
+                    names.append(name or "")
+                    segments.append(segment or "D")
+                    scores.append(score or 0.0)
 
-                if is_net:
-                    network_ids.append(row_id)
+                seg_dist = dict(Counter(segments).most_common())
+                most_common_name = Counter(names).most_common(1)[0][0] if names else base_domain
+                avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+                classify_dicts = [
+                    {"city": rd[4], "emails": rd[2] or []}
+                    for rd in companies_data
+                ]
+                ntype = self._classify_network_type(classify_dicts, "website")
 
-            if network_ids:
-                # Массовый UPDATE чанками по 500 (SQLite LIMIT в execute)
+                existing = session.query(NetworkRow).filter_by(base_domain=base_domain).first()
+                if existing:
+                    existing.name = most_common_name
+                    existing.network_type = ntype
+                    existing.subdomains = sorted(subdomains)
+                    existing.emails = sorted(emails_all)
+                    existing.phones = sorted(phones_all)
+                    existing.company_count = len(member_ids)
+                    existing.city_count = len(cities)
+                    existing.cities = sorted(cities)
+                    existing.avg_score = avg_score
+                    existing.segment_dist = seg_dist
+                    network_row = existing
+                else:
+                    network_row = NetworkRow(
+                        name=most_common_name,
+                        base_domain=base_domain,
+                        signal_type="website",
+                        network_type=ntype,
+                        subdomains=sorted(subdomains),
+                        emails=sorted(emails_all),
+                        phones=sorted(phones_all),
+                        company_count=len(member_ids),
+                        city_count=len(cities),
+                        cities=sorted(cities),
+                        avg_score=avg_score,
+                        segment_dist=seg_dist,
+                    )
+                    session.add(network_row)
+                    session.flush()
+
+                network_count += 1
+
+                # Chunked UPDATE of EnrichedCompanyRow
+                member_list = list(member_ids)
                 chunk_size = 500
-                for i in range(0, len(network_ids), chunk_size):
-                    chunk = network_ids[i : i + chunk_size]
-                    update_q = session.query(EnrichedCompanyRow).filter(
+                for i in range(0, len(member_list), chunk_size):
+                    chunk = member_list[i : i + chunk_size]
+                    session.query(EnrichedCompanyRow).filter(
                         EnrichedCompanyRow.id.in_(chunk)
+                    ).update(
+                        {
+                            EnrichedCompanyRow.is_network: True,
+                            EnrichedCompanyRow.network_id: network_row.id,
+                        },
+                        synchronize_session=False,
                     )
-                    update_q.update(
-                        {EnrichedCompanyRow.is_network: True}, synchronize_session=False
-                    )
+                member_count += len(member_ids)
 
             logger.info(
-                f"Обнаружено {len(network_ids)} филиалов сетей "
-                f"(доменов: {len(network_domains)}, "
-                f"base-доменов: {len(network_base_domains)})."
+                f"Обнаружено {member_count} филиалов сетей "
+                f"(сетей: {network_count})."
             )
 
     def propagate_shared_contacts(self) -> int:
