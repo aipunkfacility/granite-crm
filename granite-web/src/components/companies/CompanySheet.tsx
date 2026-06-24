@@ -363,6 +363,9 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                               {isActive && ce.is_primary && (
                                 <Badge variant="default" className="text-[10px] h-5 px-1.5 font-normal">primary</Badge>
                               )}
+                              {isActive && ce.sent_count > 0 && !ce.is_primary && (
+                                <Badge variant="outline" className="text-[10px] h-5 px-1.5 font-normal text-muted-foreground">уже отправлено</Badge>
+                              )}
                               {!isActive && (
                                 <Badge variant="default" className="text-[10px] h-5 px-1.5 font-normal">отправлен</Badge>
                               )}
