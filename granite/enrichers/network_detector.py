@@ -34,7 +34,7 @@ class NetworkDetector:
     def scan_for_networks(self, threshold: int | None = None, city: str | None = None) -> None:
         """Пересчитывает флаги is_network, network_id и создаёт/обновляет записи в networks."""
         from collections import Counter
-        from granite.database import NetworkRow, CompanyRow
+        from granite.database import NetworkRow
 
         if threshold is None:
             threshold = self._get_threshold()
