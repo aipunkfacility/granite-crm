@@ -34,8 +34,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
     )
-    op.create_index("ix_networks_base_domain", "networks", ["base_domain"], unique=True)
-
     op.create_table(
         "network_email_toggles",
         sa.Column("network_id", sa.Integer(), nullable=False),
@@ -81,5 +79,4 @@ def downgrade() -> None:
         batch_op.drop_column("network_id")
 
     op.drop_table("network_email_toggles")
-    op.drop_index("ix_networks_base_domain", table_name="networks")
     op.drop_table("networks")

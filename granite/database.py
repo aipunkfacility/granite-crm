@@ -210,7 +210,7 @@ class NetworkRow(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(String, nullable=True)
-    base_domain = Column(String, nullable=False, unique=True, index=True)
+    base_domain = Column(String, nullable=False, unique=True)
     signal_type = Column(String, nullable=False, default="website")
     network_type = Column(String, nullable=False, default="franchise")
 
