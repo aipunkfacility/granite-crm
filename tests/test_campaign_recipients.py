@@ -41,6 +41,60 @@ class TestAddRecipients:
         assert row is not None
         assert row.company_id == company.id
 
+    def test_add_company_with_multiple_emails_creates_multiple_rows(self, db_session, client):
+        """Компания с 3 активными email — 3 строки в campaign_recipients."""
+        company = CompanyRow(name_best="Мультимыло", city="москва", emails=["a@mail.ru", "b@mail.ru", "c@mail.ru"])
+        db_session.add(company); db_session.flush()
+        sync_company_emails(db_session, company.id, company.emails)
+        # all need to be active
+        for e in db_session.query(CompanyEmailRow).filter(CompanyEmailRow.company_id == company.id).all():
+            e.is_active = True
+        contact = CrmContactRow(company_id=company.id)
+        db_session.add(contact); db_session.commit()
+        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                           json={"company_ids": [company.id]})
+
+        assert resp.status_code == 200
+        assert resp.json()["added"] == 1  # одна компания
+        rows = db_session.query(CampaignRecipientRow).filter_by(campaign_id=campaign.id).all()
+        assert len(rows) == 3  # три email'а
+        emails = {r.email for r in rows}
+        assert emails == {"a@mail.ru", "b@mail.ru", "c@mail.ru"}
+
+    def test_add_company_with_partially_sent_emails(self, db_session, client):
+        """2 email: 1 уже отправлялся → добавляется только 1."""
+        company = CompanyRow(name_best="Частично", city="москва",
+                             emails=["sent@mail.ru", "new@mail.ru"])
+        db_session.add(company); db_session.flush()
+        sync_company_emails(db_session, company.id, company.emails)
+        for e in db_session.query(CompanyEmailRow).filter(
+                CompanyEmailRow.company_id == company.id).all():
+            e.is_active = True
+        contact = CrmContactRow(company_id=company.id)
+        db_session.add(contact); db_session.flush()
+        # sent@mail.ru уже кому-то отправлялся
+        db_session.add(CrmEmailLogRow(
+            company_id=company.id, email_to="sent@mail.ru",
+            status="sent", campaign_id=None,
+        ))
+        db_session.commit()
+        campaign = CrmEmailCampaignRow(
+            name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        db_session.add(campaign); db_session.commit()
+
+        resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients",
+                           json={"company_ids": [company.id]})
+
+        assert resp.status_code == 200
+        assert resp.json()["added"] == 1  # компания учтена
+        rows = db_session.query(CampaignRecipientRow).filter_by(
+            campaign_id=campaign.id).all()
+        assert len(rows) == 1  # только новый email
+        assert rows[0].email == "new@mail.ru"
+
     def test_add_multiple_recipients(self, db_session, client):
         """Добавить несколько компаний за один запрос."""
         ids = []
@@ -216,7 +270,7 @@ class TestAddRecipients:
         details = resp.json()["skipped_details"]
         assert len(details) == 1
         assert details[0]["company_id"] == company_b.id
-        assert "email" in details[0]["reason"].lower() and "уже получал" in details[0]["reason"].lower()
+        assert "уже" in details[0]["reason"].lower()
 
     def test_add_mixed_companies_returns_detailed_skipped(self, db_session, client):
         """Смесь валидных и отфильтрованных компаний — детализация в skipped_details."""
@@ -263,7 +317,7 @@ class TestRemoveRecipients:
         db_session.add(company); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.commit()
 
         resp = client.post(f"/api/v1/campaigns/{campaign.id}/recipients/remove",
@@ -308,7 +362,7 @@ class TestListRecipients:
         for i in range(5):
             c = CompanyRow(name_best=f"Тест {i}", city="москва", emails=[f"t{i}@mail.ru"])
             db_session.add(c); db_session.flush()
-            db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=c.id))
+            db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=c.id, email="test@mail.ru"))
         db_session.commit()
 
         resp = client.get(f"/api/v1/campaigns/{campaign.id}/recipients?page=1&per_page=3")
@@ -335,7 +389,7 @@ class TestListRecipients:
         db_session.add(enriched); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.commit()
 
         resp = client.get(f"/api/v1/campaigns/{campaign.id}/recipients")
@@ -348,6 +402,7 @@ class TestListRecipients:
         assert item["segment"] == "A"
         assert item["crm_score"] == 50
         assert "send_status" in item
+        assert item["email"] == "test@mail.ru"
 
     def test_list_recipients_includes_send_status(self, db_session, client):
         """Ответ содержит статус отправки из CrmEmailLogRow."""
@@ -355,7 +410,7 @@ class TestListRecipients:
         db_session.add(company); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.flush()
         db_session.add(CrmEmailLogRow(
             company_id=company.id, campaign_id=campaign.id,
@@ -392,7 +447,7 @@ class TestGetManualRecipients:
             filters={"segment": "A"},
         )
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
@@ -409,7 +464,7 @@ class TestGetManualRecipients:
         db_session.add(contact); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.flush()
 
         db_session.add(CrmEmailLogRow(company_id=company.id, campaign_id=campaign.id,
@@ -429,7 +484,7 @@ class TestGetManualRecipients:
         db_session.add(contact); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
@@ -446,7 +501,7 @@ class TestGetManualRecipients:
         db_session.add(contact); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="del@mail.ru"))
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
@@ -466,7 +521,7 @@ class TestGetManualRecipients:
         db_session.add(contact); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
@@ -486,8 +541,8 @@ class TestGetManualRecipients:
         db_session.add(CrmContactRow(company_id=c2.id)); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=c1.id))
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=c2.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=c1.id, email="same@mail.ru"))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=c2.id, email="same@mail.ru"))
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
@@ -506,44 +561,27 @@ class TestGetManualRecipients:
 
         assert recipients == []
 
-    def test_manual_skips_cross_campaign_email(self, db_session):
-        """Компания с email, уже получавшим письмо в другой кампании — пропускается."""
-        company_a = CompanyRow(name_best="A", city="москва", emails=["shared@mail.ru"])
-        db_session.add(company_a); db_session.flush()
-        db_session.add(CrmContactRow(company_id=company_a.id)); db_session.flush()
-        db_session.add(CrmEmailLogRow(
-            company_id=company_a.id, email_to="shared@mail.ru",
-            status="sent", campaign_id=None,
-        )); db_session.commit()
-
-        company_b = CompanyRow(name_best="Б", city="москва", emails=["shared@mail.ru"])
-        db_session.add(company_b); db_session.flush()
-        db_session.add(CrmContactRow(company_id=company_b.id)); db_session.flush()
-        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
-        db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company_b.id))
-        db_session.commit()
-
-        from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
-
-        assert len(recipients) == 0
-
-    def test_manual_skips_company_with_email_sent_count(self, db_session):
-        """Компания с email_sent_count > 0 — пропускается в send loop."""
-        company = CompanyRow(name_best="Старая", city="москва", emails=["old@mail.ru"])
+    def test_manual_skips_already_sent_per_email(self, db_session):
+        """Email из CampaignRecipientRow, уже отправленный в этой кампании — пропускается."""
+        company = CompanyRow(name_best="Тест", city="москва", emails=["test@mail.ru"])
         db_session.add(company); db_session.flush()
-        db_session.add(CrmContactRow(company_id=company.id, email_sent_count=5)); db_session.flush()
-        campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
+        sync_company_emails(db_session, company.id, company.emails)
+        db_session.add(CrmContactRow(company_id=company.id)); db_session.flush()
+        campaign = CrmEmailCampaignRow(
+            name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(
+            campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
+        db_session.flush()
+        db_session.add(CrmEmailLogRow(
+            company_id=company.id, campaign_id=campaign.id,
+            email_to="test@mail.ru", status="sent",
+        ))
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
         recipients = _get_campaign_recipients(campaign, db_session)
-
         assert len(recipients) == 0
-
 
 class TestCreateCampaignWithManualMode:
     """Создание кампании в manual-режиме."""
@@ -651,7 +689,7 @@ class TestCampaignResponseFields:
         db_session.add(company); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.commit()
 
         resp = client.get(f"/api/v1/campaigns/{campaign.id}")
@@ -690,7 +728,7 @@ class TestCascadeDeletes:
         db_session.add(company); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.flush()
 
         db_session.delete(campaign)
@@ -705,7 +743,7 @@ class TestCascadeDeletes:
         db_session.add(company); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.flush()
 
         db_session.delete(company)
@@ -785,7 +823,7 @@ class TestManualCampaignFullFlow:
         db_session.add(enriched); db_session.flush()
         campaign = CrmEmailCampaignRow(name="Test", template_name="cold_email_v1", recipient_mode="manual")
         db_session.add(campaign); db_session.flush()
-        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id))
+        db_session.add(CampaignRecipientRow(campaign_id=campaign.id, company_id=company.id, email="test@mail.ru"))
         db_session.flush()
 
         db_session.add(CrmEmailLogRow(company_id=company.id, campaign_id=campaign.id,

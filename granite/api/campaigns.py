@@ -1288,7 +1288,7 @@ def list_recipients(
     )
 
     q = (
-        db.query(CompanyRow, EnrichedCompanyRow, CampaignRecipientRow.email, latest_status_subq)
+        db.query(CompanyRow, EnrichedCompanyRow, latest_status_subq, CampaignRecipientRow.email)
         .join(CampaignRecipientRow, CampaignRecipientRow.company_id == CompanyRow.id)
         .outerjoin(EnrichedCompanyRow, EnrichedCompanyRow.id == CompanyRow.id)
         .filter(CampaignRecipientRow.campaign_id == campaign_id)
@@ -1313,8 +1313,9 @@ def list_recipients(
             "segment": e.segment if e else None,
             "crm_score": e.crm_score if e else 0,
             "send_status": status,
+            "email": email,
         }
-        for c, e, email, status in rows
+        for c, e, status, email in rows
     ]
 
     return {"items": items, "total": total, "page": page, "per_page": per_page}
