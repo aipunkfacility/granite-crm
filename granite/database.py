@@ -460,15 +460,16 @@ class CrmEmailCampaignRow(Base):
 
 
 class CampaignRecipientRow(Base):
-    """Связь кампания <-> компания для ручного отбора."""
+    """Связь кампания <-> компания <-> email для ручного отбора."""
     __tablename__ = "campaign_recipients"
 
     campaign_id = Column(Integer, ForeignKey("crm_email_campaigns.id", ondelete="CASCADE"), primary_key=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
+    email = Column(String, primary_key=True)
     added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
-        return f"<CampaignRecipientRow(campaign_id={self.campaign_id}, company_id={self.company_id})>"
+        return f"<CampaignRecipientRow(campaign_id={self.campaign_id}, company_id={self.company_id}, email={self.email!r})>"
 
 
 __all__ = [
