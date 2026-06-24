@@ -30,7 +30,9 @@ TRANSPARENT_PNG = (
 
 def _is_temporary_smtp_error(e: BaseException) -> bool:
     """Retry только на временные 4xx SMTP ошибки (таймаут, rate limit)."""
-    return isinstance(e, smtplib.SMTPTemporaryError)
+    if isinstance(e, smtplib.SMTPResponseException):
+        return 400 <= e.smtp_code < 500
+    return False
 
 
 class EmailSender:
@@ -135,8 +137,8 @@ class EmailSender:
                                 template_name, tracking_id, rendered_body=rendered_body,
                                 campaign_id=campaign_id, ab_variant=ab_variant)
             return tracking_id
-        except smtplib.SMTPPermanentError as e:
-            logger.error(f"Email PERMANENT FAILURE -> {email_to}: {e}")
+        except smtplib.SMTPResponseException as e:
+            logger.error(f"Email SMTP error ({e.smtp_code}) -> {email_to}: {e}")
             if db_session is not None:
                 self._log_to_db(db_session, company_id, email_to, subject,
                                 template_name, tracking_id, error=str(e), rendered_body=rendered_body,

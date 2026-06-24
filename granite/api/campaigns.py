@@ -386,6 +386,7 @@ def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
         raw_recipients,
         db_session=db,
         skip_session_gap=True,
+        skip_sent_count=True,
     )
     if warnings:
         logger.warning(

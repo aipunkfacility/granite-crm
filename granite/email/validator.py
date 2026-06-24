@@ -52,6 +52,7 @@ def validate_recipients(
     recipients: list[tuple],
     db_session=None,
     skip_session_gap: bool = False,
+    skip_sent_count: bool = False,
 ) -> tuple[list[tuple], list[dict]]:
     """Валидация списка получателей перед отправкой.
 
@@ -114,14 +115,15 @@ def validate_recipients(
             })
             continue
 
-        sent_count = getattr(contact, "email_sent_count", None)
-        if isinstance(sent_count, (int, float)) and sent_count > 0:
-            warnings.append({
-                "company_id": company.id,
-                "name": getattr(company, "name_best", ""),
-                "reason": "контакт уже получал письмо",
-            })
-            continue
+        if not skip_sent_count:
+            sent_count = getattr(contact, "email_sent_count", None)
+            if isinstance(sent_count, (int, float)) and sent_count > 0:
+                warnings.append({
+                    "company_id": company.id,
+                    "name": getattr(company, "name_best", ""),
+                    "reason": "контакт уже получал письмо",
+                })
+                continue
 
         reason = _check_recipient(company, contact, email_to, blocked_domains, skip_session_gap=skip_session_gap)
         if reason:
@@ -148,6 +150,12 @@ def _check_recipient(company, contact, email_to: str, blocked_domains: Optional[
     # Формат email
     if not email_to or not _EMAIL_RE.match(email_to):
         return f"невалидный email ({email_to})"
+
+    # Не-ASCII символы — SMTP не поддерживает, будет UnicodeEncodeError
+    try:
+        email_to.encode("ascii")
+    except UnicodeEncodeError:
+        return f"email содержит не-ASCII символы ({email_to})"
 
     # Агрегатор
     domain = email_to.split("@")[-1].lower()
