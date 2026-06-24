@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from sqlalchemy import (
     create_engine,
     Column,
+    Float,
     Integer,
     String,
     Boolean,
@@ -12,6 +13,7 @@ from sqlalchemy import (
     JSON,
     ForeignKey,
     Index,
+    PrimaryKeyConstraint,
     UniqueConstraint,
     event,
     Engine,
@@ -158,6 +160,7 @@ class EnrichedCompanyRow(Base):
     cms = Column(String, default="unknown")
     has_marquiz = Column(Boolean, default=False)
     is_network = Column(Boolean, default=False)
+    network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Результаты анализа
     crm_score = Column(Integer, default=0, index=True)
@@ -193,6 +196,68 @@ class EnrichedCompanyRow(Base):
 
     def __repr__(self):
         return f"<{self.__class__.__name__}(id={self.id}, name={self.name!r})>"
+
+
+class NetworkRow(Base):
+    """Сеть — отдельная сущность, объединяющая филиалы одного бизнеса.
+
+    Одна строка = одна сеть (например, "Данила-Мастер").
+    Группируется по base_domain (SLD+TLD).
+    Агрегированные данные (subdomains, emails, phones) пересчитываются
+    при каждом запуске scan_for_networks().
+    """
+    __tablename__ = "networks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=True)
+    base_domain = Column(String, nullable=False, unique=True, index=True)
+    signal_type = Column(String, nullable=False, default="website")
+    network_type = Column(String, nullable=False, default="franchise")
+
+    subdomains = Column(JSON, default=list)
+    emails = Column(JSON, default=list)
+    phones = Column(JSON, default=list)
+
+    company_count = Column(Integer, default=0)
+    city_count = Column(Integer, default=0)
+    cities = Column(JSON, default=list)
+    avg_score = Column(Float, default=0.0)
+    segment_dist = Column(JSON, default=dict)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return f"<NetworkRow(id={self.id}, name={self.name!r}, base_domain={self.base_domain!r})>"
+
+
+class NetworkEmailToggleRow(Base):
+    """Глобальный тоггл отключения email в сети.
+
+    Если is_disabled=1, email не добавляется в кампании.
+    """
+    __tablename__ = "network_email_toggles"
+    __table_args__ = (
+        PrimaryKeyConstraint('network_id', 'email'),
+    )
+
+    network_id = Column(Integer, ForeignKey("networks.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String, nullable=False)
+    is_disabled = Column(Boolean, default=True, server_default="1", nullable=False)
+    reason = Column(Text, default="")
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    def __repr__(self):
+        return f"<NetworkEmailToggleRow(network_id={self.network_id}, email={self.email!r}, disabled={self.is_disabled})>"
 
 
 # Допустимые стадии воронки — используется для валидации в API и future CHECK constraint
@@ -466,6 +531,7 @@ class CampaignRecipientRow(Base):
     campaign_id = Column(Integer, ForeignKey("crm_email_campaigns.id", ondelete="CASCADE"), primary_key=True)
     company_id = Column(Integer, ForeignKey("companies.id", ondelete="CASCADE"), primary_key=True)
     email = Column(String, primary_key=True)
+    network_id = Column(Integer, ForeignKey("networks.id", ondelete="SET NULL"), nullable=True)
     added_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
@@ -475,6 +541,7 @@ class CampaignRecipientRow(Base):
 __all__ = [
     "Base", "Database",
     "RawCompanyRow", "CompanyRow", "EnrichedCompanyRow",
+    "NetworkRow", "NetworkEmailToggleRow",
     "CityRefRow", "UnmatchedCityRow",
     "CrmContactRow", "CrmTouchRow", "CrmTemplateRow",
     "CrmEmailLogRow", "CrmTaskRow", "CrmEmailCampaignRow",

@@ -273,8 +273,9 @@ class TestForeignKeys:
         fks = insp.get_foreign_keys("enriched_companies")
         assert len(fks) >= 1
 
-        fk = fks[0]
-        assert fk["referred_table"] == "companies"
+        fk_companies = [fk for fk in fks if fk["referred_table"] == "companies"]
+        assert len(fk_companies) >= 1, "No FK to companies table found"
+        fk = fk_companies[0]
         assert "id" in fk["constrained_columns"]
 
     def test_raw_companies_fk(self, alembic_config, db_url):
