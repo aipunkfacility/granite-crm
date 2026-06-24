@@ -465,7 +465,7 @@ function CampaignRecipientsSection({ campaignId, recipientCount }: { campaignId:
           <>
             <div className="space-y-2">
               {items.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-muted/50 transition-colors">
+                <div key={`${item.id}-${item.email}`} className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-muted/50 transition-colors">
                   <div className="flex-1 min-w-0">
                     <Link href={`/companies/${item.id}`} className="text-sm font-medium truncate text-primary hover:underline">{item.name}</Link>
                     <p className="text-xs text-muted-foreground">

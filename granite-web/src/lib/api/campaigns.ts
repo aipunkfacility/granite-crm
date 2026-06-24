@@ -143,6 +143,7 @@ export interface RecipientItem {
   id: number;
   name: string;
   city: string;
+  email: string;
   emails: string[];
   segment: string | null;
   crm_score: number;
