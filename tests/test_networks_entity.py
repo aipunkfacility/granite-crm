@@ -399,3 +399,136 @@ def test_toggle_email_404_for_missing_network(db):
             app.state.Session = original
         else:
             del app.state.Session
+
+
+# ============================================================
+# add_network_to_campaign
+# ============================================================
+
+
+def test_add_network_to_campaign(db):
+    """Adding a network to a campaign inserts its unique emails as recipients."""
+    from granite.api.campaigns import add_network_to_campaign
+    from granite.database import CampaignRecipientRow, CrmEmailCampaignRow, NetworkRow
+
+    with db.session_scope() as session:
+        c1 = CompanyRow(name_best="Филиал Омск", city="Омск", emails=["omsk@danila-master.ru"])
+        c2 = CompanyRow(name_best="Филиал Тюмень", city="Тюмень", emails=["tyumen@danila-master.ru"])
+        session.add_all([c1, c2])
+        session.flush()
+
+        campaign = CrmEmailCampaignRow(name="Test", template_name="default", subject_a="Test", subject_b="Test")
+        session.add(campaign)
+        session.flush()
+
+        nw = NetworkRow(
+            name="Данила-Мастер", base_domain="danila-master.ru",
+            signal_type="website", network_type="franchise",
+            emails=["omsk@danila-master.ru", "tyumen@danila-master.ru"],
+            company_count=2,
+        )
+        session.add(nw)
+        session.flush()
+        campaign_id = campaign.id
+        network_id = nw.id
+
+        result = add_network_to_campaign(campaign, network_id, session)
+
+    assert result["added"] == 2
+    with db.session_scope() as session:
+        recipients = session.query(CampaignRecipientRow).filter(
+            CampaignRecipientRow.campaign_id == campaign_id
+        ).all()
+        assert len(recipients) == 2
+        assert all(r.network_id == network_id for r in recipients)
+        emails = {r.email for r in recipients}
+        assert "omsk@danila-master.ru" in emails
+        assert "tyumen@danila-master.ru" in emails
+
+
+def test_add_network_skips_disabled_emails(db):
+    """Disabled emails are not added to campaign."""
+    from granite.api.campaigns import add_network_to_campaign
+    from granite.database import (
+        CrmEmailCampaignRow,
+        NetworkRow, NetworkEmailToggleRow,
+    )
+
+    with db.session_scope() as session:
+        company = CompanyRow(name_best="TestCo", city="Омск", emails=["a@test.ru"])
+        session.add(company)
+        session.flush()
+
+        campaign = CrmEmailCampaignRow(name="Test", template_name="default", subject_a="Test", subject_b="Test")
+        session.add(campaign)
+        session.flush()
+
+        nw = NetworkRow(
+            name="TestNet", base_domain="test.ru",
+            signal_type="website", network_type="local",
+            emails=["a@test.ru", "b@test.ru"],
+            company_count=2,
+        )
+        session.add(nw)
+        session.flush()
+
+        toggle = NetworkEmailToggleRow(
+            network_id=nw.id, email="b@test.ru",
+            is_disabled=True, reason="не работает",
+        )
+        session.add(toggle)
+        session.flush()
+        campaign_obj = campaign
+        network_id = nw.id
+
+        result = add_network_to_campaign(campaign_obj, network_id, session)
+
+    assert result["added"] == 1
+    assert result["skipped"] == 1
+    assert len(result["skipped_details"]) == 1
+    assert result["skipped_details"][0]["reason"] == "email отключен тогглом"
+
+
+def test_add_network_skips_already_sent(db):
+    """Emails already sent in any campaign are not added."""
+    from granite.api.campaigns import add_network_to_campaign
+    from granite.database import (
+        CrmEmailCampaignRow,
+        NetworkRow, CrmEmailLogRow,
+    )
+
+    with db.session_scope() as session:
+        campaign = CrmEmailCampaignRow(name="Test", template_name="default", subject_a="Test", subject_b="Test")
+        session.add(campaign)
+        session.flush()
+
+        company = CompanyRow(name_best="TestCo", city="Омск", emails=["a@test.ru", "b@test.ru"])
+        session.add(company)
+        session.flush()
+
+        nw = NetworkRow(
+            name="TestNet", base_domain="test.ru",
+            signal_type="website", network_type="local",
+            emails=["a@test.ru", "b@test.ru"],
+            company_count=2,
+        )
+        session.add(nw)
+        session.flush()
+
+        log = CrmEmailLogRow(
+            campaign_id=campaign.id,
+            company_id=company.id,
+            email_to="a@test.ru",
+            status="sent",
+        )
+        session.add(log)
+        session.flush()
+        campaign_obj = campaign
+        network_id = nw.id
+
+        result = add_network_to_campaign(campaign_obj, network_id, session)
+
+    assert result["added"] == 1
+    assert result["skipped"] == 1
+    assert len(result["skipped_details"]) == 1
+    assert result["skipped_details"][0]["reason"] == "email уже отправлялся"

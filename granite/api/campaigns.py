@@ -5,6 +5,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, String, text as sa_text, func, case
@@ -1190,6 +1191,121 @@ def _add_recipients_to_campaign(
     )
     db.flush()
     return {"added": added, "skipped": len(skipped_details), "skipped_details": skipped_details}
+
+
+def add_network_to_campaign(
+    campaign: CrmEmailCampaignRow,
+    network_id: int,
+    db: Session,
+) -> dict:
+    """Добавить уникальные email сети в кампанию.
+
+    Проверки:
+    - email отключен тогглом → пропуск
+    - email уже отправлялся (CrmEmailLogRow) → пропуск
+    - email уже в этой кампании → пропуск
+    """
+    from granite.database import NetworkRow, NetworkEmailToggleRow, CrmEmailLogRow
+
+    nw = db.get(NetworkRow, network_id)
+    if not nw:
+        return {"added": 0, "skipped": 0, "skipped_details": [{"reason": "сеть не найдена"}]}
+
+    emails = nw.emails or []
+    if not emails:
+        return {"added": 0, "skipped": 0, "skipped_details": [{"reason": "нет email в сети"}]}
+
+    # Тогглы
+    disabled_emails: set[str] = set()
+    for t in db.query(NetworkEmailToggleRow).filter(
+        NetworkEmailToggleRow.network_id == network_id,
+        NetworkEmailToggleRow.is_disabled == True,
+    ).all():
+        disabled_emails.add(t.email.lower())
+
+    # Уже отправленные
+    already_sent: set[str] = set()
+    if emails:
+        logs = db.query(CrmEmailLogRow.email_to).filter(
+            CrmEmailLogRow.email_to.in_(emails),
+            CrmEmailLogRow.status.in_(("sent", "opened", "replied", "bounced")),
+        ).all()
+        already_sent = {row[0].lower() for row in logs}
+
+    # Уже в кампании
+    existing_emails: set[str] = set()
+    existing_rows = db.query(CampaignRecipientRow.email).filter(
+        CampaignRecipientRow.campaign_id == campaign.id
+    ).all()
+    existing_emails = {row[0].lower() for row in existing_rows}
+
+    added = 0
+    skipped_details = []
+
+    with db.no_autoflush:
+        for email in emails:
+            email_clean = email.lower().strip()
+
+            if email_clean in disabled_emails:
+                skipped_details.append({"email": email_clean, "reason": "email отключен тогглом"})
+                continue
+            if email_clean in already_sent:
+                skipped_details.append({"email": email_clean, "reason": "email уже отправлялся"})
+                continue
+            if email_clean in existing_emails:
+                skipped_details.append({"email": email_clean, "reason": "email уже в кампании"})
+                continue
+
+            # Находим company_id для этого email
+            from granite.database import CompanyRow
+            company = db.query(CompanyRow).filter(
+                CompanyRow.emails.contains(email_clean),
+                CompanyRow.deleted_at.is_(None),
+            ).first()
+            company_id = company.id if company else 0
+
+            db.add(CampaignRecipientRow(
+                campaign_id=campaign.id,
+                company_id=company_id,
+                email=email_clean,
+                network_id=network_id,
+            ))
+            existing_emails.add(email_clean)
+            added += 1
+
+    campaign.total_recipients = (
+        db.query(func.count(CampaignRecipientRow.campaign_id))
+        .filter(CampaignRecipientRow.campaign_id == campaign.id)
+        .scalar() or 0
+    )
+    db.flush()
+    return {"added": added, "skipped": len(skipped_details), "skipped_details": skipped_details}
+
+
+class AddNetworkRequest(BaseModel):
+    network_id: int
+
+
+@router.post("/campaigns/{campaign_id}/add-network")
+def add_network_recipients(
+    campaign_id: int,
+    body: AddNetworkRequest,
+    db: Session = Depends(get_db),
+):
+    """Добавить уникальные email сети в кампанию."""
+    campaign = db.get(CrmEmailCampaignRow, campaign_id)
+    if not campaign:
+        raise HTTPException(404, "Campaign not found")
+    if campaign.status not in _EDITABLE_STATUSES:
+        raise HTTPException(400, f"Campaign status '{campaign.status}' is not editable")
+
+    result = add_network_to_campaign(campaign, body.network_id, db)
+    return {
+        "ok": True,
+        "added": result["added"],
+        "skipped": result["skipped"],
+        "skipped_details": result["skipped_details"],
+    }
 
 
 @router.post("/campaigns/{campaign_id}/recipients")
