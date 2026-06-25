@@ -1,5 +1,5 @@
 # enrichers/network_detector.py
-from granite.database import Database, EnrichedCompanyRow, CompanyRow, CompanyEmailRow
+from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
 from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMAINS
@@ -463,7 +463,7 @@ class NetworkDetector:
         if not nw:
             return None
 
-        # Загружаем компании этой сети
+        # Загружаем компании этой сети, исключая soft-deleted и merged
         companies_rows = session.query(
             EnrichedCompanyRow.id,
             EnrichedCompanyRow.name,
@@ -472,8 +472,12 @@ class NetworkDetector:
             EnrichedCompanyRow.phones,
             EnrichedCompanyRow.emails,
             EnrichedCompanyRow.crm_score,
+        ).join(
+            CompanyRow, CompanyRow.id == EnrichedCompanyRow.id
         ).filter(
-            EnrichedCompanyRow.network_id == nw.id
+            EnrichedCompanyRow.network_id == nw.id,
+            CompanyRow.deleted_at.is_(None),
+            CompanyRow.merged_into.is_(None),
         ).all()
 
         companies = [{
