@@ -16,6 +16,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    op.drop_table("networks")
     op.create_table(
         "networks",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
@@ -47,6 +48,8 @@ def upgrade() -> None:
     )
 
     with op.batch_alter_table("enriched_companies") as batch_op:
+        batch_op.drop_index("ix_enriched_companies_network_group")
+        batch_op.drop_column("network_group")
         batch_op.add_column(sa.Column("network_id", sa.Integer(), nullable=True))
         batch_op.create_foreign_key(
             "fk_enriched_companies_network_id",
@@ -77,6 +80,8 @@ def downgrade() -> None:
         batch_op.drop_index("ix_enriched_companies_network_id")
         batch_op.drop_constraint("fk_enriched_companies_network_id", type_="foreignkey")
         batch_op.drop_column("network_id")
+        batch_op.add_column(sa.Column("network_group", sa.String(), nullable=True))
+        batch_op.create_index("ix_enriched_companies_network_group", ["network_group"])
 
     op.drop_table("network_email_toggles")
     op.drop_table("networks")
