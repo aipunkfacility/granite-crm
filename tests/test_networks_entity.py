@@ -532,3 +532,42 @@ def test_add_network_skips_already_sent(db):
     assert result["skipped"] == 1
     assert len(result["skipped_details"]) == 1
     assert result["skipped_details"][0]["reason"] == "email уже отправлялся"
+
+
+def test_propagate_uses_network_table(db):
+    """propagate_shared_contacts() copies emails from networks table."""
+    from granite.enrichers.network_detector import NetworkDetector
+
+    with db.session_scope() as session:
+        nw = NetworkRow(name="Test", base_domain="test.ru",
+                        signal_type="website", network_type="local",
+                        emails=["shared@test.ru", "extra@test.ru"],
+                        company_count=2)
+        session.add(nw)
+        session.flush()
+
+        c1 = CompanyRow(name_best="A", city="X", website="https://a.test.ru")
+        c2 = CompanyRow(name_best="B", city="X", website="https://b.test.ru")
+        session.add_all([c1, c2])
+        session.flush()
+
+        e1 = EnrichedCompanyRow(id=c1.id, name="A", city="X",
+                                website="https://a.test.ru", network_id=nw.id,
+                                emails=["shared@test.ru"])  # missing extra@test.ru
+        e2 = EnrichedCompanyRow(id=c2.id, name="B", city="X",
+                                website="https://b.test.ru", network_id=nw.id,
+                                emails=[])  # missing both
+        session.add_all([e1, e2])
+        session.flush()
+        c1_id, c2_id = c1.id, c2.id
+
+    detector = NetworkDetector(db)
+    affected = detector.propagate_shared_contacts()
+    assert affected == 2
+
+    with db.session_scope() as session:
+        e = session.get(EnrichedCompanyRow, c1_id)
+        assert "extra@test.ru" in e.emails
+        e2 = session.get(EnrichedCompanyRow, c2_id)
+        assert "shared@test.ru" in e2.emails
+        assert "extra@test.ru" in e2.emails

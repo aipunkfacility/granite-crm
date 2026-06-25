@@ -227,88 +227,46 @@ class NetworkDetector:
             )
 
     def propagate_shared_contacts(self) -> int:
-        """Propagate shared emails among network members.
+        """Propagate shared emails among network members via networks table.
 
-        After scan_for_networks() has set is_network=True, this method
-        groups network companies by shared domain / email-domain and
-        copies network-common emails to members that are missing them.
-
-        Only propagates emails whose domain matches the group signal
-        (e.g., @guravli.agency for an email-domain group). Free email
-        domains (mail.ru, gmail.com, etc.) are never propagated.
-
-        Writes to CompanyRow.emails, EnrichedCompanyRow.emails,
-        and CompanyEmailRow (via sync_company_emails).
-
-        Returns:
-            Number of companies that received new emails.
+        Reads aggregated emails from NetworkRow, copies missing emails to each member.
         """
+        from granite.database import NetworkRow
         from granite.email.sync import sync_company_emails
 
         affected = 0
         with self.db.session_scope() as session:
-            rows = session.query(
-                EnrichedCompanyRow.id,
-                EnrichedCompanyRow.website,
-                EnrichedCompanyRow.emails,
-            ).filter(
-                EnrichedCompanyRow.is_network == True,
+            networks = session.query(NetworkRow).filter(
+                NetworkRow.company_count >= 2
             ).all()
 
-            if not rows:
-                logger.info("Нет сетевых компаний — пропагация не нужна.")
-                return 0
-
-            domain_groups: dict[str, set[int]] = {}
-            row_email_map: dict[int, set[str]] = {}
-
-            for row_id, website, emails in rows:
-                row_set = set()
-                for e in (emails or []):
-                    if isinstance(e, str) and '@' in e:
-                        row_set.add(e.strip())
-                row_email_map[row_id] = row_set
-
-                if website:
-                    dom = extract_domain(website)
-                    if dom and dom not in SPAM_DOMAINS and dom not in NON_NETWORK_DOMAINS:
-                        domain_groups.setdefault(dom, set()).add(row_id)
-                    base = extract_base_domain(website)
-                    if base and base not in SPAM_DOMAINS and base not in NON_NETWORK_DOMAINS:
-                        domain_groups.setdefault(base, set()).add(row_id)
-
-            all_groups = [
-                ("domain", ids) for _, ids in domain_groups.items()
-            ]
-
-            for group_type, member_ids in all_groups:
-                if len(member_ids) < 2:
-                    continue
-                group_emails: set[str] = set()
-                for rid in member_ids:
-                    group_emails.update(row_email_map.get(rid, set()))
-                if not group_emails:
+            for nw in networks:
+                if not nw.emails:
                     continue
 
-                for rid in member_ids:
-                    company = session.get(CompanyRow, rid)
-                    enriched = session.get(EnrichedCompanyRow, rid)
-                    if not company or not enriched:
-                        continue
+                members = session.query(
+                    EnrichedCompanyRow.id, EnrichedCompanyRow.emails,
+                ).filter(EnrichedCompanyRow.network_id == nw.id).all()
 
-                    existing = set(company.emails or [])
-                    missing = group_emails - existing
+                network_emails = set(nw.emails)
+                for mid, member_emails in members:
+                    existing = set(member_emails or [])
+                    missing = network_emails - existing
                     if not missing:
                         continue
 
                     new_emails = sorted(existing | missing)
-                    company.emails = new_emails
-                    enriched.emails = new_emails
-                    sync_company_emails(session, rid, new_emails)
+                    company = session.get(CompanyRow, mid)
+                    enriched = session.get(EnrichedCompanyRow, mid)
+                    if company:
+                        company.emails = new_emails
+                    if enriched:
+                        enriched.emails = new_emails
+                    sync_company_emails(session, mid, new_emails)
                     affected += 1
                     logger.info(
-                        f"Пропагация: {company.name_best or '?'} "
-                        f"({company.city}) — добавлено {len(missing)} email"
+                        f"Пропагация: {company.name_best if company else mid} "
+                        f"— добавлено {len(missing)} email"
                     )
 
             session.flush()
