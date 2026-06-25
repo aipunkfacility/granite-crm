@@ -145,7 +145,7 @@ def list_networks(
     network_type: str | None = Query(None, pattern="^(franchise|aggregator|regional|local)$"),
     contact_status: str | None = Query(None, pattern="^(none|sent)$"),
 ):
-    """Вернуть список всех обнаруженных сетей со статистикой."""
+    """Вернуть список всех обнаруженных сетей из таблицы networks."""
     detector = NetworkDetector(Database())
     groups = detector.list_networks(
         db,

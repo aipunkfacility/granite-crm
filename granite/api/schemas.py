@@ -592,7 +592,9 @@ class TopCity(BaseModel):
 
 class NetworkSummary(BaseModel):
     """Краткая информация о сети для списка."""
+    id: int
     group_id: str
+    name: str | None = None
     signal_type: str
     signal_value: str
     company_count: int
@@ -601,6 +603,7 @@ class NetworkSummary(BaseModel):
     email_count: int = 0
     phone_count: int = 0
     top_cities: list[TopCity] = []
+    subdomains: list[str] = []
 
     network_type: str = "franchise"
     primary_email: str | None = None
