@@ -171,6 +171,54 @@ def test_scan_updates_existing_network(db):
         assert "b@test.ru" in nw.emails
 
 
+def test_company_list_hides_network_branches(db):
+    """Companies with network_id are hidden from default list."""
+    from fastapi.testclient import TestClient
+    from granite.api.app import app
+
+    original = getattr(app.state, 'Session', None)
+    app.state.Session = db.SessionLocal
+    try:
+        client = TestClient(app)
+
+        with db.session_scope() as session:
+            c1 = CompanyRow(name_best="Solo", city="Омск", website="https://solo.ru")
+            session.add(c1)
+            session.flush()
+            e1 = EnrichedCompanyRow(id=c1.id, name="Solo", city="Омск",
+                                    website="https://solo.ru", network_id=None)
+            session.add(e1)
+
+            c2 = CompanyRow(name_best="Branch", city="Омск", website="https://net.ru")
+            session.add(c2)
+            session.flush()
+            nw = NetworkRow(name="Net", base_domain="net.ru",
+                            signal_type="website", network_type="local",
+                            emails=["a@net.ru"], company_count=1)
+            session.add(nw)
+            session.flush()
+            e2 = EnrichedCompanyRow(id=c2.id, name="Branch", city="Омск",
+                                    website="https://net.ru", network_id=nw.id,
+                                    is_network=True)
+            session.add(e2)
+            session.flush()
+
+        resp = client.get("/api/v1/companies")
+        names = [c["name"] for c in resp.json()["items"]]
+        assert "Solo" in names
+        assert "Branch" not in names
+
+        resp = client.get("/api/v1/companies?is_network=1")
+        names = [c["name"] for c in resp.json()["items"]]
+        assert "Solo" not in names
+        assert "Branch" in names
+    finally:
+        if original is not None:
+            app.state.Session = original
+        else:
+            del app.state.Session
+
+
 def test_scan_city_filter(db):
     """scan_for_networks(city='Омск') only processes companies in that city."""
     from granite.enrichers.network_detector import NetworkDetector

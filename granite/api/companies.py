@@ -59,6 +59,7 @@ def _build_company_response(company: CompanyRow, enriched: EnrichedCompanyRow | 
         "cms": enriched.cms if enriched else None,
         "has_marquiz": enriched.has_marquiz if enriched else False,
         "is_network": enriched.is_network if enriched else False,
+        "network_id": enriched.network_id if enriched else None,
         "tg_trust": enriched.tg_trust if enriched else {},
         "funnel_stage": contact.funnel_stage if contact else "new",
         "email_sent_count": contact.email_sent_count if contact else 0,
@@ -249,14 +250,11 @@ def list_companies(
             )
         )
 
-    # --- is_network (ORM) ---
+    # --- is_network / network_id фильтр ---
     if is_network == 1:
         q = q.filter(EnrichedCompanyRow.is_network == True)
-    if is_network == 0:
-        q = q.filter(
-            (EnrichedCompanyRow.is_network.is_(None))
-            | (EnrichedCompanyRow.is_network == False)
-        )
+    else:
+        q = q.filter(EnrichedCompanyRow.network_id.is_(None))
 
     # --- has_website (ORM) ---
     if has_website == 1:
