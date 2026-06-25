@@ -1219,7 +1219,7 @@ def add_network_to_campaign(
     disabled_emails: set[str] = set()
     for t in db.query(NetworkEmailToggleRow).filter(
         NetworkEmailToggleRow.network_id == network_id,
-        NetworkEmailToggleRow.is_disabled == True,
+        NetworkEmailToggleRow.is_disabled,
     ).all():
         disabled_emails.add(t.email.lower())
 
