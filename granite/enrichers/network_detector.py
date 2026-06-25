@@ -3,7 +3,7 @@ from granite.database import Database, EnrichedCompanyRow, CompanyRow, CompanyEm
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
 from granite.constants import FREE_EMAIL_DOMAINS, SPAM_DOMAINS, NON_NETWORK_DOMAINS
-from granite.scrapers.web_search import _MULTI_CITY_DOMAIN_CACHE
+
 
 
 def _is_ua_region(dom: str | None) -> bool:
@@ -353,231 +353,118 @@ class NetworkDetector:
         network_type: str | None = None,
         contact_status: str | None = None,
     ) -> list[dict]:
-        rows = session.query(
-            EnrichedCompanyRow.id,
-            EnrichedCompanyRow.name,
-            EnrichedCompanyRow.city,
-            EnrichedCompanyRow.website,
-            EnrichedCompanyRow.phones,
-            EnrichedCompanyRow.emails,
-            EnrichedCompanyRow.crm_score,
-            EnrichedCompanyRow.segment,
-        ).filter(
-            EnrichedCompanyRow.is_network == True,
-        ).all()
+        """Вернуть список сетей из таблицы networks."""
+        from granite.database import NetworkRow, CrmEmailLogRow
+        from sqlalchemy import func
 
-        from collections import Counter
-        from granite.constants import SPAM_DOMAINS, NON_NETWORK_DOMAINS
-
-        website_map: dict[str, set[int]] = {}
-        phone_map: dict[str, set[int]] = {}
-        email_domain_map: dict[str, set[int]] = {}
-        row_details: dict[int, dict] = {}
-
-        for row_id, name, city, website, phones, emails, score, segment in rows:
-            row_details[row_id] = {
-                "id": row_id, "name": name, "city": city,
-                "website": website, "phones": phones or [],
-                "emails": emails or [], "score": score or 0.0,
-                "segment": segment or "D",
-            }
-
-            if website:
-                domain = extract_domain(website)
-                if domain:
-                    website_map.setdefault(domain, set()).add(row_id)
-                base = extract_base_domain(website)
-                if base:
-                    website_map.setdefault(base, set()).add(row_id)
-
-            for p in (phones or []):
-                norm = normalize_phone(p)
-                if norm:
-                    phone_map.setdefault(norm, set()).add(row_id)
-
-            for email in (emails or []):
-                if isinstance(email, str) and '@' in email:
-                    domain = email.split('@', 1)[1].lower().strip()
-                    if domain and domain not in FREE_EMAIL_DOMAINS:
-                        email_domain_map.setdefault(domain, set()).add(row_id)
-
-        # Exclude soft-deleted and merged companies from all maps
-        dead_ids_result = session.query(CompanyRow.id).filter(
-            CompanyRow.id.in_(list(row_details.keys())),
-            (CompanyRow.deleted_at.isnot(None)) | (CompanyRow.merged_into.isnot(None)),
-        ).all()
-        dead_ids = {d_id for (d_id,) in dead_ids_result}
-        for dead_id in dead_ids:
-            row_details.pop(dead_id, None)
-        for m in (website_map, phone_map, email_domain_map):
-            for key in list(m.keys()):
-                m[key] -= dead_ids
-                if not m[key]:
-                    del m[key]
-
-        from granite.database import CrmEmailLogRow
-
-        all_company_ids: set[int] = set()
-        if not signal_type or signal_type == "website":
-            for ids in website_map.values():
-                all_company_ids.update(ids)
-        if not signal_type or signal_type == "phone":
-            for ids in phone_map.values():
-                all_company_ids.update(ids)
-        if not signal_type or signal_type == "email_domain":
-            for ids in email_domain_map.values():
-                all_company_ids.update(ids)
-
-        contacted_company_ids: set[int] = set()
-        if all_company_ids:
-            logs = session.query(
-                CrmEmailLogRow.company_id,
-            ).filter(
-                CrmEmailLogRow.company_id.in_(list(all_company_ids)),
-            ).distinct().all()
-            contacted_company_ids = {cid for (cid,) in logs}
-
-        def _group_email_and_segment(ids_set: set[int]) -> tuple:
-            email_counter: Counter[str] = Counter()
-            segment_counter: Counter[str] = Counter()
-            for row_id in ids_set:
-                for e in (row_details[row_id].get("emails") or []):
-                    if isinstance(e, str) and "@" in e:
-                        email_counter[e] += 1
-                seg = row_details[row_id].get("segment", "D")
-                segment_counter[seg] += 1
-            primary_email = email_counter.most_common(1)[0][0] if email_counter else None
-            return primary_email, dict(segment_counter.most_common())
-
-        groups = []
-
-        if not signal_type or signal_type == "website":
-            # Pre-compute which base_domains are already known major networks (3+ cities)
-            # to avoid duplicating subdomains as separate groups (e.g. ntagil.danila-master.ru)
-            base_network_cities: dict[str, set[str]] = {}
-            for domain_key, ids_set in website_map.items():
-                pk = domain_key.split(".")
-                if len(pk) < 3:
-                    continue  # not a subdomain, skip
-                base = ".".join(pk[-2:])
-                base_ids = {i for i in website_map.get(base, set())
-                            if row_details[i].get("segment") != "spam"}
-                if len(base_ids) < 3:
-                    continue
-                base_cities = {row_details[i]["city"] for i in base_ids}
-                if len(base_cities) >= 3:
-                    base_network_cities[domain_key] = base_cities
-
-            for domain, ids in website_map.items():
-                if domain in SPAM_DOMAINS or domain in NON_NETWORK_DOMAINS or _is_ua_region(domain):
-                    continue
-                parts = domain.split(".")
-                if len(parts) >= 2:
-                    sld_tld = ".".join(parts[-2:])
-                    if sld_tld in SPAM_DOMAINS or sld_tld in NON_NETWORK_DOMAINS or _is_ua_region(sld_tld):
-                        continue
-                # Skip subdomains of known major networks (Данила-Мастер и т.п.)
-                if domain in base_network_cities:
-                    continue
-                ids = {i for i in ids if row_details[i].get("segment") != "spam"}
-                if len(ids) < min_company_count:
-                    continue
-                cities = Counter(row_details[i]["city"] for i in ids)
-                scores = [row_details[i]["score"] for i in ids]
-                companies_data = [row_details[i] for i in ids]
-                ntype = self._classify_network_type(companies_data, "website")
-                # Override: если домен (или его base) известен как агрегатор
-                if ntype != "aggregator":
-                    parts = domain.split(".")
-                    bare_base = ".".join(parts[-2:]) if len(parts) >= 2 else domain
-                    for cached_domain in _MULTI_CITY_DOMAIN_CACHE:
-                        if cached_domain == bare_base or cached_domain.endswith("." + bare_base):
-                            ntype = "aggregator"
-                            break
-                email_count = sum(1 for i in ids if row_details[i]["emails"])
-                phone_count = sum(1 for i in ids if row_details[i]["phones"])
-                primary_email, segment_dist = _group_email_and_segment(ids)
-                group_contacted = contacted_company_ids & ids
-                groups.append({
-                    "group_id": f"website:{domain}",
-                    "signal_type": "website",
-                    "signal_value": domain,
-                    "company_count": len(ids),
-                    "city_count": len(cities),
-                    "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
-                    "email_count": email_count,
-                    "phone_count": phone_count,
-                    "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
-                    "network_type": ntype,
-                    "primary_email": primary_email,
-                    "segment_dist": segment_dist,
-                    "contact_status": "sent" if group_contacted else "none",
-                    "sent_count": len(group_contacted),
-                    "total_count": len(ids),
-                })
-
-        if not signal_type or signal_type == "email_domain":
-            for domain, ids in email_domain_map.items():
-                if _is_ua_region(domain):
-                    continue
-                ids = {i for i in ids if row_details[i].get("segment") != "spam"}
-                if len(ids) < min_company_count:
-                    continue
-                cities = Counter(row_details[i]["city"] for i in ids)
-                scores = [row_details[i]["score"] for i in ids]
-                companies_data = [row_details[i] for i in ids]
-                ntype = self._classify_network_type(companies_data, "email_domain")
-                primary_email, segment_dist = _group_email_and_segment(ids)
-                group_contacted = contacted_company_ids & ids
-                groups.append({
-                    "group_id": f"email:{domain}",
-                    "signal_type": "email_domain",
-                    "signal_value": domain,
-                    "company_count": len(ids),
-                    "city_count": len(cities),
-                    "avg_score": round(sum(scores) / len(scores), 1) if scores else 0.0,
-                    "email_count": len(ids),
-                    "phone_count": sum(1 for i in ids if row_details[i]["phones"]),
-                    "top_cities": [{"name": c, "count": n} for c, n in cities.most_common(10)],
-                    "network_type": ntype,
-                    "primary_email": primary_email,
-                    "segment_dist": segment_dist,
-                    "contact_status": "sent" if group_contacted else "none",
-                    "sent_count": len(group_contacted),
-                    "total_count": len(ids),
-                })
-
+        q = session.query(NetworkRow).filter(
+            NetworkRow.company_count >= min_company_count
+        )
+        if signal_type:
+            q = q.filter(NetworkRow.signal_type == signal_type)
         if network_type:
-            groups = [g for g in groups if g.get("network_type") == network_type]
-        if contact_status:
-            groups = [g for g in groups if g.get("contact_status") == contact_status]
-        return groups
+            q = q.filter(NetworkRow.network_type == network_type)
+
+        networks = q.all()
+        if not networks:
+            return []
+
+        network_ids = [nw.id for nw in networks]
+
+        # Batch: считаем sent_count для ВСЕХ email ВСЕХ сетей за один SQL
+        all_network_emails: set[str] = set()
+        for nw in networks:
+            all_network_emails.update(e.lower() for e in (nw.emails or []))
+
+        email_sent_counts: dict[str, int] = {}
+        if all_network_emails:
+            log_rows = session.query(
+                CrmEmailLogRow.email_to,
+                func.count(CrmEmailLogRow.id),
+            ).filter(
+                CrmEmailLogRow.email_to.in_(list(all_network_emails)),
+                CrmEmailLogRow.status.in_(("sent", "opened", "replied", "bounced")),
+            ).group_by(CrmEmailLogRow.email_to).all()
+            email_sent_counts = {row[0].lower(): row[1] for row in log_rows}
+
+        # Batch: считаем количество компаний по городам для ВСЕХ сетей
+        from collections import Counter
+        city_counts_by_network: dict[int, Counter[str]] = {}
+        company_rows = session.query(
+            EnrichedCompanyRow.network_id,
+            EnrichedCompanyRow.city,
+        ).filter(
+            EnrichedCompanyRow.network_id.in_(network_ids),
+        ).all()
+        for nid, city in company_rows:
+            if city:
+                city_counts_by_network.setdefault(nid, Counter())[city] += 1
+
+        result = []
+        for nw in networks:
+            # Определяем contact_status
+            contact_status_val = "none"
+            sent_count = 0
+            if nw.emails:
+                for e in nw.emails:
+                    sc = email_sent_counts.get(e.lower(), 0)
+                    if sc > 0:
+                        sent_count += sc
+                        contact_status_val = "sent"
+
+            if contact_status and contact_status != contact_status_val:
+                continue
+
+            # Формируем top_cities в формате [{"name": c, "count": n}]
+            cc = city_counts_by_network.get(nw.id, Counter())
+            top_cities = [{"name": c, "count": n} for c, n in cc.most_common(10)]
+
+            result.append({
+                "group_id": f"website:{nw.base_domain}",
+                "id": nw.id,
+                "name": nw.name,
+                "signal_type": nw.signal_type,
+                "signal_value": nw.base_domain,
+                "company_count": nw.company_count,
+                "city_count": nw.city_count,
+                "avg_score": nw.avg_score,
+                "email_count": len(nw.emails or []),
+                "phone_count": len(nw.phones or []),
+                "top_cities": top_cities,
+                "network_type": nw.network_type,
+                "primary_email": (nw.emails or [None])[0],
+                "segment_dist": nw.segment_dist or {},
+                "contact_status": contact_status_val,
+                "sent_count": sent_count,
+                "total_count": nw.company_count,
+                "subdomains": nw.subdomains or [],
+            })
+
+        return result
 
     def get_network_detail(
         self, session,
         group_id: str,
     ) -> dict | None:
+        """Вернуть детальную информацию о сети из таблицы networks."""
+        from granite.database import NetworkRow, CrmEmailLogRow
+
         parts = group_id.split(":", 1)
         if len(parts) != 2:
             return None
         prefix, signal_value = parts
 
-        SIGNAL_TYPE_MAP = {"website": "website", "phone": "phone", "email": "email_domain"}
-        signal_type = SIGNAL_TYPE_MAP.get(prefix)
-        if signal_type is None:
+        if prefix != "website":
             return None
 
-        all_networks = self.list_networks(session, signal_type=signal_type, min_company_count=1)
-        match = None
-        for n in all_networks:
-            if n["group_id"] == group_id:
-                match = n
-                break
-
-        if not match:
+        nw = session.query(NetworkRow).filter(
+            NetworkRow.base_domain == signal_value
+        ).first()
+        if not nw:
             return None
 
-        rows = session.query(
+        # Загружаем компании этой сети
+        companies_rows = session.query(
             EnrichedCompanyRow.id,
             EnrichedCompanyRow.name,
             EnrichedCompanyRow.city,
@@ -585,47 +472,11 @@ class NetworkDetector:
             EnrichedCompanyRow.phones,
             EnrichedCompanyRow.emails,
             EnrichedCompanyRow.crm_score,
-            EnrichedCompanyRow.segment,
         ).filter(
-            EnrichedCompanyRow.is_network == True,
+            EnrichedCompanyRow.network_id == nw.id
         ).all()
 
-        query_val = signal_value.lower()
-        company_ids: set[int] = set()
-
-        for row_id, name, city, website, phones, emails, score, segment in rows:
-            if segment == "spam":
-                continue
-            include = False
-            if signal_type == "website":
-                d = extract_domain(website)
-                b = extract_base_domain(website)
-                include = (d and d == query_val) or (b and b == query_val)
-            elif signal_type == "phone":
-                for p in (phones or []):
-                    norm = normalize_phone(p)
-                    if norm and norm == query_val:
-                        include = True
-                        break
-            elif signal_type == "email_domain":
-                for email in (emails or []):
-                    if isinstance(email, str) and '@' in email:
-                        domain = email.split('@', 1)[1].lower().strip()
-                        if domain == query_val:
-                            include = True
-                            break
-            if include:
-                company_ids.add(row_id)
-
-        # Exclude soft-deleted and merged companies
-        if company_ids:
-            dead_rows = session.query(CompanyRow.id).filter(
-                CompanyRow.id.in_(list(company_ids)),
-                (CompanyRow.deleted_at.isnot(None)) | (CompanyRow.merged_into.isnot(None)),
-            ).all()
-            company_ids -= {dead_id for (dead_id,) in dead_rows}
-
-        match["companies"] = [{
+        companies = [{
             "id": row_id,
             "name": name,
             "city": city,
@@ -633,9 +484,48 @@ class NetworkDetector:
             "phones": phones or [],
             "emails": emails or [],
             "score": score or 0.0,
-        } for row_id, name, city, website, phones, emails, score, segment in rows if row_id in company_ids]
+        } for row_id, name, city, website, phones, emails, score in companies_rows]
 
-        return match
+        # Contact status
+        contact_status = "none"
+        sent_count = 0
+        if nw.emails:
+            sent_count = session.query(CrmEmailLogRow).filter(
+                CrmEmailLogRow.email_to.in_(nw.emails),
+                CrmEmailLogRow.status.in_(("sent", "opened", "replied", "bounced")),
+            ).count()
+            if sent_count > 0:
+                contact_status = "sent"
+
+        # Формируем top_cities из уже загруженных компаний
+        from collections import Counter
+        city_counter: Counter[str] = Counter()
+        for _, _, city, *_ in companies_rows:
+            if city:
+                city_counter[city] += 1
+        top_cities = [{"name": c, "count": n} for c, n in city_counter.most_common(10)]
+
+        return {
+            "group_id": group_id,
+            "id": nw.id,
+            "name": nw.name,
+            "signal_type": nw.signal_type,
+            "signal_value": nw.base_domain,
+            "company_count": nw.company_count,
+            "city_count": nw.city_count,
+            "avg_score": nw.avg_score,
+            "email_count": len(nw.emails or []),
+            "phone_count": len(nw.phones or []),
+            "top_cities": top_cities,
+            "network_type": nw.network_type,
+            "primary_email": (nw.emails or [None])[0],
+            "segment_dist": nw.segment_dist or {},
+            "contact_status": contact_status,
+            "sent_count": sent_count,
+            "total_count": nw.company_count,
+            "subdomains": nw.subdomains or [],
+            "companies": companies,
+        }
 
     def find_candidate_groups(
         self, session,
