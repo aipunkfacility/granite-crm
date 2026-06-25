@@ -1,7 +1,7 @@
 """Tests for NetworkDetector.propagate_shared_contacts()."""
 import pytest
 from unittest.mock import MagicMock
-from granite.database import CompanyRow, EnrichedCompanyRow, CompanyEmailRow
+from granite.database import CompanyRow, EnrichedCompanyRow, CompanyEmailRow, NetworkRow
 from granite.email.sync import sync_company_emails
 
 
@@ -15,9 +15,20 @@ class TestPropagateSharedContacts:
         c3 = CompanyRow(name_best="C3", city="крд", website="https://guravli.agency/krd",
                         emails=["info@guravli.agency"])
         db_session.add_all([c1, c2, c3]); db_session.flush()
+
+        nw = NetworkRow(
+            base_domain="guravli.agency",
+            signal_type="website",
+            network_type="franchise",
+            company_count=3,
+            emails=["info@guravli.agency"],
+        )
+        db_session.add(nw); db_session.flush()
+
         for c in [c1, c2, c3]:
             db_session.add(EnrichedCompanyRow(id=c.id, name=c.name_best, city=c.city,
-                                              website=c.website, emails=c.emails, is_network=True))
+                                              website=c.website, emails=c.emails,
+                                              is_network=True, network_id=nw.id))
             sync_company_emails(db_session, c.id, c.emails)
         db_session.commit()
 
@@ -44,9 +55,20 @@ class TestPropagateSharedContacts:
         c3 = CompanyRow(name_best="C3", city="крд", website="https://guravli.agency/krd",
                         emails=[])
         db_session.add_all([c1, c2, c3]); db_session.flush()
+
+        nw = NetworkRow(
+            base_domain="guravli.agency",
+            signal_type="website",
+            network_type="franchise",
+            company_count=3,
+            emails=["info@guravli.agency", "support@guravli.agency"],
+        )
+        db_session.add(nw); db_session.flush()
+
         for c in [c1, c2, c3]:
             db_session.add(EnrichedCompanyRow(id=c.id, name=c.name_best, city=c.city,
-                                              website=c.website, emails=c.emails, is_network=True))
+                                              website=c.website, emails=c.emails,
+                                              is_network=True, network_id=nw.id))
             sync_company_emails(db_session, c.id, c.emails)
         db_session.commit()
 
@@ -63,14 +85,25 @@ class TestPropagateSharedContacts:
         assert "support@guravli.agency" in (updated_c3.emails or [])
 
     def test_does_not_propagate_free_email_domains(self, db_session):
-        """Free email domains (mail.ru, gmail.com) should never trigger propagation."""
+        """Free email domains (mail.ru, gmail.com) are excluded by scan_for_networks,
+        so NetworkRow.emails is empty and nothing propagates."""
         c1 = CompanyRow(name_best="C1", city="москва", emails=["a@mail.ru"])
         c2 = CompanyRow(name_best="C2", city="спб", emails=["b@mail.ru"])
         c3 = CompanyRow(name_best="C3", city="крд", emails=[])
         db_session.add_all([c1, c2, c3]); db_session.flush()
+
+        nw = NetworkRow(
+            base_domain="mail.ru",
+            signal_type="email",
+            network_type="regional",
+            company_count=3,
+            emails=[],
+        )
+        db_session.add(nw); db_session.flush()
+
         for c in [c1, c2, c3]:
             db_session.add(EnrichedCompanyRow(id=c.id, name=c.name_best, city=c.city,
-                                              emails=c.emails, is_network=True))
+                                              emails=c.emails, is_network=True, network_id=nw.id))
         db_session.commit()
 
         from granite.enrichers.network_detector import NetworkDetector
@@ -89,8 +122,19 @@ class TestPropagateSharedContacts:
         c1 = CompanyRow(name_best="C1", city="москва", website="https://standalone.ru",
                         emails=["info@standalone.ru"])
         db_session.add(c1); db_session.flush()
+
+        nw = NetworkRow(
+            base_domain="standalone.ru",
+            signal_type="website",
+            network_type="franchise",
+            company_count=1,
+            emails=["info@standalone.ru"],
+        )
+        db_session.add(nw); db_session.flush()
+
         db_session.add(EnrichedCompanyRow(id=c1.id, name=c1.name_best, city=c1.city,
-                                          website=c1.website, emails=c1.emails, is_network=True))
+                                          website=c1.website, emails=c1.emails,
+                                          is_network=True, network_id=nw.id))
         db_session.commit()
 
         from granite.enrichers.network_detector import NetworkDetector
@@ -109,9 +153,19 @@ class TestPropagateSharedContacts:
         c1 = CompanyRow(name_best="C1", city="москва", emails=["info@guravli.agency"])
         c2 = CompanyRow(name_best="C2", city="спб", emails=["info@guravli.agency"])
         db_session.add_all([c1, c2]); db_session.flush()
+
+        nw = NetworkRow(
+            base_domain="guravli.agency",
+            signal_type="website",
+            network_type="franchise",
+            company_count=2,
+            emails=["info@guravli.agency"],
+        )
+        db_session.add(nw); db_session.flush()
+
         for c in [c1, c2]:
             db_session.add(EnrichedCompanyRow(id=c.id, name=c.name_best, city=c.city,
-                                              emails=c.emails, is_network=True))
+                                              emails=c.emails, is_network=True, network_id=nw.id))
         db_session.commit()
 
         from granite.enrichers.network_detector import NetworkDetector
