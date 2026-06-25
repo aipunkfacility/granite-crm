@@ -253,7 +253,7 @@ def list_companies(
     # --- is_network / network_id фильтр ---
     if is_network == 1:
         q = q.filter(EnrichedCompanyRow.is_network)
-    else:
+    elif is_network == 0:
         q = q.filter(EnrichedCompanyRow.network_id.is_(None))
 
     # --- has_website (ORM) ---

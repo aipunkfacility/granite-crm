@@ -203,7 +203,7 @@ def test_company_list_hides_network_branches(db):
             session.add(e2)
             session.flush()
 
-        resp = client.get("/api/v1/companies")
+        resp = client.get("/api/v1/companies?is_network=0")
         names = [c["name"] for c in resp.json()["items"]]
         assert "Solo" in names
         assert "Branch" not in names

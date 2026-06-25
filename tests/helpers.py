@@ -6,7 +6,9 @@ from datetime import datetime, timezone
 
 from granite.database import (
     CompanyRow, EnrichedCompanyRow, CrmContactRow, CrmTaskRow, CrmTouchRow,
+    NetworkRow,
 )
+from granite.utils import extract_base_domain
 
 # Поля CompanyRow, которые допустимо передавать в create_company
 _COMPANY_ALLOWED_KEYS = frozenset({
@@ -26,6 +28,7 @@ _ENRICHED_ALLOWED_KEYS = frozenset({
     "has_marquiz",
     # Новые:
     "tg_trust",
+    "network_id",
 })
 
 
@@ -70,6 +73,22 @@ def create_company(db, **overrides) -> int:
 
     enriched = EnrichedCompanyRow(**enriched_defaults)
     db.add(enriched)
+    db.flush()
+
+    if enriched_defaults.get("is_network") and "network_id" not in overrides:
+        base_domain = extract_base_domain(company_defaults.get("website"))
+        if base_domain:
+            network = NetworkRow(
+                name=company_defaults["name_best"],
+                base_domain=base_domain,
+                signal_type="website",
+                network_type="local",
+                emails=company_defaults.get("emails", []),
+                company_count=1,
+            )
+            db.add(network)
+            db.flush()
+            enriched.network_id = network.id
 
     contact = CrmContactRow(
         company_id=company.id,
