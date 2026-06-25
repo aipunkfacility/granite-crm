@@ -451,6 +451,9 @@ app.include_router(pipeline_status.router, prefix="/api/v1", tags=["pipeline"])
 from granite.api import debug as debug_router
 app.include_router(debug_router.router, prefix="/api/v1", tags=["debug"])
 
+from granite.api.network_toggles import router as network_toggles_router
+app.include_router(network_toggles_router, prefix="/api/v1", tags=["network-toggles"])
+
 from granite.api import networks
 app.include_router(networks.router, prefix="/api/v1", tags=["networks"])
 

@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.pool import StaticPool
 from granite.database import (
     Base, Database, EnrichedCompanyRow, CompanyRow,
-    NetworkRow,
+    NetworkRow, NetworkEmailToggleRow,
 )
 
 
@@ -247,3 +247,155 @@ def test_scan_city_filter(db):
         e2 = session.get(EnrichedCompanyRow, c2_id)
         assert e1.is_network is False
         assert e2.is_network is False
+
+
+def test_toggle_email_rejects_unknown_email(db):
+    """Toggle rejects email not in network's emails list."""
+    from fastapi.testclient import TestClient
+    from granite.api.app import app
+
+    original = getattr(app.state, 'Session', None)
+    app.state.Session = db.SessionLocal
+    try:
+        client = TestClient(app)
+
+        with db.session_scope() as session:
+            nw = NetworkRow(name="Test", base_domain="test.ru",
+                            signal_type="website", network_type="local",
+                            emails=["a@test.ru"], company_count=1)
+            session.add(nw)
+            session.flush()
+            network_id = nw.id
+
+        resp = client.post(
+            f"/api/v1/networks/{network_id}/emails/toggle",
+            json={"email": "x@test.ru", "is_disabled": True},
+        )
+        assert resp.status_code == 400
+        assert "не найден" in resp.json()["error"]
+    finally:
+        if original is not None:
+            app.state.Session = original
+        else:
+            del app.state.Session
+
+
+def test_toggle_email_creates_and_updates(db):
+    """Toggle creates new toggle row and updates existing."""
+    from fastapi.testclient import TestClient
+    from granite.api.app import app
+
+    original = getattr(app.state, 'Session', None)
+    app.state.Session = db.SessionLocal
+    try:
+        client = TestClient(app)
+
+        with db.session_scope() as session:
+            nw = NetworkRow(name="Test", base_domain="test.ru",
+                            signal_type="website", network_type="local",
+                            emails=["a@test.ru", "b@test.ru"], company_count=2)
+            session.add(nw)
+            session.flush()
+            network_id = nw.id
+
+        # Disable email
+        resp = client.post(
+            f"/api/v1/networks/{network_id}/emails/toggle",
+            json={"email": "a@test.ru", "is_disabled": True, "reason": "bounced"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        assert "отключен" in resp.json()["message"]
+
+        # Verify toggle was created
+        with db.session_scope() as session:
+            t = session.query(NetworkEmailToggleRow).filter(
+                NetworkEmailToggleRow.network_id == network_id,
+                NetworkEmailToggleRow.email == "a@test.ru",
+            ).first()
+            assert t is not None
+            assert t.is_disabled is True
+            assert t.reason == "bounced"
+
+        # Re-enable email
+        resp = client.post(
+            f"/api/v1/networks/{network_id}/emails/toggle",
+            json={"email": "a@test.ru", "is_disabled": False},
+        )
+        assert resp.status_code == 200
+        assert "включен" in resp.json()["message"]
+
+        with db.session_scope() as session:
+            t = session.query(NetworkEmailToggleRow).filter(
+                NetworkEmailToggleRow.network_id == network_id,
+                NetworkEmailToggleRow.email == "a@test.ru",
+            ).first()
+            assert t.is_disabled is False
+    finally:
+        if original is not None:
+            app.state.Session = original
+        else:
+            del app.state.Session
+
+
+def test_list_network_emails_with_badges(db):
+    """list_network_emails returns correct badges."""
+    from fastapi.testclient import TestClient
+    from granite.api.app import app
+
+    original = getattr(app.state, 'Session', None)
+    app.state.Session = db.SessionLocal
+    try:
+        client = TestClient(app)
+
+        with db.session_scope() as session:
+            nw = NetworkRow(name="Test", base_domain="test.ru",
+                            signal_type="website", network_type="local",
+                            emails=["a@test.ru", "b@test.ru"], company_count=2)
+            session.add(nw)
+            session.flush()
+            network_id = nw.id
+
+            # Disable a@test.ru
+            session.add(NetworkEmailToggleRow(
+                network_id=network_id, email="a@test.ru", is_disabled=True, reason="test",
+            ))
+
+        resp = client.get(f"/api/v1/networks/{network_id}/emails")
+        assert resp.status_code == 200
+        items = resp.json()
+        assert len(items) == 2
+
+        by_email = {i["email"]: i for i in items}
+        assert by_email["a@test.ru"]["is_disabled"] is True
+        assert by_email["a@test.ru"]["badge"] == "disabled"
+        assert by_email["a@test.ru"]["reason"] == "test"
+        assert by_email["b@test.ru"]["is_disabled"] is False
+        assert by_email["b@test.ru"]["badge"] == ""
+    finally:
+        if original is not None:
+            app.state.Session = original
+        else:
+            del app.state.Session
+
+
+def test_toggle_email_404_for_missing_network(db):
+    """Toggle returns 404 for non-existent network."""
+    from fastapi.testclient import TestClient
+    from granite.api.app import app
+
+    original = getattr(app.state, 'Session', None)
+    app.state.Session = db.SessionLocal
+    try:
+        client = TestClient(app)
+
+        resp = client.post(
+            "/api/v1/networks/999/emails/toggle",
+            json={"email": "x@test.ru", "is_disabled": True},
+        )
+        assert resp.status_code == 404
+    finally:
+        if original is not None:
+            app.state.Session = original
+        else:
+            del app.state.Session
