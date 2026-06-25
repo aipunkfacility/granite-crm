@@ -788,5 +788,15 @@ def cleanup_emails(
     db.engine.dispose()
 
 
+@app.command()
+def tag_networks(
+    threshold: int = typer.Option(2, help="Мин. кол-во компаний для сети"),
+    city: str | None = typer.Option(None, help="Только указанный город"),
+):
+    """Сканировать сети и заполнить таблицу networks."""
+    from granite.cli.network_tag import run_tag_networks
+    run_tag_networks(threshold=threshold, city=city)
+
+
 if __name__ == "__main__":
     app()
