@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 import {
   NetworkCandidatesResponse, ResolveNetworkGroupPayload,
-  NetworkListResponse, NetworkDetail,
+  NetworkListResponse, NetworkDetail, NetworkEmail,
 } from '@/lib/types/api';
 
 export interface NetworkCandidatesParams {
@@ -62,6 +62,32 @@ export const spamNetwork = async (
     `networks/${encodeURIComponent(groupId)}/spam`,
     { reason, note: note ?? '' },
     { headers: { 'X-Admin-Token': adminToken } },
+  );
+  return data;
+};
+
+export interface ToggleEmailPayload {
+  email: string;
+  is_disabled: boolean;
+  reason?: string;
+}
+
+export const listNetworkEmails = async (
+  networkId: number,
+): Promise<NetworkEmail[]> => {
+  const { data } = await apiClient.get<NetworkEmail[]>(
+    `networks/${networkId}/emails`,
+  );
+  return data;
+};
+
+export const toggleNetworkEmail = async (
+  networkId: number,
+  payload: ToggleEmailPayload,
+): Promise<{ ok: boolean; message: string }> => {
+  const { data } = await apiClient.post<{ ok: boolean; message: string }>(
+    `networks/${networkId}/emails/toggle`,
+    payload,
   );
   return data;
 };

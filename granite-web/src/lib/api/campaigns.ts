@@ -182,3 +182,21 @@ export const fetchRecipients = async (
   });
   return data;
 };
+
+export interface AddNetworkResult {
+  ok: boolean;
+  added: number;
+  skipped: number;
+  skipped_details: Array<{ email: string; reason: string }>;
+}
+
+export const addNetworkToCampaign = async (
+  campaignId: number,
+  networkId: number,
+): Promise<AddNetworkResult> => {
+  const { data } = await apiClient.post<AddNetworkResult>(
+    `campaigns/${campaignId}/add-network`,
+    { network_id: networkId },
+  );
+  return data;
+};
