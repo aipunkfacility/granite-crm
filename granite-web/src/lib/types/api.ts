@@ -40,6 +40,7 @@ export interface Company {
   cms: string | null;
   has_marquiz: boolean;
   is_network: boolean;
+  network_id: number | null;
   tg_trust: Record<string, any>;
   funnel_stage: FunnelStage;
   email_sent_count: number;
@@ -173,6 +174,8 @@ export interface TopCity {
 }
 
 export interface NetworkSummary {
+  id: number;
+  name: string | null;
   group_id: string;
   signal_type: string;
   signal_value: string;
@@ -182,6 +185,7 @@ export interface NetworkSummary {
   email_count: number;
   phone_count: number;
   top_cities: TopCity[];
+  subdomains: string[];
   network_type: 'franchise' | 'aggregator' | 'regional' | 'local';
   primary_email: string | null;
   segment_dist: Record<string, number>;
@@ -207,4 +211,13 @@ export interface NetworkDetailCompany {
 
 export interface NetworkDetail extends NetworkSummary {
   companies: NetworkDetailCompany[];
+}
+
+export interface NetworkEmail {
+  email: string;
+  is_disabled: boolean;
+  reason: string;
+  sent_count: number;
+  last_sent_at: string | null;
+  badge: '' | 'sent' | 'bounced' | 'disabled';
 }
