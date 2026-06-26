@@ -56,7 +56,7 @@ export const COLUMNS: ColumnDef[] = [
   { key: 'funnel_stage', label: 'Воронка', sortable: true, defaultVisible: true },
   { key: 'contact', label: 'Контакт', sortable: false, defaultVisible: true },
   { key: 'last_contact_at', label: 'Последний контакт', sortable: true, defaultVisible: true },
-  { key: 'is_network', label: 'Сеть', sortable: true, defaultVisible: false },
+  { key: 'is_network', label: 'Сеть', sortable: true, defaultVisible: true },
   { key: 'updated_at', label: 'Обновлено', sortable: true, defaultVisible: false },
 ];
 
@@ -369,7 +369,20 @@ export function CompanyTable({
                     {/* Сеть */}
                     {isVisible('is_network') && (
                       <TableCell className="text-center">
-                        {company.is_network ? <ShieldCheck className="h-4 w-4 text-success mx-auto" /> : <span className="text-muted-foreground text-xs">—</span>}
+                        {company.is_network && company.network_id ? (
+                          <a
+                            href={`/networks/${company.network_id}`}
+                            className="inline-flex items-center text-success hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ShieldCheck className="h-4 w-4 mr-1" />
+                            <span className="text-xs">{company.network_id}</span>
+                          </a>
+                        ) : company.is_network ? (
+                          <ShieldCheck className="h-4 w-4 text-success mx-auto" />
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </TableCell>
                     )}
                     {/* Обновлено */}
