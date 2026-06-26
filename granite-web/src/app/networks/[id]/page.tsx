@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { fetchNetworkDetail, unmarkNetwork } from '@/lib/api/networks';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,16 @@ import { useAdmin } from '@/lib/admin-context';
 import { batchSpam } from '@/lib/api/admin';
 import { MarkSpamDialog } from '@/components/companies/MarkSpamDialog';
 import { AddToCampaignDialog } from '@/components/companies/AddToCampaignDialog';
+import { NetworkEmailToggles } from '@/components/networks/NetworkEmailToggles';
+import { addNetworkToCampaign, AddNetworkResult, fetchCampaigns } from '@/lib/api/campaigns';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 
 const NETWORK_TYPE_CONFIG: Record<string, { label: string; className: string }> = {
   franchise: { label: 'Франчайзинг', className: 'bg-[var(--network-franchise-bg)] text-[var(--network-franchise-text)] border-[var(--network-franchise-text)]/20' },
@@ -56,6 +66,8 @@ export default function NetworkDetailPage() {
   const [spamSaving, setSpamSaving] = useState(false);
   const [campDialogOpen, setCampDialogOpen] = useState(false);
   const [citiesOpen, setCitiesOpen] = useState(false);
+  const [netCampDialogOpen, setNetCampDialogOpen] = useState(false);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
   const { token: adminToken, isActive: isAdmin } = useAdmin();
 
   // Escape key to close confirm dialog
@@ -100,6 +112,32 @@ export default function NetworkDetailPage() {
       setSpamSaving(false);
     }
   }, [adminToken, net, queryClient, groupId]);
+
+  const { data: campaignsData } = useQuery({
+    queryKey: ['campaigns-selector'],
+    queryFn: () => fetchCampaigns({ per_page: 200 }),
+    enabled: netCampDialogOpen,
+  });
+
+  const editableCampaigns = (campaignsData?.items ?? []).filter(
+    (c) => c.status === 'draft' || c.status === 'paused' || c.status === 'paused_daily_limit'
+  );
+
+  const addNetMutation = useMutation({
+    mutationFn: () => {
+      if (!selectedCampaignId) throw new Error('Выберите кампанию');
+      return addNetworkToCampaign(selectedCampaignId, net!.id);
+    },
+    onSuccess: (result: AddNetworkResult) => {
+      toast.success(`Добавлено: ${result.added}, пропущено: ${result.skipped}`);
+      setNetCampDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['network-detail', groupId] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : 'Ошибка добавления сети в кампанию';
+      toast.error(msg);
+    },
+  });
 
   if (isLoading) {
     return (
@@ -179,6 +217,17 @@ export default function NetworkDetailPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={() => {
+                setSelectedCampaignId(null);
+                setNetCampDialogOpen(true);
+              }}
+            >
+              <MailPlus className="h-4 w-4 mr-1" />
+              Email сети
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               className="text-destructive border-destructive/30 hover:bg-destructive/10"
               onClick={() => setShowConfirm(true)}
             >
@@ -249,7 +298,26 @@ export default function NetworkDetailPage() {
               ))}
             </div>
           )}
+          {net.subdomains && net.subdomains.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-border">
+              <p className="text-xs text-muted-foreground mb-2">
+                Поддомены ({net.subdomains.length})
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {net.subdomains.map((sub) => (
+                  <Badge key={sub} variant="outline" className="text-xs font-mono">
+                    {sub}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
+      </Card>
+
+      {/* Email toggles */}
+      <Card className="border-border p-6">
+        <NetworkEmailToggles networkId={net.id} />
       </Card>
 
       <Card className="border-border p-6">
@@ -337,6 +405,51 @@ export default function NetworkDetailPage() {
           </table>
         </div>
       </Card>
+      <Dialog open={netCampDialogOpen} onOpenChange={setNetCampDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Добавить email сети в кампанию</DialogTitle>
+            <DialogDescription>
+              Будут добавлены уникальные email сети ({net.email_count} шт.).
+              Отключенные тогглом, уже отправленные и уже в кампании — будут пропущены.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {editableCampaigns.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Нет кампаний в статусе draft, paused или paused_daily_limit
+              </p>
+            ) : (
+              <Select
+                value={selectedCampaignId?.toString() ?? ''}
+                onValueChange={(v) => setSelectedCampaignId(Number(v))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите кампанию..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {editableCampaigns.map((c) => (
+                    <SelectItem key={c.id} value={c.id.toString()}>
+                      {c.name} ({c.status})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNetCampDialogOpen(false)}>
+              Отмена
+            </Button>
+            <Button
+              disabled={!selectedCampaignId || addNetMutation.isPending}
+              onClick={() => addNetMutation.mutate()}
+            >
+              {addNetMutation.isPending ? 'Добавление...' : 'Добавить'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AddToCampaignDialog
         open={campDialogOpen}
         onOpenChange={setCampDialogOpen}
