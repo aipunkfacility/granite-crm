@@ -471,8 +471,26 @@ export function CompanySheet({ companyId, open, onOpenChange, onSelectCompany }:
                   <div className="p-3 rounded-xl bg-muted border border-border">
                     <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wider">СЕТЬ</p>
                     <p className="font-medium text-foreground flex items-center">
-                      {company.is_network ? <ShieldCheck className="mr-1 h-3 w-3 text-success" /> : <Building className="mr-1 h-3 w-3 text-muted-foreground" />}
-                      {company.is_network ? 'ДА' : 'НЕТ'}
+                      {company.is_network && company.network_id ? (
+                        <a
+                          href={`/networks/${company.network_id}`}
+                          className="flex items-center text-success hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ShieldCheck className="mr-1 h-3 w-3" />
+                          ДА — перейти
+                        </a>
+                      ) : company.is_network ? (
+                        <>
+                          <ShieldCheck className="mr-1 h-3 w-3 text-success" />
+                          ДА
+                        </>
+                      ) : (
+                        <>
+                          <Building className="mr-1 h-3 w-3 text-muted-foreground" />
+                          НЕТ
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="p-3 rounded-xl bg-muted border border-border">
