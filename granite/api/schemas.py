@@ -288,6 +288,7 @@ class CompanyResponse(BaseModel):
     cms: Optional[str] = None
     has_marquiz: bool = False
     is_network: bool = False
+    network_id: Optional[int] = None
     tg_trust: dict = {}
     funnel_stage: str = "new"
     email_sent_count: int = 0
