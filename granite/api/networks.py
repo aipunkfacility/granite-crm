@@ -165,7 +165,21 @@ def get_network_detail(
     group_id: str,
     db: Session = Depends(get_db),
 ):
-    """Вернуть детальную информацию о сети со списком компаний."""
+    """Вернуть детальную информацию о сети со списком компаний.
+
+    group_id может быть:
+    - строкой вида "website:example.com"
+    - числовым ID сети (int) — ищем NetworkRow по id, затем строим group_id
+    """
+    from granite.database import NetworkRow
+
+    # Если передан числовой ID — ищем NetworkRow по id
+    if group_id.isdigit():
+        nw = db.query(NetworkRow).filter(NetworkRow.id == int(group_id)).first()
+        if not nw:
+            raise HTTPException(404, f"Network with id={group_id} not found")
+        group_id = f"website:{nw.base_domain}"
+
     detector = NetworkDetector(Database())
     detail = detector.get_network_detail(db, group_id)
     if not detail:
