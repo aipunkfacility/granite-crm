@@ -92,6 +92,12 @@ export function NetworkCard({ net }: { net: NetworkSummary }) {
           <span className="flex items-center gap-1"><MapPin className="h-3 w-3 shrink-0" /> {net.city_count} гор.</span>
           <span className="text-gray-300">·</span>
           <span className="flex items-center gap-1"><Star className="h-3 w-3 shrink-0" /> {net.avg_score.toFixed(1)}</span>
+          {net.subdomains && net.subdomains.length > 1 && (
+            <>
+              <span className="text-gray-300">·</span>
+              <span className="flex items-center gap-1 text-[10px]">{net.subdomains.length} поддом.</span>
+            </>
+          )}
           <span className={cn(
             'ml-auto text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0',
             statusCfg.className,
