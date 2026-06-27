@@ -607,10 +607,17 @@ def _run_campaign_send_loop(
         total = len(recipients)
         was_truncated = total > MAX_SENDS_PER_RUN
 
-        # Заморозка total_recipients: устанавливается только при первом старте
-        # (когда поле ещё 0). После первого запуска поле не меняется.
+        # Warnings are a snapshot of the first run's validation results.
+        # On re-run (campaign paused -> resumed), warnings are NOT updated:
+        # they reflect the original recipient pool, not the remaining subset.
+        # Rationale:
+        # 1. First-run warnings are always relevant ("at launch, N were filtered").
+        # 2. Re-run warnings cover only unsent companies — overwriting loses context.
+        # 3. Accumulating (extend + dedup) is disproportionate complexity for an edge case.
         if not campaign.total_recipients:
             campaign.total_recipients = total
+            if recipient_warnings:
+                campaign.recipient_warnings = recipient_warnings
 
         if was_truncated:
             recipients = recipients[:MAX_SENDS_PER_RUN]
