@@ -291,6 +291,43 @@ export function CampaignDashboard({ campaignId, onClose }: DashboardProps) {
           </CardContent>
         </Card>
 
+        {/* Recipient warnings — validation results from send time */}
+        {campaign.recipient_warnings?.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  {campaign.recipient_warnings.length} получателей отфильтровано
+                </p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  Эти получатели не прошли валидацию при запуске кампании
+                </p>
+              </div>
+            </div>
+            <details className="group">
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground transition-colors select-none">
+                Показать детали ({campaign.recipient_warnings.length})
+              </summary>
+              <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+                {campaign.recipient_warnings.map((w: { company_id: number; name: string; reason: string }, i: number) => (
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded bg-muted/50 text-xs">
+                    <span className="font-medium text-amber-700 dark:text-amber-400 shrink-0">
+                      {w.reason}
+                    </span>
+                    <span className="text-muted-foreground truncate">
+                      {w.name}
+                    </span>
+                    <span className="text-muted-foreground/50 text-[10px] shrink-0">
+                      ID: {w.company_id}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+        )}
+
         {/* Причина паузы — под ходом рассылки */}
         {isPausedDailyLimit && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 border border-amber-200 dark:bg-amber-950/20 dark:border-amber-800">

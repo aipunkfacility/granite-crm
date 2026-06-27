@@ -40,6 +40,10 @@ export interface CampaignDetail {
   open_rate: number;
   preview_recipients: number;
   validator_warnings: string[];
+  // Persisted warnings from validate_recipients() at send time.
+  // Each entry: { company_id: number; name: string; reason: string }
+  // Compare with validator_warnings (computed at read time for drafts).
+  recipient_warnings: Array<{ company_id: number; name: string; reason: string }>;
   started_at: string | null;
   completed_at: string | null;
 }
