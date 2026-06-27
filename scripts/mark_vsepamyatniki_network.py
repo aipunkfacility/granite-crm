@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from granite.database import Database, EnrichedCompanyRow, NetworkRow
 from granite.utils import extract_domain
 from loguru import logger
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 
 def mark_network(session=None) -> None:
@@ -66,48 +65,40 @@ def mark_network(session=None) -> None:
 
         now = datetime.now(timezone.utc)
 
-        stmt = sqlite_insert(NetworkRow).values(
-            name="ВсеПамятники / vsepamyatniki.ru",
-            base_domain="vsepamyatniki.ru",
-            signal_type="email_domain",
-            network_type="franchise",
-            subdomains=json.dumps(sorted(subdomains), ensure_ascii=False),
-            emails=json.dumps(sorted(emails_all), ensure_ascii=False),
-            phones=json.dumps(sorted(phones_all), ensure_ascii=False),
-            company_count=len(member_ids),
-            city_count=len(cities),
-            cities=json.dumps(sorted(cities), ensure_ascii=False),
-            avg_score=sum(scores) / len(scores) if scores else 0.0,
-            segment_dist=json.dumps(
-                {s: segments.count(s) for s in set(segments)},
-                ensure_ascii=False,
-            ),
-            created_at=now,
-            updated_at=now,
-        )
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["base_domain"],
-            set_={
-                "name": stmt.excluded.name,
-                "signal_type": stmt.excluded.signal_type,
-                "network_type": stmt.excluded.network_type,
-                "subdomains": stmt.excluded.subdomains,
-                "emails": stmt.excluded.emails,
-                "phones": stmt.excluded.phones,
-                "company_count": stmt.excluded.company_count,
-                "city_count": stmt.excluded.city_count,
-                "cities": stmt.excluded.cities,
-                "avg_score": stmt.excluded.avg_score,
-                "segment_dist": stmt.excluded.segment_dist,
-                "updated_at": stmt.excluded.updated_at,
-            },
-        )
-        session.execute(stmt)
-        session.flush()
-
         network = session.query(NetworkRow).filter(
             NetworkRow.base_domain == "vsepamyatniki.ru"
         ).first()
+        if network:
+            network.name = "ВсеПамятники / vsepamyatniki.ru"
+            network.network_type = "franchise"
+            network.subdomains = sorted(subdomains)
+            network.emails = sorted(emails_all)
+            network.phones = sorted(phones_all)
+            network.company_count = len(member_ids)
+            network.city_count = len(cities)
+            network.cities = sorted(cities)
+            network.avg_score = sum(scores) / len(scores) if scores else 0.0
+            network.segment_dist = {s: segments.count(s) for s in set(segments)}
+            network.updated_at = now
+        else:
+            network = NetworkRow(
+                name="ВсеПамятники / vsepamyatniki.ru",
+                base_domain="vsepamyatniki.ru",
+                signal_type="email_domain",
+                network_type="franchise",
+                subdomains=sorted(subdomains),
+                emails=sorted(emails_all),
+                phones=sorted(phones_all),
+                company_count=len(member_ids),
+                city_count=len(cities),
+                cities=sorted(cities),
+                avg_score=sum(scores) / len(scores) if scores else 0.0,
+                segment_dist={s: segments.count(s) for s in set(segments)},
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(network)
+        session.flush()
 
         session.query(EnrichedCompanyRow).filter(
             EnrichedCompanyRow.id.in_(list(member_ids))
