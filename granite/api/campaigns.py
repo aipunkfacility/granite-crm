@@ -929,7 +929,7 @@ def campaign_progress(campaign_id: int, db: Session = Depends(get_db)):
         else:
             # Последний fallback — тяжёлый запрос (только если нет данных)
             try:
-                recipients = _get_campaign_recipients(campaign, db)
+                recipients, _ = _get_campaign_recipients(campaign, db)
                 recipients_count = len(recipients)
             except Exception:
                 pass
