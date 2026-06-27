@@ -17,7 +17,7 @@ AGGREGATOR_DOMAINS = frozenset({
     "nbs-granit.ru", "granit-pamiatnik.ru",
     "postament.ru", "uslugio.com", "pqd.ru", "spravker.ru",
     "orgpage.ru", "totadres.ru", "mapage.ru", "zoon.ru",
-    "memorial.ru", "obeliski.ru",
+    "obeliski.ru",
 })
 
 _EMAIL_RE = re.compile(r"^[\w.+-]+@[\w.-]+\.\w{2,}$")
