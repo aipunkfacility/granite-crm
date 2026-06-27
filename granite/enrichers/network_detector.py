@@ -1,4 +1,5 @@
 # enrichers/network_detector.py
+import json
 from granite.database import Database, EnrichedCompanyRow, CompanyRow
 from loguru import logger
 from granite.utils import extract_domain, extract_base_domain, normalize_phone
@@ -109,7 +110,24 @@ class NetworkDetector:
             network_domains = {d for d, cnt in domain_count.items() if cnt >= threshold}
             network_base_domains = {d for d, cnt in base_domain_count.items() if cnt >= threshold}
 
-            if not network_domains and not network_base_domains:
+            # ── 3a. Подсчёт email-доменов ──
+            email_domain_count: dict[str, int] = {}
+            for row_id, _, emails_src, *_ in rows:
+                if not emails_src:
+                    continue
+                emails_list = json.loads(emails_src) if isinstance(emails_src, str) else emails_src
+                seen_in_row: set[str] = set()
+                for em in emails_list:
+                    if isinstance(em, str) and '@' in em:
+                        dom = em.split('@', 1)[1].lower().strip()
+                        if dom and dom not in FREE_EMAIL_DOMAINS and not _is_spam(dom):
+                            if dom not in seen_in_row:
+                                email_domain_count[dom] = email_domain_count.get(dom, 0) + 1
+                                seen_in_row.add(dom)
+
+            network_email_domains = {d for d, cnt in email_domain_count.items() if cnt >= threshold}
+
+            if not network_domains and not network_base_domains and not network_email_domains:
                 logger.info("Сетей не обнаружено.")
                 return
 
@@ -117,6 +135,8 @@ class NetworkDetector:
                 logger.debug(f"  Сеть по домену: {d} ({domain_count[d]} компаний)")
             for d in sorted(network_base_domains):
                 logger.debug(f"  Сеть по base-домену: {d} ({base_domain_count[d]} компаний)")
+            for d in sorted(network_email_domains):
+                logger.debug(f"  Сеть по email-домену: {d} ({email_domain_count[d]} компаний)")
 
             # ── 4. Группировка компаний по base_domain ──
             # row_data: id -> (website, emails, phones, name, city, score, segment)
@@ -128,6 +148,17 @@ class NetworkDetector:
                 base = cached_base_domains.get(row_id)
                 if base and not _is_spam(base) and base in network_base_domains:
                     groups.setdefault(base, set()).add(row_id)
+
+            # ── 4b. Группировка компаний по email-домену ──
+            for row_id, _, emails_src, *_ in rows:
+                if not emails_src or row_id not in row_data:
+                    continue
+                emails_list = json.loads(emails_src) if isinstance(emails_src, str) else emails_src
+                for em in emails_list:
+                    if isinstance(em, str) and '@' in em:
+                        dom = em.split('@', 1)[1].lower().strip()
+                        if dom and dom in network_email_domains:
+                            groups.setdefault(dom, set()).add(row_id)
 
             # ── 5. UPSERT в networks + SET network_id ──
             network_count = 0
