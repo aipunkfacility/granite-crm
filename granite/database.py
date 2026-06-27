@@ -514,6 +514,14 @@ class CrmEmailCampaignRow(Base):
     # Режим отбора получателей: 'filter' (по фильтрам) или 'manual' (из campaign_recipients)
     recipient_mode = Column(String(10), default="filter", server_default="filter", nullable=False)
 
+    # recipient_warnings: output of validate_recipients() at campaign start.
+    # Each entry: {"company_id": int, "name": str, "reason": str}.
+    # This is a snapshot of the first run's validation — NOT updated on re-run
+    # (see _run_campaign_send_loop for the save-once guard).
+    # Contrast with validator_warnings (API-only, computed for drafts):
+    # that field checks subject/recipients/A/B config at read time.
+    recipient_warnings = Column(JSON, default=list)
+
     started_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
