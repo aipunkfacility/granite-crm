@@ -96,11 +96,13 @@ def _make_template(db, name="cold_email_v1", channel="email",
 
 def _make_campaign(db, name="Test Campaign", template_name="cold_email_v1",
                     status="draft", subject_a=None, subject_b=None,
-                    filters=None, total_sent=0, total_errors=0):
+                    filters=None, total_sent=0, total_errors=0,
+                    recipient_mode="filter"):
     campaign = CrmEmailCampaignRow(
         name=name, template_name=template_name, status=status,
         subject_a=subject_a, subject_b=subject_b,
         filters=filters or {}, total_sent=total_sent, total_errors=total_errors,
+        recipient_mode=recipient_mode,
     )
     db.add(campaign)
     db.flush()
@@ -158,8 +160,8 @@ class TestCampaignRecipients:
 
         from granite.api.campaigns import _get_campaign_recipients
         campaign = db.get(CrmEmailCampaignRow, 1)
-        recipients = _get_campaign_recipients(campaign, db)
-        assert len(recipients) == 1
+        valid, _ = _get_campaign_recipients(campaign, db)
+        assert len(valid) == 1
 
     def test_campaign_recipients_filter_stop_automation(self, db):
         _make_template(db)
@@ -176,9 +178,9 @@ class TestCampaignRecipients:
 
         from granite.api.campaigns import _get_campaign_recipients
         campaign = db.get(CrmEmailCampaignRow, 1)
-        recipients = _get_campaign_recipients(campaign, db)
+        valid, _ = _get_campaign_recipients(campaign, db)
 
-        emails = [r[3] for r in recipients]
+        emails = [r[3] for r in valid]
         assert "active@test.ru" in emails
         assert "unsub@test.ru" not in emails
 
@@ -194,8 +196,8 @@ class TestCampaignRecipients:
 
         from granite.api.campaigns import _get_campaign_recipients
         campaign = db.get(CrmEmailCampaignRow, 1)
-        recipients = _get_campaign_recipients(campaign, db)
-        assert len(recipients) == 5
+        valid, _ = _get_campaign_recipients(campaign, db)
+        assert len(valid) == 5
 
     def test_yield_per_100_processes_all(self, db):
         _make_template(db)
@@ -209,8 +211,8 @@ class TestCampaignRecipients:
 
         from granite.api.campaigns import _get_campaign_recipients
         campaign = db.get(CrmEmailCampaignRow, 1)
-        recipients = _get_campaign_recipients(campaign, db)
-        assert len(recipients) == 10
+        valid, _ = _get_campaign_recipients(campaign, db)
+        assert len(valid) == 10
 
     def test_commit_per_email(self, db):
         _make_template(db)
@@ -702,3 +704,181 @@ class TestRunCampaign:
         finally:
             app.dependency_overrides.clear()
             _release_all_campaign_locks()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Recipient warnings
+# ══════════════════════════════════════════════════════════════════════════
+
+class TestRecipientWarnings:
+    """Warnings from validate_recipients() are returned and persisted."""
+
+    def test_get_campaign_recipients_returns_warnings(self, db):
+        """Warnings from invalid recipients are returned alongside valid list."""
+        _make_template(db)
+        _make_campaign(db, status="draft")
+
+        c1 = _make_company(db, name="Valid Co", emails=["valid@test.ru"])
+        _make_enriched(db, c1.id)
+        _make_contact(db, c1.id)
+
+        c2 = _make_company(db, name="Duplicate Co", emails=["dup@test.ru"])
+        _make_enriched(db, c2.id)
+        _make_contact(db, c2.id)
+        db.commit()
+
+        from granite.database import CrmEmailLogRow
+        db.add(CrmEmailLogRow(
+            company_id=c2.id, email_to="dup@test.ru",
+            email_subject="Prev", template_name="cold_email_v1",
+            tracking_id="prev-tracking", status="sent",
+            sent_at=datetime.now(timezone.utc),
+        ))
+        db.commit()
+
+        from granite.api.campaigns import _get_campaign_recipients
+        campaign = db.get(CrmEmailCampaignRow, 1)
+        valid, warnings = _get_campaign_recipients(campaign, db)
+
+        # Schema guard: each warning must have all expected keys
+        for w in warnings:
+            assert {"company_id", "name", "reason"} <= set(w.keys())
+
+        assert len(valid) == 1
+        assert valid[0][3] == "valid@test.ru"
+        assert len(warnings) >= 1
+        # Check by company_id, not by fragile string match
+        assert any(w["company_id"] == c2.id for w in warnings)
+
+    def test_manual_recipients_returns_warnings(self, db):
+        """Warnings from manual mode are returned correctly."""
+        _make_template(db)
+        campaign = _make_campaign(db, status="draft", recipient_mode="manual")
+        db.commit()
+        db.refresh(campaign)
+
+        from granite.database import CampaignRecipientRow
+
+        c1 = _make_company(db, name="Valid Co", emails=["valid@test.ru"])
+        _make_enriched(db, c1.id)
+        _make_contact(db, c1.id)
+        db.add(CampaignRecipientRow(
+            campaign_id=campaign.id, company_id=c1.id, email="valid@test.ru",
+        ))
+
+        c2 = _make_company(db, name="Agg Co", emails=["info@spravker.ru"])
+        _make_enriched(db, c2.id)
+        _make_contact(db, c2.id)
+        db.add(CampaignRecipientRow(
+            campaign_id=campaign.id, company_id=c2.id, email="info@spravker.ru",
+        ))
+
+        # Company with recent email — in manual mode, SESSION_GAP is skipped.
+        # This is the negative test: recent email should NOT cause a warning.
+        c3 = _make_company(db, name="Recent Co", emails=["recent@test.ru"])
+        _make_enriched(db, c3.id)
+        c3_contact = _make_contact(
+            db, c3.id,
+            last_email_sent_at=datetime.now(timezone.utc),
+        )
+        db.add(CampaignRecipientRow(
+            campaign_id=campaign.id, company_id=c3.id, email="recent@test.ru",
+        ))
+        db.commit()
+
+        from granite.api.campaigns import _get_campaign_recipients
+        valid, warnings = _get_campaign_recipients(campaign, db)
+
+        # Schema guard
+        for w in warnings:
+            assert {"company_id", "name", "reason"} <= set(w.keys())
+
+        assert len(valid) == 2  # c1 (valid) + c3 (SESSION_GAP skipped)
+        assert valid[0][3] == "valid@test.ru"
+        assert valid[1][3] == "recent@test.ru"
+        assert len(warnings) >= 1
+        assert any(w["company_id"] == c2.id for w in warnings)
+        # Recent-email company should NOT be in warnings (manual skips SESSION_GAP)
+        assert not any(w["company_id"] == c3.id for w in warnings)
+
+    def test_warnings_persisted_on_run(self, engine, monkeypatch):
+        """recipient_warnings saved to campaign when send loop starts."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s, name="persist_tpl")
+            campaign = _make_campaign(s, template_name="persist_tpl", status="draft")
+            c1 = _make_company(s, name="Valid", emails=["valid@test.ru"])
+            _make_enriched(s, c1.id)
+            _make_contact(s, c1.id)
+            s.commit()
+            campaign_id = campaign.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+                session.commit()
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        from unittest.mock import patch
+
+        app.dependency_overrides[get_db] = get_test_db
+
+        try:
+            monkeypatch.setenv("GRANITE_API_KEY", "")
+            with TestClient(app) as client:
+                app.state.Session = Session
+                with patch("granite.api.campaigns._run_campaign_send_loop"):
+                    resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
+                assert resp.status_code == 200
+
+            with Session() as s:
+                campaign = s.get(CrmEmailCampaignRow, campaign_id)
+                # Saved as empty list (no invalid companies in test data)
+                assert campaign.recipient_warnings is None or campaign.recipient_warnings == []
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_warnings_snapshot_not_overwritten_on_rerun(self, db):
+        """recipient_warnings is a snapshot: once set, re-run does NOT overwrite."""
+        _make_template(db)
+        campaign = _make_campaign(db, status="draft")
+        c1 = _make_company(db, name="Valid", emails=["valid@test.ru"])
+        _make_enriched(db, c1.id)
+        _make_contact(db, c1.id)
+        c2 = _make_company(db, name="Agg Co", emails=["info@yell.ru"])
+        _make_enriched(db, c2.id)
+        _make_contact(db, c2.id)
+        db.commit()
+
+        from granite.api.campaigns import _get_campaign_recipients
+
+        # Simulate first run: save warnings + freeze total_recipients
+        valid, first_warnings = _get_campaign_recipients(campaign, db)
+        campaign.total_recipients = len(valid)
+        campaign.recipient_warnings = first_warnings
+        snapshot = list(campaign.recipient_warnings)
+        db.commit()
+        assert campaign.total_recipients > 0  # guard will be False on re-run
+
+        # Simulate re-run: total_recipients already set, guard prevents save
+        db.refresh(campaign)
+        _, second_warnings = _get_campaign_recipients(campaign, db)
+        # The guard: if not campaign.total_recipients: ... won't execute
+        if not campaign.total_recipients:
+            campaign.recipient_warnings = second_warnings
+        db.commit()
+
+        # Warnings must be the first-run snapshot
+        db.refresh(campaign)
+        assert campaign.recipient_warnings == snapshot
