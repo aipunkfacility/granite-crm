@@ -413,13 +413,18 @@ def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_d
 
     # FIX-A6: Оптимизация — для завершённых/приостановленных кампаний
     # берём total_recipients из БД, не пересчитываем получателей.
+    # recipient_warnings — вычисляются на лету для всех, кроме completed.
+    # NOTE: для paused кампаний warnings показывают текущее состояние фильтров,
+    # а не snapshot первого запуска. preview_recipients_count при этом берётся
+    # из БД (total_recipients при первом запуске) — это два разных снимка.
+    recipient_warnings: list[dict] = []
     if campaign.status in ("completed",) and (campaign.total_recipients or campaign.total_sent):
         preview_recipients_count = campaign.total_recipients or campaign.total_sent or 0
     elif campaign.status in ("paused", "paused_daily_limit") and campaign.total_recipients:
         preview_recipients_count = campaign.total_recipients
+        _, recipient_warnings = _get_campaign_recipients(campaign, db)
     else:
-        # Для draft и running — считаем реальных получателей
-        recipients, _ = _get_campaign_recipients(campaign, db)
+        recipients, recipient_warnings = _get_campaign_recipients(campaign, db)
         preview_recipients_count = len(recipients)
 
     open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
@@ -466,9 +471,9 @@ def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_d
         "open_rate": open_rate,
         "preview_recipients": preview_recipients_count,
         "validator_warnings": validator_warnings,
-        # recipient_warnings — persisted at send time (snapshot of first run).
+        # recipient_warnings — computed on the fly from validate_recipients().
         # Compare with validator_warnings (computed, draft-only) above.
-        "recipient_warnings": campaign.recipient_warnings or [],
+        "recipient_warnings": recipient_warnings,
         "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
         "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
     }
@@ -599,7 +604,7 @@ def _run_campaign_send_loop(
             logger.error(f"Campaign {campaign_id}: template '{campaign.template_name}' not found — paused")
             return
 
-        recipients, recipient_warnings = _get_campaign_recipients(campaign, session)
+        recipients, _ = _get_campaign_recipients(campaign, session)
 
         from granite.constants import get_sender_field
         from_name = get_sender_field("from_name")
@@ -610,17 +615,8 @@ def _run_campaign_send_loop(
         total = len(recipients)
         was_truncated = total > MAX_SENDS_PER_RUN
 
-        # Warnings are a snapshot of the first run's validation results.
-        # On re-run (campaign paused -> resumed), warnings are NOT updated:
-        # they reflect the original recipient pool, not the remaining subset.
-        # Rationale:
-        # 1. First-run warnings are always relevant ("at launch, N were filtered").
-        # 2. Re-run warnings cover only unsent companies — overwriting loses context.
-        # 3. Accumulating (extend + dedup) is disproportionate complexity for an edge case.
         if not campaign.total_recipients:
             campaign.total_recipients = total
-            if recipient_warnings:
-                campaign.recipient_warnings = recipient_warnings
 
         if was_truncated:
             recipients = recipients[:MAX_SENDS_PER_RUN]
