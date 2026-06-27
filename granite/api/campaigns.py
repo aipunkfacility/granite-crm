@@ -236,7 +236,7 @@ def list_campaigns(
     return {"items": items, "total": total, "page": page, "per_page": per_page}
 
 
-def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
+def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> tuple[list, list]:
     """Найти получателей кампании.
 
     Поддерживает два режима:
@@ -249,6 +249,8 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
 
     FIX-3: После базовой фильтрации применяется validate_recipients()
     для проверки агрегаторов, невалидных email, SESSION_GAP.
+
+    Returns: tuple[list, list]: (valid_recipients, warnings_list)
     """
     # Manual-режим — получатели из junction-таблицы
     if campaign.recipient_mode == "manual":
@@ -307,10 +309,10 @@ def _get_campaign_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list
             + "; ".join(f"{w.get('name', '?')} ({w.get('reason', '?')})" for w in warnings[:5])
             + (f"... +{len(warnings) - 5} more" if len(warnings) > 5 else "")
         )
-    return valid
+    return valid, warnings
 
 
-def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
+def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> tuple[list, list]:
     """Получатели из campaign_recipients (manual mode).
 
     Берёт email напрямую из CampaignRecipientRow, не вызывает _get_active_email().
@@ -328,7 +330,7 @@ def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
     )
 
     if not recipient_rows:
-        return []
+        return [], []
 
     # 2. Группируем email'ы по company_id
     company_emails: dict[int, list[str]] = {}
@@ -395,7 +397,7 @@ def _get_manual_recipients(campaign: CrmEmailCampaignRow, db: Session) -> list:
             + "; ".join(f"{w.get('name', '?')} ({w.get('reason', '?')})" for w in warnings[:5])
             + (f"... +{len(warnings) - 5} more" if len(warnings) > 5 else "")
         )
-    return valid
+    return valid, warnings
 
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignDetailResponse)
@@ -417,7 +419,7 @@ def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_d
         preview_recipients_count = campaign.total_recipients
     else:
         # Для draft и running — считаем реальных получателей
-        recipients = _get_campaign_recipients(campaign, db)
+        recipients, _ = _get_campaign_recipients(campaign, db)
         preview_recipients_count = len(recipients)
 
     open_rate = round(campaign.total_opened / campaign.total_sent * 100, 1) if campaign.total_sent else 0
@@ -594,7 +596,7 @@ def _run_campaign_send_loop(
             logger.error(f"Campaign {campaign_id}: template '{campaign.template_name}' not found — paused")
             return
 
-        recipients = _get_campaign_recipients(campaign, session)
+        recipients, recipient_warnings = _get_campaign_recipients(campaign, session)
 
         from granite.constants import get_sender_field
         from_name = get_sender_field("from_name")
