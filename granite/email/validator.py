@@ -13,9 +13,8 @@ from typing import Optional
 # Домены агрегаторов — не мастерские (из scraper-audit A-1)
 AGGREGATOR_DOMAINS = frozenset({
     "tsargranit.ru", "alshei.ru", "mipomnim.ru", "uznm.ru",
-    "monuments.su", "masterskay-granit.ru", "gr-anit.ru",
-    "nbs-granit.ru", "granit-pamiatnik.ru",
-    "postament.ru", "uslugio.com", "pqd.ru", "spravker.ru",
+    "monuments.su", "masterskay-granit.ru",
+    "uslugio.com", "spravker.ru",
     "orgpage.ru", "totadres.ru", "mapage.ru", "zoon.ru",
     "obeliski.ru",
 })

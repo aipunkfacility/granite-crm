@@ -94,6 +94,8 @@ SPAM_DOMAINS: frozenset[str] = frozenset({
     "icomms.ru",
     # Спам-домены подтверждённые
     "resrex.ru", "adaware.ru", "smz.ooo",
+    # Справочники/агрегаторы
+    "mapage.ru",
     # .ua домены (нецелевой регион)
     "elibra.mk.ua", "granite.ua",
     "ritual-monuments.com.ua", "ritual-stone.com.ua",
