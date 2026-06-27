@@ -777,7 +777,7 @@ class TestRecipientWarnings:
         # This is the negative test: recent email should NOT cause a warning.
         c3 = _make_company(db, name="Recent Co", emails=["recent@test.ru"])
         _make_enriched(db, c3.id)
-        c3_contact = _make_contact(
+        _make_contact(
             db, c3.id,
             last_email_sent_at=datetime.now(timezone.utc),
         )
@@ -801,8 +801,8 @@ class TestRecipientWarnings:
         # Recent-email company should NOT be in warnings (manual skips SESSION_GAP)
         assert not any(w["company_id"] == c3.id for w in warnings)
 
-    def test_warnings_persisted_on_run(self, engine, monkeypatch):
-        """recipient_warnings saved to campaign when send loop starts."""
+    def test_detail_returns_recipient_warnings_on_the_fly(self, engine, monkeypatch):
+        """GET /campaigns/{id} returns recipient_warnings for draft campaign."""
         from fastapi.testclient import TestClient
         from granite.api.app import app
         from granite.api.deps import get_db
@@ -811,11 +811,14 @@ class TestRecipientWarnings:
         Session = sessionmaker(bind=engine)
 
         with Session() as s:
-            _make_template(s, name="persist_tpl")
-            campaign = _make_campaign(s, template_name="persist_tpl", status="draft")
-            c1 = _make_company(s, name="Valid", emails=["valid@test.ru"])
+            _make_template(s)
+            campaign = _make_campaign(s, status="draft")
+            c1 = _make_company(s, name="Valid Co", emails=["valid@test.ru"])
             _make_enriched(s, c1.id)
             _make_contact(s, c1.id)
+            c2 = _make_company(s, name="Agg Co", emails=["info@spravker.ru"])
+            _make_enriched(s, c2.id)
+            _make_contact(s, c2.id)
             s.commit()
             campaign_id = campaign.id
 
@@ -823,62 +826,123 @@ class TestRecipientWarnings:
             session = Session()
             try:
                 yield session
-                session.commit()
             except Exception:
                 session.rollback()
                 raise
             finally:
                 session.close()
 
-        from unittest.mock import patch
-
         app.dependency_overrides[get_db] = get_test_db
+        monkeypatch.setenv("GRANITE_API_KEY", "")
 
         try:
-            monkeypatch.setenv("GRANITE_API_KEY", "")
             with TestClient(app) as client:
                 app.state.Session = Session
-                with patch("granite.api.campaigns._run_campaign_send_loop"):
-                    resp = client.post(f"/api/v1/campaigns/{campaign_id}/run")
-                assert resp.status_code == 200
-
-            with Session() as s:
-                campaign = s.get(CrmEmailCampaignRow, campaign_id)
-                # Saved as empty list (no invalid companies in test data)
-                assert campaign.recipient_warnings is None or campaign.recipient_warnings == []
+                resp = client.get(f"/api/v1/campaigns/{campaign_id}")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "recipient_warnings" in data
+            assert isinstance(data["recipient_warnings"], list)
+            assert len(data["recipient_warnings"]) >= 1
+            for w in data["recipient_warnings"]:
+                assert {"company_id", "name", "reason"} <= set(w.keys())
         finally:
             app.dependency_overrides.clear()
 
-    def test_warnings_snapshot_not_overwritten_on_rerun(self, db):
-        """recipient_warnings is a snapshot: once set, re-run does NOT overwrite."""
-        _make_template(db)
-        campaign = _make_campaign(db, status="draft")
-        c1 = _make_company(db, name="Valid", emails=["valid@test.ru"])
-        _make_enriched(db, c1.id)
-        _make_contact(db, c1.id)
-        c2 = _make_company(db, name="Agg Co", emails=["info@yell.ru"])
-        _make_enriched(db, c2.id)
-        _make_contact(db, c2.id)
-        db.commit()
+    def test_detail_recipient_warnings_empty_for_completed(self, engine, monkeypatch):
+        """Completed campaigns return empty recipient_warnings."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
 
-        from granite.api.campaigns import _get_campaign_recipients
+        Session = sessionmaker(bind=engine)
 
-        # Simulate first run: save warnings + freeze total_recipients
-        valid, first_warnings = _get_campaign_recipients(campaign, db)
-        campaign.total_recipients = len(valid)
-        campaign.recipient_warnings = first_warnings
-        snapshot = list(campaign.recipient_warnings)
-        db.commit()
-        assert campaign.total_recipients > 0  # guard will be False on re-run
+        with Session() as s:
+            _make_template(s)
+            campaign = _make_campaign(s, status="completed", total_sent=5)
+            s.commit()
+            campaign_id = campaign.id
 
-        # Simulate re-run: total_recipients already set, guard prevents save
-        db.refresh(campaign)
-        _, second_warnings = _get_campaign_recipients(campaign, db)
-        # The guard: if not campaign.total_recipients: ... won't execute
-        if not campaign.total_recipients:
-            campaign.recipient_warnings = second_warnings
-        db.commit()
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
 
-        # Warnings must be the first-run snapshot
-        db.refresh(campaign)
-        assert campaign.recipient_warnings == snapshot
+        app.dependency_overrides[get_db] = get_test_db
+        monkeypatch.setenv("GRANITE_API_KEY", "")
+
+        try:
+            with TestClient(app) as client:
+                app.state.Session = Session
+                resp = client.get(f"/api/v1/campaigns/{campaign_id}")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert data["recipient_warnings"] == []
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_detail_warnings_change_when_data_changes(self, engine, monkeypatch):
+        """On-the-fly warnings reflect current data — changing data changes warnings."""
+        from fastapi.testclient import TestClient
+        from granite.api.app import app
+        from granite.api.deps import get_db
+        from sqlalchemy.orm import sessionmaker
+
+        Session = sessionmaker(bind=engine)
+
+        with Session() as s:
+            _make_template(s)
+            campaign = _make_campaign(s, status="draft")
+            c1 = _make_company(s, name="Agg Co", emails=["info@spravker.ru"])
+            _make_enriched(s, c1.id)
+            _make_contact(s, c1.id)
+            s.commit()
+            campaign_id = campaign.id
+            c1_id = c1.id
+
+        def get_test_db():
+            session = Session()
+            try:
+                yield session
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+
+        app.dependency_overrides[get_db] = get_test_db
+        monkeypatch.setenv("GRANITE_API_KEY", "")
+
+        try:
+            with TestClient(app) as client:
+                app.state.Session = Session
+
+                resp = client.get(f"/api/v1/campaigns/{campaign_id}")
+                assert resp.status_code == 200
+                warnings_v1 = resp.json()["recipient_warnings"]
+                assert len(warnings_v1) == 1
+                assert warnings_v1[0]["company_id"] == c1_id
+
+                with Session() as s:
+                    from granite.database import CompanyEmailRow
+                    s.query(CompanyEmailRow).filter(
+                        CompanyEmailRow.company_id == c1.id,
+                        CompanyEmailRow.email == "info@spravker.ru",
+                    ).delete()
+                    s.commit()
+                    from granite.email.sync import sync_company_emails
+                    sync_company_emails(s, c1.id, ["valid@test.ru"])
+                    s.commit()
+
+                resp = client.get(f"/api/v1/campaigns/{campaign_id}")
+                assert resp.status_code == 200
+                warnings_v2 = resp.json()["recipient_warnings"]
+                assert len(warnings_v2) == 0
+        finally:
+            app.dependency_overrides.clear()
