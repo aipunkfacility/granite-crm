@@ -466,6 +466,9 @@ def get_campaign(campaign_id: int, request: Request, db: Session = Depends(get_d
         "open_rate": open_rate,
         "preview_recipients": preview_recipients_count,
         "validator_warnings": validator_warnings,
+        # recipient_warnings — persisted at send time (snapshot of first run).
+        # Compare with validator_warnings (computed, draft-only) above.
+        "recipient_warnings": campaign.recipient_warnings or [],
         "started_at": campaign.started_at.isoformat() if campaign.started_at else None,
         "completed_at": campaign.completed_at.isoformat() if campaign.completed_at else None,
     }
