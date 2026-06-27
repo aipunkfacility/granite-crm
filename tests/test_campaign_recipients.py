@@ -451,10 +451,10 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
-        assert len(recipients) == 1
-        assert recipients[0][0].id == company.id
+        assert len(valid) == 1
+        assert valid[0][0].id == company.id
 
     def test_manual_skips_already_sent(self, db_session):
         """Компании, которым уже отправили — пропускаются."""
@@ -472,9 +472,9 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
-        assert len(recipients) == 0
+        assert len(valid) == 0
 
     def test_manual_skips_stop_automation(self, db_session):
         """stop_automation — компания в списке, но письмо не уйдёт."""
@@ -488,9 +488,9 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
-        assert len(recipients) == 0
+        assert len(valid) == 0
 
     def test_manual_skips_deleted_company(self, db_session):
         """Soft-deleted компания — пропускается при запуске (аудит, мелочь)."""
@@ -505,9 +505,9 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
-        assert len(recipients) == 0
+        assert len(valid) == 0
 
     def test_manual_session_gap_ignored(self, db_session):
         """SESSION_GAP НЕ применяется для manual-режима (аудит, п.4)."""
@@ -525,10 +525,10 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
         # В manual-режиме SESSION_GAP игнорируется — компания проходит
-        assert len(recipients) == 1
+        assert len(valid) == 1
 
     def test_manual_dedup_same_email(self, db_session):
         """Два получателя с одним email — письмо только первому."""
@@ -546,10 +546,10 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
-        assert len(recipients) == 1
-        assert recipients[0][0].id == c1.id
+        assert len(valid) == 1
+        assert valid[0][0].id == c1.id
 
     def test_manual_empty_recipients_returns_empty(self, db_session):
         """Пустой список получателей — пустой результат."""
@@ -557,9 +557,9 @@ class TestGetManualRecipients:
         db_session.add(campaign); db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
+        valid, _ = _get_campaign_recipients(campaign, db_session)
 
-        assert recipients == []
+        assert valid == []
 
     def test_manual_skips_already_sent_per_email(self, db_session):
         """Email из CampaignRecipientRow, уже отправленный в этой кампании — пропускается."""
@@ -580,8 +580,8 @@ class TestGetManualRecipients:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
-        assert len(recipients) == 0
+        valid, _ = _get_campaign_recipients(campaign, db_session)
+        assert len(valid) == 0
 
 class TestCreateCampaignWithManualMode:
     """Создание кампании в manual-режиме."""
@@ -831,8 +831,8 @@ class TestManualCampaignFullFlow:
         db_session.commit()
 
         from granite.api.campaigns import _get_campaign_recipients
-        recipients = _get_campaign_recipients(campaign, db_session)
-        assert len(recipients) == 0
+        valid, _ = _get_campaign_recipients(campaign, db_session)
+        assert len(valid) == 0
 
     def test_add_to_filter_campaign_flow(self, db_session, client):
         """Полный флоу: попытка добавить в filter-кампанию (аудит, п.2)."""
