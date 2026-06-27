@@ -396,9 +396,9 @@ class CampaignDetailResponse(BaseModel):
     open_rate: float = 0.0
     preview_recipients: int = 0
     validator_warnings: list[str] = []
-    # persisted warnings from validate_recipients() at send time.
+    # on-the-fly warnings from validate_recipients() — computed at detail read time.
     # list of dicts with keys: company_id, name, reason.
-    # Empty for draft campaigns (not yet run).
+    # Empty for completed campaigns (all sent, irrelevant).
     recipient_warnings: list[dict] = []
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
